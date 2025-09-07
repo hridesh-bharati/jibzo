@@ -16,7 +16,11 @@ import GetPost from "./assets/uploads/GetPost";
 import Messages from "./assets/messages/Messages";
 
 const App = () => {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    // Check localStorage cache first
+    const cached = localStorage.getItem("currentUser");
+    return cached ? JSON.parse(cached) : null;
+  });
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showPrompt, setShowPrompt] = useState(false);
   const location = useLocation();
@@ -26,6 +30,8 @@ const App = () => {
     const auth = getAuth();
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
+      if (currentUser) localStorage.setItem("currentUser", JSON.stringify(currentUser));
+      else localStorage.removeItem("currentUser");
     });
     return () => unsubscribe();
   }, []);
@@ -54,6 +60,10 @@ const App = () => {
     setShowPrompt(false);
   };
 
+  const handleClosePrompt = () => {
+    setShowPrompt(false);
+  };
+
   return (
     <>
       {/* Routes */}
@@ -78,16 +88,21 @@ const App = () => {
         <BottomFooter />
       )}
 
-      {/* PWA Install Toast */}
+      {/* PWA Install Toast Top Middle */}
       {showPrompt && (
         <div
-          className="position-fixed bottom-0 start-25 translate-middle-x mb-3 p-3 rounded shadow bg-dark text-white d-flex justify-content-between align-items-center"
-          style={{ zIndex: 1050, minWidth: "250px" }}
+          className="position-fixed top-0 start-50 translate-middle-x mt-3 p-3 rounded shadow bg-dark text-white d-flex justify-content-between align-items-center"
+          style={{ zIndex: 1050, minWidth: "300px", maxWidth: "90%" }}
         >
           <span>📲 Install Jibzo App?</span>
-          <button className="btn btn-sm btn-primary ms-3" onClick={handleInstall}>
-            Install
-          </button>
+          <div className="d-flex gap-2">
+            <button className="btn btn-sm btn-primary" onClick={handleInstall}>
+              Install
+            </button>
+            <button className="btn btn-sm btn-secondary" onClick={handleClosePrompt}>
+              ✕
+            </button>
+          </div>
         </div>
       )}
     </>
