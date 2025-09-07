@@ -81,7 +81,7 @@ const App = () => {
       {/* PWA Install Toast */}
       {showPrompt && (
         <div
-          className="position-fixed bottom-0 start-50 translate-middle-x mb-3 p-3 rounded shadow bg-dark text-white d-flex justify-content-between align-items-center"
+          className="position-fixed bottom-0 start-25 translate-middle-x mb-3 p-3 rounded shadow bg-dark text-white d-flex justify-content-between align-items-start"
           style={{ zIndex: 1050, minWidth: "250px" }}
         >
           <span>📲 Install Jibzo App?</span>
