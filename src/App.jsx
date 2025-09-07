@@ -14,6 +14,7 @@ import Following from "./assets/users/Following";
 import UploadPost from "./assets/uploads/UploadPost";
 import GetPost from "./assets/uploads/GetPost";
 import Messages from "./assets/messages/Messages";
+import Loader from "./assets/Home/Loader";
 
 const App = () => {
   const [user, setUser] = useState(() => {
@@ -60,7 +61,7 @@ const App = () => {
 
   const handleClosePrompt = () => setShowPrompt(false);
 
-  if (loadingAuth) return <div>Loading...</div>;
+  if (loadingAuth) return <Loader />;
 
   return (
     <>
@@ -147,3 +148,6 @@ const App = () => {
 };
 
 export default App;
+
+
+
