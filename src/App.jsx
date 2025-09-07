@@ -13,7 +13,7 @@ import Followers from "./assets/users/Followers";
 import Following from "./assets/users/Following";
 import UploadPost from "./assets/uploads/UploadPost";
 import GetPost from "./assets/uploads/GetPost";
-import Messages from "./assets/messages/messages";
+import Messages from "./assets/messages/Messages";
 
 const App = () => {
   const [user, setUser] = useState(null);
