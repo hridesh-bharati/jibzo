@@ -8,6 +8,7 @@ import { toast } from "react-toastify";
 import SnapStarBar from "./SnapStarBar";
 import "./Home.css";
 import GetPost from '../uploads/GetPost'
+import { SnapStarBarPlaceholder } from "./SnapStarBarPlaceholder";
 const Home = () => {
   const [users, setUsers] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
@@ -105,7 +106,9 @@ const Home = () => {
     return (
       <>
         <Navbar />
-        <div className="container mt-5 text-center">Loading users...</div>
+        <div className="container mt-5 text-center">
+          <SnapStarBarPlaceholder />
+        </div>
       </>
     );
   }
