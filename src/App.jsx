@@ -14,7 +14,7 @@ import Following from "./assets/users/Following";
 import UploadPost from "./assets/uploads/UploadPost";
 import GetPost from "./assets/uploads/GetPost";
 import Messages from "./assets/messages/Messages";
-
+import Loader from "./assets/Home/Loader"
 const App = () => {
   const [user, setUser] = useState(() => {
     const cached = localStorage.getItem("currentUser");
