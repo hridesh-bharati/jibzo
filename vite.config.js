@@ -9,10 +9,10 @@ export default defineConfig({
     port: 5173,
   },
   build: {
-    outDir: 'dist',      
-    assetsDir: 'assets',  
+    outDir: 'dist',       // default, just to be explicit
+    assetsDir: 'assets',  // default folder for JS/CSS/images
   },
-  base: './',       
+  base: './',             // ✅ important for relative asset paths on Vercel
 })
 
 
