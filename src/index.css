@@ -1,0 +1,38 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  background: transparent;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+#root::-webkit-scrollbar {
+  display: none;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  /* Full viewport height */
+}
+
+.myshadow {
+  box-shadow: 1px 1px 8px #dddddd;
+}
+
+input {
+  border:thick;
+  outline: none !important;
+  box-shadow: none !important;
+}
