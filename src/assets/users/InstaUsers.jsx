@@ -128,7 +128,11 @@ export default function InstaUsers() {
                 className="d-flex align-items-center text-decoration-none text-dark flex-grow-1"
               >
                 <img
+<<<<<<< HEAD
                   src={user.photoURL || "icons/avatar.png"}
+=======
+                  src={user.photoURL || "https://via.placeholder.com/50"}
+>>>>>>> 6cfed43d1372ef5d1c115eaf2f5e529e572e9d9f
                   alt={user.username}
                   loading="lazy"
                   className="rounded-circle me-3"
