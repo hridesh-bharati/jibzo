@@ -1,0 +1,83 @@
+/* Instagram style feed */
+.gallery-feed {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* Card look */
+.insta-card {
+  border: none;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+/* Header */
+.insta-card .card-header {
+  background: #fff;
+  border: none;
+  padding: 8px 12px;
+}
+
+/* Image */
+.insta-img-wrapper {
+  width: 100%;
+  background: #000;
+}
+.insta-img {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: cover;
+}
+
+/* Action buttons */
+.card-body .btn-link {
+  font-size: 1.4rem;
+  text-decoration: none;
+}
+
+/* Like count */
+.like-count {
+  font-weight: 600;
+  margin-top: -4px;
+  margin-bottom: 4px;
+}
+
+/* Caption */
+.card-body p {
+  font-size: 0.9rem;
+  margin: 0;
+}
+.card-body p strong {
+  margin-right: 4px;
+}
+
+/* Comments */
+.comments {
+  margin-top: 6px;
+}
+.comments p {
+  font-size: 0.85rem;
+  margin-bottom: 2px;
+}
+.comments button {
+  font-size: 0.7rem;
+}
+
+/* Comment input */
+.card-body input {
+  border-radius: 20px;
+  font-size: 0.85rem;
+}
+.card-body button {
+  border-radius: 20px;
+  padding: 2px 12px;
+  font-size: 0.8rem;
+}
+
+/* Offcanvas bottom sheet */
+.offcanvas-bottom {
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+}
