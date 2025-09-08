@@ -2,15 +2,25 @@ import React, { useEffect, useState } from "react";
 
 const InstallApp = () => {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [isInstalled, setIsInstalled] = useState(false);
 
   useEffect(() => {
+    // Save install prompt
     const handler = (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
     };
     window.addEventListener("beforeinstallprompt", handler);
 
-    return () => window.removeEventListener("beforeinstallprompt", handler);
+    // Listen for successful install
+    window.addEventListener("appinstalled", () => {
+      console.log("✅ App installed successfully");
+      setIsInstalled(true);
+    });
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handler);
+    };
   }, []);
 
   const handleInstall = async () => {
@@ -28,13 +38,14 @@ const InstallApp = () => {
     setDeferredPrompt(null);
   };
 
+  if (isInstalled) return null; // hide button if already installed
+
   return (
     <button
-      className={`btn fw-bold small ${deferredPrompt ? "btn-success" : "btn-secondary"}`}
+      className={`btn fw-bold small ${deferredPrompt ? "btn-success" : "btn-primary"}`}
       onClick={handleInstall}
-      disabled={!deferredPrompt} // disabled if not available
     >
-      <div className="small"> Install App</div>
+      <div className="small">Install App</div>
     </button>
   );
 };

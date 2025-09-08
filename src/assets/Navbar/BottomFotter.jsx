@@ -3,18 +3,11 @@ import { Link, useLocation } from "react-router-dom";
 import {
   FaHome,
   FaFileImage,
-  FaEnvelope,
   FaCamera,
   FaUsers,
 } from "react-icons/fa";
-
-const navItems = [
-  { path: "/home", label: "Home", icon: <FaHome size={20} /> },
-  { path: "/user/get-all-post/post", label: "Gallery", icon: <FaFileImage size={20} /> },
-  { path: "/user/new/post", label: "Upload", icon: <FaCamera size={20} /> },
-  { path: "/all-insta-users", label: "Users", icon: <FaUsers size={20} /> },
-  { path: "/admin-profile", label: "Profile", icon: <FaEnvelope size={20} /> },
-];
+import { auth, db } from "../../firebaseConfig";
+import { ref, onValue } from "firebase/database";
 
 const buttonStyle = (isActive) => ({
   width: 60,
@@ -32,15 +25,59 @@ const buttonStyle = (isActive) => ({
   position: "relative",
   transition: "all 0.3s ease-in-out",
   boxShadow: isActive ? "0 4px 12px rgba(0, 122, 255, 0.4)" : "none",
+  overflow: "hidden", // for DP circle
 });
 
 export default function BottomFooter() {
   const location = useLocation();
   const [activeTab, setActiveTab] = useState(location.pathname);
+  const [photoURL, setPhotoURL] = useState(null);
 
   useEffect(() => {
     setActiveTab(location.pathname);
+
+    const uid = auth.currentUser?.uid;
+    if (uid) {
+      const userRef = ref(db, `usersData/${uid}`);
+      onValue(userRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data?.photoURL) setPhotoURL(data.photoURL);
+      });
+    }
   }, [location]);
+
+  const navItems = [
+    { path: "/home", label: "Home", icon: <FaHome size={20} /> },
+    { path: "/user/get-all-post/post", label: "Gallery", icon: <FaFileImage size={20} /> },
+    { path: "/user/new/post", label: "Upload", icon: <FaCamera size={20} /> },
+    { path: "/all-insta-users", label: "Users", icon: <FaUsers size={20} /> },
+    {
+      path: "/admin-profile",
+      label: "Profile",
+      icon: photoURL ? (
+        <img
+          src={photoURL}
+          alt="Profile"
+          style={{
+            width: 24,
+            height: 24,
+            borderRadius: "50%",
+            objectFit: "cover",
+          }}
+        />
+      ) : (
+        // fallback (if no photoURL available)
+        <div
+          style={{
+            width: 24,
+            height: 24,
+            borderRadius: "50%",
+            background: "#ccc",
+          }}
+        />
+      ),
+    },
+  ];
 
   return (
     <nav
@@ -78,15 +115,15 @@ export default function BottomFooter() {
               style={buttonStyle(isActive)}
             >
               {icon}
-              <span style={{
-                fontSize: 10,
-                marginTop: 4,
-                color: isActive ? "#fff" : "#1e3a8a",
-              }}>
+              <span
+                style={{
+                  fontSize: 10,
+                  marginTop: 4,
+                  color: isActive ? "#fff" : "#1e3a8a",
+                }}
+              >
                 {label}
               </span>
-              {/* Dot indicator */}
-          
             </button>
           </Link>
         );
