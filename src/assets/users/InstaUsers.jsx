@@ -20,26 +20,26 @@ export default function InstaUsers() {
   }, []);
 
   useEffect(() => {
-  const usersRef = ref(db, "usersData");
+    const usersRef = ref(db, "usersData");
 
-  const unsubscribe = onValue(usersRef, (snapshot) => {
-    if (snapshot.exists()) {
-      const data = snapshot.val();
-      const usersArray = Object.entries(data).map(([uid, userData]) => ({
-        uid,
-        ...userData,
-      }));
-      setUsers(usersArray);
-    } else {
-      setUsers([]);
-    }
-  }, (error) => {
-    console.error("Error fetching users in real-time:", error);
-    toast.error("Failed to load users");
-  });
+    const unsubscribe = onValue(usersRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        const usersArray = Object.entries(data).map(([uid, userData]) => ({
+          uid,
+          ...userData,
+        }));
+        setUsers(usersArray);
+      } else {
+        setUsers([]);
+      }
+    }, (error) => {
+      console.error("Error fetching users in real-time:", error);
+      toast.error("Failed to load users");
+    });
 
-  return () => unsubscribe();
-}, []);
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     if (!currentUser?.uid) return;
@@ -128,11 +128,7 @@ export default function InstaUsers() {
                 className="d-flex align-items-center text-decoration-none text-dark flex-grow-1"
               >
                 <img
-<<<<<<< HEAD
                   src={user.photoURL || "icons/avatar.png"}
-=======
-                  src={user.photoURL || "https://via.placeholder.com/50"}
->>>>>>> 6cfed43d1372ef5d1c115eaf2f5e529e572e9d9f
                   alt={user.username}
                   loading="lazy"
                   className="rounded-circle me-3"

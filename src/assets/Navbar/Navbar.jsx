@@ -4,6 +4,7 @@ import { auth } from "../../firebaseConfig";
 import { db } from "../../firebaseConfig";
 import { ref, onValue, get } from "firebase/database"; // Using get() instead of once
 import "../Home/Home.css";
+import InstallApp from "../Pwa/InstallApp";
 
 const Navbar = () => {
   const [unreadCount, setUnreadCount] = useState(0);
@@ -74,11 +75,11 @@ const Navbar = () => {
 
   return (
     <nav className="navbar bg-white shadow-sm border-0">
-      <div className="container">
+      <div className="container m-0 p-0">
         <Link to="/" className="fw-bold text-primary">
-          <img src="icons/logo.png" className="img-fluid" width={150} alt="" />
+          <img src="icons/logo.png" className="img-fluid" width={120} alt="" />
         </Link>
-
+        <InstallApp />
         {/* Inbox Button with Unread Badge */}
         <button
           type="button"
