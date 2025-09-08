@@ -1,160 +1,169 @@
-import React, { useEffect, useState, useMemo } from "react";
-import { db } from "../../firebaseConfig";
-import { ref, onValue, update, get } from "firebase/database";
+// src/assets/users/InstaUsers.jsx
+import React, { useEffect, useState } from "react";
+import { db, auth } from "../../firebaseConfig";
+import { ref, onValue, update } from "firebase/database";
 import { toast } from "react-toastify";
-import { Link } from "react-router-dom";
-import { getAuth } from "firebase/auth";
+import { onAuthStateChanged } from "firebase/auth";
+import { useNavigate } from "react-router-dom";
 
 export default function InstaUsers() {
   const [users, setUsers] = useState([]);
-  const [followingList, setFollowingList] = useState([]);
-  const [followersList, setFollowersList] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
-  const [activeTab, setActiveTab] = useState("all");
+  const [sentRequests, setSentRequests] = useState([]);
+  const [receivedRequests, setReceivedRequests] = useState([]);
+  const [friends, setFriends] = useState([]);
+  const navigate = useNavigate();
 
-  const auth = getAuth();
-
+  // ✅ Track logged-in user
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(setCurrentUser);
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      if (user) {
+        const userRef = ref(db, `usersData/${user.uid}`);
+        onValue(userRef, (snapshot) => {
+          const data = snapshot.val();
+          setSentRequests(data?.followRequests?.sent ? Object.keys(data.followRequests.sent) : []);
+          setReceivedRequests(data?.followRequests?.received ? Object.keys(data.followRequests.received) : []);
+          setFriends(data?.friends ? Object.keys(data.friends) : []);
+        });
+      }
+    });
     return () => unsubscribe();
   }, []);
 
+  // ✅ Fetch all users
   useEffect(() => {
     const usersRef = ref(db, "usersData");
-
-    const unsubscribe = onValue(usersRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.val();
-        const usersArray = Object.entries(data).map(([uid, userData]) => ({
-          uid,
-          ...userData,
-        }));
-        setUsers(usersArray);
-      } else {
-        setUsers([]);
-      }
-    }, (error) => {
-      console.error("Error fetching users in real-time:", error);
-      toast.error("Failed to load users");
+    onValue(usersRef, (snapshot) => {
+      const data = snapshot.val() || {};
+      const allUsers = Object.entries(data).map(([uid, info]) => ({
+        uid,
+        ...info,
+      }));
+      setUsers(allUsers);
     });
-
-    return () => unsubscribe();
   }, []);
 
-  useEffect(() => {
+  // ✅ Functions
+  const sendFollowRequest = async (targetUID) => {
     if (!currentUser?.uid) return;
-
-    const followingRef = ref(db, `usersData/${currentUser.uid}/following`);
-    const followersRef = ref(db, `usersData/${currentUser.uid}/followers`);
-
-    const unsubFollowing = onValue(followingRef, (snapshot) => {
-      setFollowingList(snapshot.exists() ? Object.keys(snapshot.val()) : []);
-    });
-
-    const unsubFollowers = onValue(followersRef, (snapshot) => {
-      setFollowersList(snapshot.exists() ? Object.keys(snapshot.val()) : []);
-    });
-
-    return () => {
-      unsubFollowing();
-      unsubFollowers();
-    };
-  }, [currentUser]);
-
-  const handleFollowToggle = async (targetUID) => {
-    if (!currentUser?.uid || targetUID === currentUser.uid) return;
-
-    const currentUID = currentUser.uid;
     const updates = {};
-    const isFollowing = followingList.includes(targetUID);
-
-    if (isFollowing) {
-      updates[`usersData/${currentUID}/following/${targetUID}`] = null;
-      updates[`usersData/${targetUID}/followers/${currentUID}`] = null;
-    } else {
-      updates[`usersData/${currentUID}/following/${targetUID}`] = true;
-      updates[`usersData/${targetUID}/followers/${currentUID}`] = true;
-    }
-
-    try {
-      await update(ref(db), updates);
-      toast.success(isFollowing ? "Unfollowed" : "Followed");
-    } catch (error) {
-      console.error("Follow toggle failed:", error);
-      toast.error("Action failed");
-    }
+    updates[`usersData/${targetUID}/followRequests/received/${currentUser.uid}`] = true;
+    updates[`usersData/${currentUser.uid}/followRequests/sent/${targetUID}`] = true;
+    await update(ref(db), updates);
+    toast.success("Request sent");
   };
 
-  const filteredUsers = useMemo(() => {
-    return users.filter((user) => {
-      if (user.uid === currentUser?.uid) return false;
-      if (activeTab === "followers") return followersList.includes(user.uid);
-      if (activeTab === "following") return followingList.includes(user.uid);
-      return true;
-    });
-  }, [users, activeTab, followersList, followingList, currentUser]);
+  const cancelFollowRequest = async (targetUID) => {
+    if (!currentUser?.uid) return;
+    const updates = {};
+    updates[`usersData/${targetUID}/followRequests/received/${currentUser.uid}`] = null;
+    updates[`usersData/${currentUser.uid}/followRequests/sent/${targetUID}`] = null;
+    await update(ref(db), updates);
+    toast.info("Request cancelled");
+  };
+
+  const confirmFriendRequest = async (requesterUID) => {
+    if (!currentUser?.uid) return;
+    const updates = {};
+    updates[`usersData/${currentUser.uid}/followRequests/received/${requesterUID}`] = null;
+    updates[`usersData/${requesterUID}/followRequests/sent/${currentUser.uid}`] = null;
+    updates[`usersData/${currentUser.uid}/friends/${requesterUID}`] = true;
+    updates[`usersData/${requesterUID}/friends/${currentUser.uid}`] = true;
+    await update(ref(db), updates);
+    toast.success("You are now friends 🎉");
+  };
+
+  const rejectFollowRequest = async (requesterUID) => {
+    if (!currentUser?.uid) return;
+    const updates = {};
+    updates[`usersData/${currentUser.uid}/followRequests/received/${requesterUID}`] = null;
+    updates[`usersData/${requesterUID}/followRequests/sent/${currentUser.uid}`] = null;
+    await update(ref(db), updates);
+    toast.info("Request rejected");
+  };
+
+  const unfriendUser = async (targetUID) => {
+    if (!currentUser?.uid) return;
+    const updates = {};
+    updates[`usersData/${currentUser.uid}/friends/${targetUID}`] = null;
+    updates[`usersData/${targetUID}/friends/${currentUser.uid}`] = null;
+    await update(ref(db), updates);
+    toast.info("Unfriended");
+  };
+
+  const openUserProfile = (userUID) => {
+    // Navigate to UserProfile page of clicked user
+    navigate(`/user-profile/${userUID}`);
+  };
 
   return (
-    <div className="container my-2 mx-0 p-0">
-      {/* Tabs */}
-      <div className="d-flex justify-content-center gap-2 mb-3 flex-wrap">
-        {["all", "followers", "following"].map((tab) => {
-          const label =
-            tab === "all"
-              ? `All (${users.length - 1})`
-              : tab.charAt(0).toUpperCase() + tab.slice(1) + ` (${tab === "followers" ? followersList.length : followingList.length})`;
-          return (
-            <button
-              key={tab}
-              className={`btn btn-sm ${activeTab === tab ? "btn-primary" : "btn-outline-primary"}`}
-              onClick={() => setActiveTab(tab)}
-            >
-              {label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Users */}
-      {filteredUsers.length > 0 ? (
-        <ul className="list-group">
-          {filteredUsers.map((user) => (
+    <div className="container mt-3" style={{ maxWidth: 600 }}>
+      <h3 className="mb-3">Users</h3>
+      <ul className="list-group">
+        {users
+          .filter((u) => u.uid !== currentUser?.uid)
+          .map((user) => (
             <li
               key={user.uid}
-              className="list-group-item d-flex align-items-center justify-content-between py-2 px-3 m-2 shadow-sm rounded"
+              className="list-group-item d-flex align-items-center justify-content-between"
             >
-              <Link
-                to={`/user-profile/${user.uid}`}
-                className="d-flex align-items-center text-decoration-none text-dark flex-grow-1"
-              >
+              {/* Left side: avatar + info */}
+              <div className="d-flex align-items-center" style={{ cursor: "pointer" }} onClick={() => openUserProfile(user.uid)}>
                 <img
-                  src={user.photoURL || "icons/avatar.png"}
-                  alt={user.username}
-                  loading="lazy"
+                  src={user.photoURL || "https://via.placeholder.com/50"}
+                  alt="avatar"
                   className="rounded-circle me-3"
                   style={{ width: 50, height: 50, objectFit: "cover" }}
                 />
                 <div>
-                  <div style={{ fontWeight: 600 }}>{user.username || "Unknown"}</div>
-                  <small className="text-muted">{user.email || "No email"}</small>
+                  <h6 className="mb-0">{user.username || "Unnamed User"}</h6>
                 </div>
-              </Link>
+              </div>
 
-              <button
-                onClick={() => handleFollowToggle(user.uid)}
-                className={`btn btn-sm ${followingList.includes(user.uid)
-                  ? "btn-outline-danger"
-                  : "btn-outline-primary"
-                  }`}
-              >
-                {followingList.includes(user.uid) ? "Unfollow" : "Follow"}
-              </button>
+              {/* Right side: button */}
+              <div>
+                {friends.includes(user.uid) ? (
+                  <button
+                    className="btn btn-sm btn-success"
+                    onClick={() => unfriendUser(user.uid)}
+                  >
+                    Friends ✅
+                  </button>
+                ) : receivedRequests.includes(user.uid) ? (
+                  <div className="btn-group">
+                    <button
+                      className="btn btn-sm btn-primary"
+                      onClick={() => confirmFriendRequest(user.uid)}
+                    >
+                      Confirm
+                    </button>
+                    <button
+                      className="btn btn-sm btn-outline-secondary"
+                      onClick={() => rejectFollowRequest(user.uid)}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                ) : sentRequests.includes(user.uid) ? (
+                  <button
+                    className="btn btn-sm btn-outline-warning"
+                    onClick={() => cancelFollowRequest(user.uid)}
+                  >
+                    Cancel
+                  </button>
+                ) : (
+                  <button
+                    className="btn btn-sm btn-outline-primary"
+                    onClick={() => sendFollowRequest(user.uid)}
+                  >
+                    Add
+                  </button>
+                )}
+              </div>
             </li>
           ))}
-        </ul>
-      ) : (
-        <p className="text-muted text-center mt-4">No users found.</p>
-      )}
+      </ul>
     </div>
   );
 }

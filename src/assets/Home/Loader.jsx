@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-=======
-// components/Loader.jsx
->>>>>>> 6cfed43d1372ef5d1c115eaf2f5e529e572e9d9f
 import React from "react";
 import "./Loader.css";
 
