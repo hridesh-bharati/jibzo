@@ -1,7 +1,8 @@
-// public/firebase-messaging-sw.js
+// firebase-messaging-sw.js
 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/9.24.0/firebase-app.js";
-import { getMessaging, onBackgroundMessage } from "https://www.gstatic.com/firebasejs/9.24.0/firebase-messaging-sw.js";
+// Import Firebase scripts using importScripts
+importScripts('https://www.gstatic.com/firebasejs/9.24.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/9.24.0/firebase-messaging-compat.js');
 
 // ---------------- Firebase Config ----------------
 const firebaseConfig = {
@@ -15,27 +16,25 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const messaging = getMessaging(app);
+firebase.initializeApp(firebaseConfig);
+const messaging = firebase.messaging();
 
-// ---------------- Handle Background Messages ----------------
-onBackgroundMessage(messaging, (payload) => {
-  console.log("[firebase-messaging-sw.js] Background message received:", payload);
+// Background notifications
+messaging.onBackgroundMessage((payload) => {
+  console.log('[firebase-messaging-sw.js] Background message received:', payload);
 
-  const notificationTitle = payload.notification?.title || "Notification";
+  const notificationTitle = payload.notification?.title || 'Notification';
   const notificationOptions = {
-    body: payload.notification?.body || "",
-    icon: "/icons/icon-192.png",
-    badge: "/icons/icon-192.png"
+    body: payload.notification?.body || '',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png'
   };
 
   self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
-// Optional: handle click on notifications
-self.addEventListener("notificationclick", (event) => {
+// Notification click
+self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  event.waitUntil(
-    clients.openWindow("/") // Redirect to home or specific route
-  );
+  event.waitUntil(clients.openWindow('/'));
 });
