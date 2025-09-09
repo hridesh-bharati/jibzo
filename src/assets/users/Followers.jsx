@@ -1,7 +1,7 @@
 // src/assets/users/Followers.jsx
 import React, { useEffect, useState } from "react";
 import { db, auth } from "../../firebaseConfig";
-import { ref, get, update } from "firebase/database";
+import { ref, onValue, update, get } from "firebase/database";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
 
@@ -18,110 +18,96 @@ export default function Followers() {
   useEffect(() => {
     if (!uid) return;
 
-    const fetchData = async () => {
-      try {
-        const userSnap = await get(ref(db, `usersData/${uid}`));
-        if (!userSnap.exists()) {
-          setUserData(null);
-          setLoading(false);
-          return;
-        }
-        const data = userSnap.val();
-        setUserData(data);
+    const userRef = ref(db, `usersData/${uid}`);
+    const followersRef = ref(db, `usersData/${uid}/followers`);
 
-        const isOwner = currentUser?.uid === uid;
-        const isFriend = data.friends && currentUser?.uid && data.friends[currentUser.uid];
+    // Listen to user data
+    const unsubscribeUser = onValue(userRef, snap => {
+      setUserData(snap.exists() ? snap.val() : null);
+    });
 
-        if (data.isPrivate && !isOwner && !isFriend) {
-          setFollowersList([]);
-          setLoading(false);
-          return;
-        }
-
-        const followersSnap = await get(ref(db, `usersData/${uid}/followers`));
-        if (!followersSnap.exists()) {
-          setFollowersList([]);
-          setLoading(false);
-          return;
-        }
-
-        const followersUIDs = Object.keys(followersSnap.val());
-        const followersData = await Promise.all(
-          followersUIDs.map(async (fUid) => {
-            const snap = await get(ref(db, `usersData/${fUid}`));
-            return snap.exists() ? { uid: fUid, ...snap.val() } : null;
-          })
-        );
-
-        setFollowersList(followersData.filter(Boolean));
-      } catch (err) {
-        console.error(err);
-      } finally {
+    // Listen to followers changes
+    const unsubscribeFollowers = onValue(followersRef, async snap => {
+      if (!snap.exists()) {
+        setFollowersList([]);
         setLoading(false);
+        return;
       }
+
+      const followersUIDs = Object.keys(snap.val());
+      const followersData = await Promise.all(
+        followersUIDs.map(async fUid => {
+          const snapUser = await get(ref(db, `usersData/${fUid}`));
+          return snapUser.exists()
+            ? { uid: fUid, username: snapUser.val().username, photoURL: snapUser.val().photoURL }
+            : null;
+        })
+      );
+
+      setFollowersList(followersData.filter(Boolean));
+      setLoading(false);
+    });
+
+    return () => {
+      unsubscribeUser();
+      unsubscribeFollowers();
     };
+  }, [uid]);
 
-    fetchData();
-  }, [uid, currentUser]);
+  // Remove follower / unfriend
+  const handleUnfriend = async (fUid) => {
+    if (!currentUser) return toast.error("Login first!");
 
-  const removeFollower = async (fUid) => {
-    if (!currentUser) return;
     try {
-      const updates = {};
-      updates[`usersData/${uid}/followers/${fUid}`] = null;
-      updates[`usersData/${fUid}/following/${uid}`] = null;
-      // Remove friend if exists
-      updates[`usersData/${uid}/friends/${fUid}`] = null;
-      updates[`usersData/${fUid}/friends/${uid}`] = null;
+      await update(ref(db), {
+        [`usersData/${uid}/followers/${fUid}`]: null,      // page owner's followers
+        [`usersData/${fUid}/following/${uid}`]: null,      // remove from follower's following
+        [`usersData/${uid}/friends/${fUid}`]: null,        // remove friendship
+        [`usersData/${fUid}/friends/${uid}`]: null,
+      });
 
-      await update(ref(db), updates);
-      setFollowersList(prev => prev.filter(u => u.uid !== fUid));
-      toast.success("Follower removed ✅");
+      toast.info("Friend removed ✅");
+      // No manual filtering needed; onValue listener updates automatically
     } catch (err) {
       console.error(err);
-      toast.error("Failed to remove follower ❌");
+      toast.error("Failed to remove friend");
     }
   };
 
-  if (loading) return <p className="text-center mt-5">Loading followers...</p>;
-  if (!userData) return <p className="text-center mt-5">User not found.</p>;
-  if (userData.isPrivate && currentUser?.uid !== uid && !(userData.friends && userData.friends[currentUser?.uid]))
-    return <p className="text-center mt-5">This profile is private 🔒</p>;
+  if (loading) return <p>Loading followers...</p>;
 
   return (
-    <div className="container mt-4">
-      <h3 className="mb-3">Followers</h3>
-      {followersList.length > 0 ? (
-        <ul className="list-group">
-          {followersList.map((user) => (
-            <li
-              key={user.uid}
-              className="list-group-item list-group-item-action d-flex align-items-center justify-content-between"
-            >
-              <div className="d-flex align-items-center" style={{ cursor: "pointer" }} onClick={() => navigate(`/user-profile/${user.uid}`)}>
-                <img
-                  src={user.photoURL || "https://via.placeholder.com/50"}
-                  alt="Profile"
-                  className="rounded-circle me-3"
-                  style={{ width: "50px", height: "50px", objectFit: "cover" }}
-                />
-                <div>
-                  <strong>{user.username || "Unnamed"}</strong>
-                  <p className="mb-0 text-muted" style={{ fontSize: "14px" }}>
-                    {user.email || "No email"}
-                  </p>
-                </div>
-              </div>
-
-              {/* Only owner can remove followers */}
-              {currentUser?.uid === uid && (
-                <button className="btn btn-sm btn-danger" onClick={() => removeFollower(user.uid)}>Remove</button>
-              )}
-            </li>
-          ))}
-        </ul>
+    <div className="container mt-3">
+      <h4>Followers</h4>
+      {followersList.length === 0 ? (
+        <p>No followers</p>
       ) : (
-        <p className="text-muted">No followers yet.</p>
+        followersList.map(f => (
+          <div
+            key={f.uid}
+            className="border p-2 mb-2 d-flex align-items-center justify-content-between rounded shadow-sm"
+          >
+            <div
+              style={{ display: "flex", alignItems: "center", cursor: "pointer" }}
+              onClick={() => navigate(`/user-profile/${f.uid}`)}
+            >
+              <img
+                src={f.photoURL || "https://via.placeholder.com/50"}
+                alt="DP"
+                style={{ width: 50, height: 50, borderRadius: "50%", objectFit: "cover", marginRight: 10 }}
+              />
+              <span>{f.username || f.uid}</span>
+            </div>
+            {currentUser?.uid !== f.uid && (
+              <button
+                className="btn btn-sm btn-outline-danger"
+                onClick={() => handleUnfriend(f.uid)}
+              >
+                Remove
+              </button>
+            )}
+          </div>
+        ))
       )}
     </div>
   );

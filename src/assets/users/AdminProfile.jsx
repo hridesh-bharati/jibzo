@@ -1,18 +1,19 @@
-// src/assets/UserProfile/UserProfile.jsx
+// src/assets/users/AdminProfile.jsx
 import React, { useEffect, useState } from "react";
 import { db, auth } from "../../firebaseConfig";
 import { ref, onValue, remove, update, get } from "firebase/database";
 import { signOut, updateProfile } from "firebase/auth";
-import { useNavigate, useParams, Link } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
 
-const UserProfile = () => {
+const AdminProfile = () => {
   const [profileData, setProfileData] = useState(null);
   const [userPosts, setUserPosts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [followersList, setFollowersList] = useState([]);
   const [followingList, setFollowingList] = useState([]);
+  const [requests, setRequests] = useState([]);
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedPostId, setSelectedPostId] = useState(null);
@@ -61,42 +62,48 @@ const UserProfile = () => {
       } else setUserPosts([]);
     });
 
-    // 🔹 Followers & Following lists
+    // 🔹 Followers & Following
     const followersRef = ref(db, `usersData/${uid}/followers`);
     const followingRef = ref(db, `usersData/${uid}/following`);
+    const requestsRef = ref(db, `usersData/${uid}/followRequests/received`);
 
     const unsubscribeFollowers = onValue(followersRef, async (snap) => {
       const followersData = snap.val() || {};
-      const arr = [];
-      for (const followerUid of Object.keys(followersData)) {
-        try {
-          const userSnap = await get(ref(db, `usersData/${followerUid}`));
-          const userData = userSnap.val();
-          arr.push({
-            uid: followerUid,
-            username: userData?.username || "Someone",
-            photoURL: userData?.photoURL || `https://ui-avatars.com/api/?name=${userData?.username || "U"}`,
-          });
-        } catch { }
-      }
-      setFollowersList(arr);
+      const arr = await Promise.all(Object.keys(followersData).map(async fUid => {
+        const snapUser = await get(ref(db, `usersData/${fUid}`));
+        return snapUser.exists() ? {
+          uid: fUid,
+          username: snapUser.val().username || "Someone",
+          photoURL: snapUser.val().photoURL || `https://ui-avatars.com/api/?name=${snapUser.val().username || "U"}`
+        } : null;
+      }));
+      setFollowersList(arr.filter(Boolean));
     });
 
     const unsubscribeFollowing = onValue(followingRef, async (snap) => {
       const followingData = snap.val() || {};
-      const arr = [];
-      for (const followUid of Object.keys(followingData)) {
-        try {
-          const userSnap = await get(ref(db, `usersData/${followUid}`));
-          const userData = userSnap.val();
-          arr.push({
-            uid: followUid,
-            username: userData?.username || "Someone",
-            photoURL: userData?.photoURL || `https://ui-avatars.com/api/?name=${userData?.username || "U"}`,
-          });
-        } catch { }
-      }
-      setFollowingList(arr);
+      const arr = await Promise.all(Object.keys(followingData).map(async fUid => {
+        const snapUser = await get(ref(db, `usersData/${fUid}`));
+        return snapUser.exists() ? {
+          uid: fUid,
+          username: snapUser.val().username || "Someone",
+          photoURL: snapUser.val().photoURL || `https://ui-avatars.com/api/?name=${snapUser.val().username || "U"}`
+        } : null;
+      }));
+      setFollowingList(arr.filter(Boolean));
+    });
+
+    const unsubscribeRequests = onValue(requestsRef, async (snap) => {
+      const reqUIDs = snap.exists() ? Object.keys(snap.val()) : [];
+      const reqData = await Promise.all(reqUIDs.map(async rUid => {
+        const snapUser = await get(ref(db, `usersData/${rUid}`));
+        return snapUser.exists() ? {
+          uid: rUid,
+          username: snapUser.val().username || "Someone",
+          photoURL: snapUser.val().photoURL || `https://ui-avatars.com/api/?name=${snapUser.val().username || "U"}`
+        } : { uid: rUid };
+      }));
+      setRequests(reqData.filter(Boolean));
     });
 
     return () => {
@@ -104,6 +111,7 @@ const UserProfile = () => {
       unsubscribePosts();
       unsubscribeFollowers();
       unsubscribeFollowing();
+      unsubscribeRequests();
     };
   }, [uid, navigate]);
 
@@ -114,17 +122,14 @@ const UserProfile = () => {
       await update(ref(db, `usersData/${currentUser.uid}`), { bio });
       setProfileData((prev) => ({ ...prev, bio }));
       toast.success("✅ Bio updated successfully!");
-    } catch (error) {
+    } catch {
       toast.error("❌ Failed to update bio!");
     }
   };
 
   // 🔹 DP Upload
   const handleDpUpdate = async () => {
-    if (!currentUser || !file) {
-      toast.warn("Select an image first!");
-      return;
-    }
+    if (!currentUser || !file) return toast.warn("Select an image first!");
     setUploading(true);
     try {
       const reader = new FileReader();
@@ -159,12 +164,6 @@ const UserProfile = () => {
     } catch { toast.error("❌ Failed to delete post."); }
   };
 
-  // 🔹 Logout
-  const handleLogout = async () => {
-    try { await signOut(auth); navigate("/login"); toast.info("👋 Logged out!"); }
-    catch { toast.error("❌ Logout failed!"); }
-  };
-
   // 🔹 Privacy toggle
   const handlePrivacyToggle = async () => {
     if (!currentUser) return;
@@ -175,21 +174,56 @@ const UserProfile = () => {
     } catch { toast.error("❌ Failed to update privacy!"); }
   };
 
+  const acceptRequest = async (reqUid) => {
+    if (!uid) return;
+
+    await update(ref(db), {
+      [`usersData/${uid}/friends/${reqUid}`]: true,
+      [`usersData/${reqUid}/friends/${uid}`]: true,
+      [`usersData/${uid}/followRequests/received/${reqUid}`]: null,
+      [`usersData/${reqUid}/followRequests/sent/${uid}`]: null,
+      [`usersData/${uid}/followers/${reqUid}`]: true,
+      [`usersData/${uid}/following/${reqUid}`]: true,
+      [`usersData/${reqUid}/followers/${uid}`]: true,
+      [`usersData/${reqUid}/following/${uid}`]: true,
+    });
+
+    toast.success("Friend request accepted! ✅");
+  };
+
+  const rejectRequest = async (reqUid) => {
+    await update(ref(db), {
+      [`usersData/${uid}/followRequests/received/${reqUid}`]: null,
+      [`usersData/${reqUid}/followRequests/sent/${uid}`]: null,
+    });
+    toast.error("Request rejected!");
+  };
+
+  // 🔹 Logout
+  const handleLogout = async () => {
+    try { await signOut(auth); navigate("/login"); toast.info("👋 Logged out!"); }
+    catch { toast.error("❌ Logout failed!"); }
+  };
+
   if (loading) return <p>Loading profile...</p>;
   if (!profileData) return <p>No profile data found.</p>;
+
+  const isOwner = currentUser?.uid === uid;
 
   return (
     <div className="container my-5" style={{ maxWidth: 900 }}>
       {/* Profile Header */}
-      <div className="row d-flex align-items-start justify-content-center">
+      <div className="row d-flex align-items-start justify-content-center mb-4">
         <div className="col-4 text-center">
           <img src={profileData.photoURL || "https://via.placeholder.com/150"} alt="Profile" className="rounded-circle mb-2" width={100} height={100} style={{ objectFit: "cover" }} />
-          <div className="d-flex flex-column d-flex align-items-center justify-content-center">
-            <input type="file" className="form-control mb-2" accept="image/*" onChange={(e) => setFile(e.target.files[0])} style={{ width: "100px", height: "35px" }} />
-            <button className="btn btn-primary btn-sm border-0 px-sm-2 px-md-3" onClick={handleDpUpdate} disabled={uploading}>{uploading ? "Uploading..." : "Upload DP"}</button>
-            <button className="btn btn-warning btn-sm my-2" onClick={handlePrivacyToggle}>
-              {profileData.isPrivate ? "Unlock Profile" : "Lock Profile"}
-            </button>
+          <div className="d-flex flex-column align-items-center">
+            {isOwner && <>
+              <input type="file" className="form-control mb-2" accept="image/*" onChange={(e) => setFile(e.target.files[0])} style={{ width: "100px", height: "35px" }} />
+              <button className="btn btn-primary btn-sm mb-2" onClick={handleDpUpdate} disabled={uploading}>{uploading ? "Uploading..." : "Upload DP"}</button>
+              <button className="btn btn-warning btn-sm" onClick={handlePrivacyToggle}>
+                {profileData.isPrivate ? "Unlock Profile" : "Lock Profile"}
+              </button>
+            </>}
           </div>
         </div>
         <div className="col-8">
@@ -197,31 +231,49 @@ const UserProfile = () => {
           <p><strong>Email:</strong> {profileData.email || "Not provided"}</p>
           <p><strong>Bio:</strong> {profileData.bio || "No bio yet"}</p>
 
-          <button className="btn btn-primary btn-sm mx-1" onClick={() => navigate(`/followers/${uid}`)}>Followers: {profileData.followers}</button>
-          <button className="btn btn-primary btn-sm mx-1" onClick={() => navigate(`/following/${uid}`)}>Following: {profileData.following}</button>
-
-
-
+          {/* Followers / Following */}
+          <button className="btn btn-primary btn-sm mx-1" onClick={() => navigate(`/followers/${uid}`)}>
+            Followers: {profileData.followers}
+          </button>
+          <button className="btn btn-primary btn-sm mx-1" onClick={() => navigate(`/following/${uid}`)}>
+            Following: {profileData.following}
+          </button>
         </div>
       </div>
 
+      {/* Follow Requests */}
+      {isOwner && requests.length > 0 && (
+        <div className="mb-4">
+          <h5>Follow Requests</h5>
+          {requests.map(r => (
+            <div key={r.uid} className="d-flex justify-content-between align-items-center border p-2 mb-1">
+              <div className="d-flex align-items-center">
+                <img src={r.photoURL || `https://ui-avatars.com/api/?name=${r.username || r.uid}`} alt={r.username || r.uid} className="rounded-circle me-2" width={35} height={35} style={{ objectFit: "cover" }} />
+                <span>{r.username || r.uid}</span>
+              </div>
+              <div>
+                <button className="btn btn-success btn-sm me-1" onClick={() => acceptRequest(r.uid)}>Accept</button>
+                <button className="btn btn-danger btn-sm" onClick={() => rejectRequest(r.uid)}>Reject</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Bio Edit */}
-      {currentUser?.uid === uid &&
-        <div className="accordion my-3" id="profileEditAccordion">
-          <div className="accordion-item">
-            <h2 className="accordion-header" id="headingBio">
-              <button className="accordion-button bg-light" type="button" data-bs-toggle="collapse" data-bs-target="#collapseBio">Edit Bio</button>
-            </h2>
-            <div id="collapseBio" className="accordion-collapse collapse">
-              <div className="accordion-body">
-                <textarea className="form-control mb-2" rows={3} placeholder="Write your bio..." value={bio} onChange={(e) => setBio(e.target.value)} />
-                <button className="btn btn-success" onClick={handleBioUpdate}>Save Bio</button>
-              </div>
+      {isOwner && <div className="accordion my-3" id="profileEditAccordion">
+        <div className="accordion-item">
+          <h2 className="accordion-header" id="headingBio">
+            <button className="accordion-button bg-light" type="button" data-bs-toggle="collapse" data-bs-target="#collapseBio">Edit Bio</button>
+          </h2>
+          <div id="collapseBio" className="accordion-collapse collapse">
+            <div className="accordion-body">
+              <textarea className="form-control mb-2" rows={3} value={bio} onChange={(e) => setBio(e.target.value)} />
+              <button className="btn btn-success" onClick={handleBioUpdate}>Save Bio</button>
             </div>
           </div>
         </div>
-      }
+      </div>}
 
       {/* Posts */}
       <h4>Posts</h4>
@@ -232,7 +284,7 @@ const UserProfile = () => {
               <img src={post.src} className="card-img-top rounded" alt={post.caption || ""} style={{ objectFit: "cover", height: 200 }} />
               <div className="card-body">
                 <p className="card-text">{post.caption}</p>
-                {currentUser?.uid === uid && <button className="btn btn-sm btn-outline-danger mt-2" onClick={() => { setSelectedPostId(post.id); setShowDeleteModal(true); }}>Delete</button>}
+                {isOwner && <button className="btn btn-sm btn-outline-danger mt-2" onClick={() => { setSelectedPostId(post.id); setShowDeleteModal(true); }}>Delete</button>}
               </div>
             </div>
           </div>
@@ -259,25 +311,23 @@ const UserProfile = () => {
         </div>
       }
 
-      <button className="btn btn-danger mb-3" onClick={handleLogout}>Logout <i className="bi bi-box-arrow-right"></i></button>
+      <button className="btn btn-danger mb-3" onClick={handleLogout}>Logout</button>
 
       <footer className="text-center py-4 mb-4 border-top bg-light">
         <p className="fw-bold mb-0">Hridesh Bharati</p>
         <small className="text-muted">Founder · Creator of this App</small>
       </footer>
 
-      <style>
-        {`
+      <style>{`
         .custom-modal { background-color: rgba(0,0,0,0.7); z-index:1055; }
         @keyframes zoomIn { from{transform:scale(0.7);opacity:0;} to{transform:scale(1);opacity:1;} }
         .animate-zoom { animation: zoomIn 0.25s ease-out; }
         .custom-modal .modal-dialog { max-width:360px; }
         .custom-modal .modal-content { border-radius:12px; padding:5px; }
         .custom-modal .modal-footer { display:flex; justify-content:flex-end; gap:8px; }
-        `}
-      </style>
+      `}</style>
     </div>
   );
 };
 
-export default UserProfile;
+export default AdminProfile;
