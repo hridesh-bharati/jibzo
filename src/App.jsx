@@ -19,7 +19,7 @@ import UploadPost from "./assets/uploads/UploadPost";
 import GetPost from "./assets/uploads/GetPost";
 import Messages from "./assets/messages/Messages";
 import Loader from "./assets/Loader/Loader";
-
+import {onMessageListener} from "./assets/utils/PushNotification"
 const App = () => {
   const [user, setUser] = useState(() => {
     const cached = localStorage.getItem("currentUser");
@@ -29,6 +29,12 @@ const App = () => {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showPrompt, setShowPrompt] = useState(false);
   const location = useLocation();
+
+useEffect(() => {
+  onMessageListener().then((payload) => {
+    console.log("Foreground Notification: ", payload);
+  });
+}, []);
 
   useEffect(() => {
     const auth = getAuth();
@@ -51,6 +57,7 @@ const App = () => {
   }, []);
 
   if (loadingAuth) return <Loader />;
+
 
   return (
     <>

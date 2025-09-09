@@ -6,7 +6,7 @@ import {
   FaCamera,
   FaUsers,
 } from "react-icons/fa";
-import { auth, db } from "../../firebaseConfig";
+import { auth, db } from "../../assets/utils/firebaseConfig";
 import { ref, onValue } from "firebase/database";
 
 const buttonStyle = (isActive) => ({

@@ -1,7 +1,7 @@
 // src/assets/Navbar/Navbar.jsx
 import React, { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { auth, db } from "../../firebaseConfig";
+import { auth, db } from "../../assets/utils/firebaseConfig";
 import { ref, onValue, get, update } from "firebase/database";
 import { onAuthStateChanged } from "firebase/auth";
 import { toast } from "react-toastify";

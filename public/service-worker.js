@@ -1,39 +1,42 @@
-const CACHE_NAME = "jibzo-cache-v1";
-const urlsToCache = [
-  "/",
-  "/index.html",
-  "/manifest.json",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png"
-];
+// public/firebase-messaging-sw.js
 
-// Install event
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(urlsToCache))
-  );
-  self.skipWaiting(); // activate immediately
+// Import Firebase SDK (for service worker)
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.24.0/firebase-app.js";
+import { getMessaging, onBackgroundMessage } from "https://www.gstatic.com/firebasejs/9.24.0/firebase-messaging-sw.js";
+
+// ---------------- Firebase Config ----------------
+const firebaseConfig = {
+  apiKey: "AIzaSyBmnp_8dW9hJ23ZSUFnadB4NHw-89MfN_k",
+  authDomain: "portfolio-dfe5c.firebaseapp.com",
+  projectId: "portfolio-dfe5c",
+  storageBucket: "portfolio-dfe5c.appspot.com",
+  messagingSenderId: "1001469015630",
+  appId: "1:1001469015630:web:79fe0cfb9ffe9f0a60b51f",
+  measurementId: "G-4ZXSHCYXRF"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const messaging = getMessaging(app);
+
+// ---------------- Background Notifications ----------------
+onBackgroundMessage(messaging, (payload) => {
+  console.log("[firebase-messaging-sw.js] Background message: ", payload);
+
+  const notificationTitle = payload.notification?.title || "New Notification";
+  const notificationOptions = {
+    body: payload.notification?.body || "",
+    icon: "/icons/icon-192.png", // must exist in public/icons/
+    badge: "/icons/icon-192.png"
+  };
+
+  self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
-// Activate event (optional, to clean old caches)
-self.addEventListener("activate", (event) => {
+// ---------------- Notification Click ----------------
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
   event.waitUntil(
-    caches.keys().then((cacheNames) =>
-      Promise.all(
-        cacheNames.map((name) => {
-          if (name !== CACHE_NAME) return caches.delete(name);
-        })
-      )
-    )
-  );
-  self.clients.claim(); // take control immediately
-});
-
-// Fetch event
-self.addEventListener("fetch", (event) => {
-  event.respondWith(
-    caches.match(event.request).then(
-      (response) => response || fetch(event.request)
-    )
+    clients.openWindow("/") // Change route if you want specific redirect
   );
 });

@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import emailjs from "emailjs-com";
 import { getAuth, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
-import { db, ref, set } from "../../firebaseConfig";
+import { db, ref, set } from "../../assets/utils/firebaseConfig";
 import { useNavigate,Link } from "react-router-dom";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";

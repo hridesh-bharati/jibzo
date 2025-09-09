@@ -1,6 +1,6 @@
 // src/assets/users/InstaUserProfile.jsx
 import React, { useEffect, useState } from "react";
-import { db, auth } from "../../firebaseConfig";
+import { db, auth } from "../../assets/utils/firebaseConfig";
 import { ref, get, update } from "firebase/database";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";

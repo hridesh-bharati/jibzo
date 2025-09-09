@@ -1,6 +1,6 @@
 // src/assets/users/Followers.jsx
 import React, { useEffect, useState } from "react";
-import { db, auth } from "../../firebaseConfig";
+import { db, auth } from "../../assets/utils/firebaseConfig";
 import { ref, onValue, update, get } from "firebase/database";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";

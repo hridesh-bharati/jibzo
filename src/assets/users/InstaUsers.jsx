@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { db, auth } from "../../firebaseConfig";
+import { db, auth } from "../../assets/utils/firebaseConfig";
 import { ref, onValue, update } from "firebase/database";
 import { toast } from "react-toastify";
 import { onAuthStateChanged } from "firebase/auth";

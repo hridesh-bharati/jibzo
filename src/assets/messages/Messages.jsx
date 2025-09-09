@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
-import { db, auth } from "../../firebaseConfig";
+import { db, auth } from "../../assets/utils/firebaseConfig";
 import { ref, onValue, push, serverTimestamp, remove, set } from "firebase/database";
 
 export default function Messages() {

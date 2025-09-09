@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { ref as dbRef, push } from "firebase/database";
-import { db, auth } from "../../firebaseConfig";
+import { db, auth } from "../../assets/utils/firebaseConfig";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { BsImage, BsUpload, BsHash } from "react-icons/bs";

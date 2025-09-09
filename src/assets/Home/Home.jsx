@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import Navbar from "../Navbar/Navbar";
-import { db } from "../../firebaseConfig";
+import { db } from "../../assets/utils/firebaseConfig";
 import { ref, onValue, update, get } from "firebase/database";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { useNavigate } from "react-router-dom";

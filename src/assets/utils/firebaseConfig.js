@@ -1,14 +1,11 @@
+// src\firebaseConfig.js
 import { initializeApp } from "firebase/app";
-import { getDatabase, ref, set } from "firebase/database";  // Import 'ref' and 'set' here
+import { getDatabase, ref, set } from "firebase/database";   
 import { getStorage } from "firebase/storage";
-import {
-  getAuth,
-  setPersistence,
-  browserLocalPersistence,
-} from "firebase/auth"; // 👈 include persistence
+import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth";  
 import { getFirestore } from "firebase/firestore";
+import { getMessaging } from "firebase/messaging";
 
-// Firebase config
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -20,19 +17,25 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
-
-// Initialize services
 const db = getDatabase(app);
 const storage = getStorage(app);
 const auth = getAuth(app);
 const firestore = getFirestore(app);
 
-// 👇 Set auth persistence to local
-setPersistence(auth, browserLocalPersistence).catch((error) => {
-  console.error("Auth persistence error:", error);
-});
+// Messaging
+let messaging = null;
+export const getFirebaseMessaging = async () => {
+  if (!messaging && "Notification" in window) {
+    messaging = getMessaging(app);
+  }
+  return messaging;
+};
 
-// Export the necessary Firebase services
-export { db, storage, auth, firestore, ref, set };  // Export 'ref' and 'set'
+// Auth persistence
+setPersistence(auth, browserLocalPersistence).catch((err) =>
+  console.error("Auth persistence error:", err)
+);
+
+
+export { db, storage, auth, firestore, ref, set };
