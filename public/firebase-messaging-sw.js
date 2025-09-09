@@ -1,4 +1,4 @@
-// public/service-worker.js
+// public/firebase-messaging-sw.js
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.24.0/firebase-app.js";
 import { getMessaging, onBackgroundMessage } from "https://www.gstatic.com/firebasejs/9.24.0/firebase-messaging-sw.js";
@@ -18,11 +18,11 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const messaging = getMessaging(app);
 
-// ---------------- Background Notifications ----------------
+// ---------------- Handle Background Messages ----------------
 onBackgroundMessage(messaging, (payload) => {
-  console.log("[service-worker.js] Background message: ", payload);
+  console.log("[firebase-messaging-sw.js] Background message received:", payload);
 
-  const notificationTitle = payload.notification?.title || "New Notification";
+  const notificationTitle = payload.notification?.title || "Notification";
   const notificationOptions = {
     body: payload.notification?.body || "",
     icon: "/icons/icon-192.png",
@@ -32,42 +32,10 @@ onBackgroundMessage(messaging, (payload) => {
   self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
-// ---------------- Notification Click ----------------
+// Optional: handle click on notifications
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   event.waitUntil(
-    clients.openWindow("/") // redirect to home or desired route
-  );
-});
-
-// ---------------- Cache App Files ----------------
-const CACHE_NAME = "jibzo-cache-v1";
-const urlsToCache = [
-  "/",
-  "/index.html",
-  "/manifest.json",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png"
-];
-
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache))
-  );
-  self.skipWaiting();
-});
-
-self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.map(key => key !== CACHE_NAME && caches.delete(key)))
-    )
-  );
-  self.clients.claim();
-});
-
-self.addEventListener("fetch", (event) => {
-  event.respondWith(
-    caches.match(event.request).then(res => res || fetch(event.request))
+    clients.openWindow("/") // Redirect to home or specific route
   );
 });
