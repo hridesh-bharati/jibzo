@@ -1,11 +1,10 @@
 // src/pages/Login.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
 import { useNavigate, Link } from "react-router-dom";
 import { toast, ToastContainer } from "react-toastify";
 import { FirebaseError } from "firebase/app";
 import "react-toastify/dist/ReactToastify.css";
-import { requestForToken } from "../utils/PushNotification";
 
 const Login = () => {
   const [formData, setFormData] = useState({ email: "", password: "" });
@@ -13,13 +12,6 @@ const Login = () => {
 
   const auth = getAuth();
   const navigate = useNavigate();
-
-  // 🔹 Request FCM token when user is logged in
-  useEffect(() => {
-    if (auth.currentUser?.uid) {
-      requestForToken(auth.currentUser.uid);
-    }
-  }, [auth.currentUser]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -38,11 +30,6 @@ const Login = () => {
     try {
       // 🔹 Sign in
       await signInWithEmailAndPassword(auth, email, password);
-
-      // 🔹 Save FCM token right after login
-      if (auth.currentUser?.uid) {
-        await requestForToken(auth.currentUser.uid);
-      }
 
       toast.success("Login successful!");
       setTimeout(() => navigate("/home"), 1200);

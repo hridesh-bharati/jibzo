@@ -19,7 +19,7 @@ import UploadPost from "./assets/uploads/UploadPost";
 import GetPost from "./assets/uploads/GetPost";
 import Messages from "./assets/messages/Messages";
 import Loader from "./assets/Loader/Loader";
-import {onMessageListener} from "./assets/utils/PushNotification"
+
 const App = () => {
   const [user, setUser] = useState(() => {
     const cached = localStorage.getItem("currentUser");
@@ -30,12 +30,7 @@ const App = () => {
   const [showPrompt, setShowPrompt] = useState(false);
   const location = useLocation();
 
-useEffect(() => {
-  onMessageListener().then((payload) => {
-    console.log("Foreground Notification: ", payload);
-  });
-}, []);
-
+  // Auth state listener
   useEffect(() => {
     const auth = getAuth();
     return onAuthStateChanged(auth, (u) => {
@@ -46,6 +41,7 @@ useEffect(() => {
     });
   }, []);
 
+  // PWA install prompt listener
   useEffect(() => {
     const handler = (e) => {
       e.preventDefault();
@@ -57,7 +53,6 @@ useEffect(() => {
   }, []);
 
   if (loadingAuth) return <Loader />;
-
 
   return (
     <>
@@ -74,13 +69,8 @@ useEffect(() => {
         <Route path="/admin-profile" element={user ? <Profile /> : <Navigate to="/login" />} />
         <Route path="/user-profile/:uid" element={user ? <InstaUserProfile /> : <Navigate to="/login" />} />
         <Route path="/user/new/post" element={user ? <UploadPost /> : <Navigate to="/login" />} />
-
-        {/* Navigate to specific post */}
         <Route path="/post/:postId" element={<GetPost />} />
-
-        {/* All posts */}
         <Route path="/user/get-all-post/post" element={user ? <GetPost /> : <Navigate to="/login" />} />
-
         <Route path="/messages/:uid" element={user ? <Messages /> : <Navigate to="/login" />} />
         <Route path="/messages" element={user ? <Messages /> : <Navigate to="/login" />} />
       </Routes>
@@ -90,13 +80,13 @@ useEffect(() => {
       {/* 🔹 Toast container (global notifications) */}
       <ToastContainer
         position="top-right"
-        autoClose={3000}   // 3 sec me close
+        autoClose={3000}
         hideProgressBar={false}
         newestOnTop={false}
         closeOnClick
         pauseOnHover
         draggable
-        theme="colored"   // "light" | "dark" | "colored"
+        theme="colored"
       />
     </>
   );

@@ -6,7 +6,7 @@ import { useParams } from "react-router-dom";
 import Heart from "./Heart";
 import ShareButton from "./ShareBtn";
 import "./Gallery.css";
-import { notifyFriendRequest, notifyLike, notifyComment, notifyFollow, notifyMessage } from '../utils/PushNotification'
+
 const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL?.toLowerCase().trim();
 
 // Shuffle function
@@ -199,6 +199,7 @@ export default function GetPost() {
 
   const isAdmin = () => (currentUser?.email || "").toLowerCase().trim() === ADMIN_EMAIL;
 
+  // toggle like
   const toggleLike = async (id) => {
     const userId = currentUser?.uid || guestId;
     if (!userId) return;
@@ -211,6 +212,7 @@ export default function GetPost() {
       await remove(ref(db, `galleryImages/${id}/likes/${userId}`));
 
       if (img.userId && userId !== img.userId) {
+        // remove notification
         const notifRef = ref(db, `notifications/${img.userId}`);
         const snap = await get(notifRef);
         if (snap.exists()) {
@@ -229,7 +231,7 @@ export default function GetPost() {
       await set(ref(db, `galleryImages/${id}/likes/${userId}`), true);
 
       if (img.userId && userId !== img.userId) {
-        // add notification in DB
+        // add notification
         const notifRef = ref(db, `notifications/${img.userId}`);
         const newNotifRef = push(notifRef);
         await set(newNotifRef, {
@@ -239,27 +241,15 @@ export default function GetPost() {
           timestamp: Date.now(),
           seen: false,
         });
-
-        // ✅ Push notification bhejna
-        const likerName =
-          currentUser?.displayName ||
-          currentUser?.email?.split("@")[0] ||
-          "Someone";
-
-        await notifyLike(img.userId, likerName, img.caption || "your post");
       }
     }
   };
-
 
   // add comment
   const addComment = async (id) => {
     if (!commentText.trim()) return;
     const userId = currentUser?.uid || guestId;
-    let userName =
-      currentUser?.displayName ||
-      currentUser?.email?.split("@")[0] ||
-      "User";
+    let userName = currentUser ? currentUser.displayName || currentUser.email?.split("@")[0] || "User" : "Guest";
 
     await push(ref(db, `galleryImages/${id}/comments`), {
       userId,
@@ -268,15 +258,8 @@ export default function GetPost() {
       timestamp: serverTimestamp(),
     });
 
-    // ✅ Notify post owner
-    const img = shuffledImages.find((img) => img.id === id);
-    if (img?.userId && userId !== img.userId) {
-      await notifyComment(img.userId, userName, img.caption || "your post");
-    }
-
     setCommentText("");
   };
-
 
   // delete comment
   const deleteComment = async (postId, commentId, commentUserId) => {
