@@ -1,183 +1,243 @@
-import React, { useState, useRef, useEffect } from "react";
+// src/components/Gallery/UploadPost.jsx
+import React, { useState, useRef } from "react";
 import { ref as dbRef, push } from "firebase/database";
 import { db, auth } from "../../assets/utils/firebaseConfig";
+import axios from "axios";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { BsImage, BsUpload, BsHash } from "react-icons/bs";
 import Compressor from "compressorjs";
+import { BsImage, BsUpload, BsHash } from "react-icons/bs";
 
-const IMGBB_API_KEY = import.meta.env.VITE_IMGBB_API_KEY;
+const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_NAME;
+const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
 export default function UploadPost() {
   const [file, setFile] = useState(null);
   const [caption, setCaption] = useState("");
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 992);
-
+  const [uploadType, setUploadType] = useState(null);
   const fileInputRef = useRef();
   const currentUser = auth.currentUser;
 
-  // Update isDesktop on resize
-  useEffect(() => {
-    const handleResize = () => setIsDesktop(window.innerWidth >= 992);
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  // Handle file selection & compress image
+  // 📂 Handle file input
   const handleFileChange = (e) => {
-    const selectedFile = e.target.files[0];
+    const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
 
-    new Compressor(selectedFile, {
-      quality: 0.7,
-      maxWidth: 1920,
-      maxHeight: 1080,
-      success(result) {
-        setFile(result);
-      },
-      error(err) {
-        toast.error("Image compression failed");
-        setFile(selectedFile); // fallback
-      },
-    });
+    if (uploadType === "image") {
+      new Compressor(selectedFile, {
+        quality: 0.75,
+        maxWidth: 1920,
+        maxHeight: 1080,
+        success(result) {
+          setFile(result);
+        },
+        error() {
+          toast.warn("Image compression failed — using original file");
+          setFile(selectedFile);
+        },
+      });
+    } else {
+      setFile(selectedFile);
+    }
   };
 
-  const handleCaptionChange = (e) => setCaption(e.target.value);
-
-  // Upload image to ImgBB and store in Firebase
-  const handleUpload = (e) => {
+  // 🚀 Upload handler
+  const handleUpload = async (e) => {
     e.preventDefault();
-
-    if (!file) return toast.error("Please select an image.");
+    if (!file) return toast.error("Please select a file.");
     if (!caption.trim()) return toast.error("Please enter a caption.");
 
     setUploading(true);
     setProgress(0);
 
-    const formData = new FormData();
-    formData.append("image", file);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
 
-    const xhr = new XMLHttpRequest();
+      const folder =
+        uploadType === "image"
+          ? "images"
+          : uploadType === "video"
+          ? "videos"
+          : "pdfs";
+      formData.append("folder", folder);
 
-    // Progress event
-    xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable) {
-        const percentComplete = Math.round((event.loaded / event.total) * 100);
-        setProgress(percentComplete);
-      }
-    };
+      // ✅ PDF ke liye raw/upload use karna hai
+      const uploadEndpoint =
+        uploadType === "pdf"
+          ? `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/raw/upload`
+          : `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`;
 
-    xhr.onload = async () => {
-      if (xhr.status === 200) {
-        try {
-          const data = JSON.parse(xhr.responseText);
-          if (!data.success) throw new Error("ImgBB upload failed");
+      const res = await axios.post(uploadEndpoint, formData, {
+        onUploadProgress: (event) => {
+          if (event.total) {
+            setProgress(Math.round((event.loaded * 100) / event.total));
+          }
+        },
+      });
 
-          const imageUrl = data.data.url;
+      if (!res.data?.secure_url) throw new Error("Upload failed");
 
-          await push(dbRef(db, "galleryImages"), {
-            src: imageUrl,
-            caption: caption.trim(),
-            timestamp: Date.now(),
-            source: "imgbb",
-            user:
-              currentUser?.displayName ||
-              (currentUser?.email ? currentUser.email.split("@")[0] : "Guest User"),
-            userId: currentUser?.uid || "guest_" + Date.now(),
-            userPic: currentUser?.photoURL || "icons/avatar.jpg",
-          });
+      // Save in Firebase
+      await push(dbRef(db, "galleryImages"), {
+        src: res.data.secure_url,
+        caption: caption.trim(),
+        timestamp: Date.now(),
+        type: uploadType, // image | video | pdf
+        source: "cloudinary",
+        user:
+          currentUser?.displayName ||
+          (currentUser?.email
+            ? currentUser.email.split("@")[0]
+            : "Guest User"),
+        userId: currentUser?.uid || "guest_" + Date.now(),
+        userPic: currentUser?.photoURL || "icons/avatar.jpg",
+      });
 
-
-          toast.success("Image uploaded successfully!");
-          setFile(null);
-          setCaption("");
-          setProgress(100);
-          fileInputRef.current.value = null;
-        } catch (err) {
-          toast.error("Upload failed: " + err.message);
-        }
-      } else {
-        toast.error("Upload failed with status " + xhr.status);
-      }
+      toast.success("File uploaded successfully!");
+      setFile(null);
+      setCaption("");
+      setProgress(100);
+      if (fileInputRef.current) fileInputRef.current.value = null;
+      setUploadType(null);
+    } catch (err) {
+      console.error(err);
+      toast.error("Upload failed: " + (err?.message || "unknown"));
+    } finally {
       setUploading(false);
-    };
-
-    xhr.onerror = () => {
-      toast.error("Upload failed due to a network error.");
-      setUploading(false);
-    };
-
-    xhr.open("POST", `https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`);
-    xhr.send(formData);
+    }
   };
 
   return (
     <section
       className="d-flex justify-content-center align-items-center"
       style={{
-        minHeight: isDesktop ? "100vh" : "92vh",
+        minHeight: "92vh",
         background: "linear-gradient(135deg,#f9d423,#ff4e50)",
-        padding: "20px",
+        padding: 20,
       }}
     >
       <div
         className="card shadow-lg p-4 text-center"
-        style={{
-          width: "100%",
-          maxWidth: "420px",
-          borderRadius: "20px",
-          backgroundColor: "#fff",
-        }}
+        style={{ maxWidth: 420, width: "100%", borderRadius: 20 }}
       >
         <h3 className="fw-bold mb-3" style={{ color: "#ff4e50" }}>
           <BsUpload className="me-2" /> New Post
         </h3>
 
-        {/* Image Preview */}
+        {/* 🔍 Preview */}
         {file && (
           <div className="mb-3">
-            <img
-              src={URL.createObjectURL(file)}
-              alt="preview"
-              style={{
-                maxHeight: "200px",
-                borderRadius: "10px",
-                objectFit: "cover",
-              }}
-              className="img-fluid"
-            />
+            {uploadType === "image" ? (
+              <img
+                src={URL.createObjectURL(file)}
+                alt="preview"
+                className="img-fluid"
+                style={{
+                  maxHeight: 200,
+                  borderRadius: 10,
+                  objectFit: "cover",
+                }}
+              />
+            ) : uploadType === "video" ? (
+              <video
+                src={URL.createObjectURL(file)}
+                autoPlay
+                loop
+                playsInline
+                controls
+                muted={false} // 🔊 default unmuted
+                style={{
+                  maxHeight: 200,
+                  borderRadius: 10,
+                  width: "100%",
+                  objectFit: "cover",
+                }}
+              />
+            ) : uploadType === "pdf" ? (
+              <iframe
+                src={URL.createObjectURL(file)}
+                title="pdf-preview"
+                style={{ width: "100%", height: 200, borderRadius: 10 }}
+              />
+            ) : null}
           </div>
         )}
 
-        {/* Progress Bar */}
+        {/* 📊 Upload progress */}
         {uploading && (
-          <div className="progress mb-3" style={{ height: "8px", borderRadius: "4px" }}>
+          <div
+            className="progress mb-3"
+            style={{ height: 8, borderRadius: 4 }}
+          >
             <div
               className="progress-bar progress-bar-striped progress-bar-animated"
               role="progressbar"
-              style={{ width: `${progress}%`, background: "linear-gradient(90deg,#ff4e50,#f9d423)" }}
+              style={{
+                width: `${progress}%`,
+                background: "linear-gradient(90deg,#ff4e50,#f9d423)",
+              }}
             >
               {progress}%
             </div>
           </div>
         )}
 
+        {/* 📤 Upload form */}
         <form onSubmit={handleUpload} className="d-flex flex-column gap-3">
-          <label
-            className="btn btn-outline-primary w-100 d-flex align-items-center justify-content-center"
-            style={{ borderRadius: "12px" }}
-          >
-            <BsImage className="me-2" /> Choose Photo
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleFileChange}
-              ref={fileInputRef}
-              className="d-none"
-            />
-          </label>
+          <div className="d-flex gap-2">
+            <label
+              className="btn btn-outline-primary flex-fill"
+              style={{ borderRadius: 12 }}
+            >
+              <BsImage className="me-1" /> Image
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  setUploadType("image");
+                  handleFileChange(e);
+                }}
+                ref={fileInputRef}
+                className="d-none"
+              />
+            </label>
+
+            <label
+              className="btn btn-outline-success flex-fill"
+              style={{ borderRadius: 12 }}
+            >
+              🎥 Video
+              <input
+                type="file"
+                accept="video/*"
+                onChange={(e) => {
+                  setUploadType("video");
+                  handleFileChange(e);
+                }}
+                className="d-none"
+              />
+            </label>
+
+            <label
+              className="btn btn-outline-danger flex-fill"
+              style={{ borderRadius: 12 }}
+            >
+              📄 PDF
+              <input
+                type="file"
+                accept=".pdf"
+                onChange={(e) => {
+                  setUploadType("pdf");
+                  handleFileChange(e);
+                }}
+                className="d-none"
+              />
+            </label>
+          </div>
 
           <div className="input-group">
             <span className="input-group-text bg-light">
@@ -187,7 +247,7 @@ export default function UploadPost() {
               type="text"
               placeholder="Write a caption..."
               value={caption}
-              onChange={handleCaptionChange}
+              onChange={(e) => setCaption(e.target.value)}
               className="form-control"
             />
           </div>
@@ -199,7 +259,7 @@ export default function UploadPost() {
               background: uploading
                 ? "linear-gradient(90deg,#6a11cb,#2575fc)"
                 : "linear-gradient(90deg,#ff4e50,#f9d423)",
-              borderRadius: "12px",
+              borderRadius: 12,
             }}
             disabled={uploading}
           >
@@ -207,6 +267,7 @@ export default function UploadPost() {
           </button>
         </form>
       </div>
+
       <ToastContainer />
     </section>
   );

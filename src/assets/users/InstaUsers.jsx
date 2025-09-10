@@ -1,3 +1,4 @@
+// src/assets/users/AllUsers.jsx
 import React, { useEffect, useState } from "react";
 import { db, auth } from "../../assets/utils/firebaseConfig";
 import { ref, onValue, update } from "firebase/database";
@@ -5,14 +6,13 @@ import { toast } from "react-toastify";
 import { onAuthStateChanged } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 
-export default function InstaUsers() {
+export default function AllUsers() {
   const [users, setUsers] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
   const [sentRequests, setSentRequests] = useState([]);
   const [friends, setFriends] = useState([]);
   const navigate = useNavigate();
 
-  // Track logged-in user
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
@@ -28,7 +28,6 @@ export default function InstaUsers() {
     return () => unsubscribe();
   }, []);
 
-  // Fetch all users
   useEffect(() => {
     const usersRef = ref(db, "usersData");
     onValue(usersRef, (snapshot) => {
@@ -61,31 +60,53 @@ export default function InstaUsers() {
     const updates = {};
     updates[`usersData/${currentUser.uid}/friends/${targetUID}`] = null;
     updates[`usersData/${targetUID}/friends/${currentUser.uid}`] = null;
+    updates[`usersData/${currentUser.uid}/followers/${targetUID}`] = null;
+    updates[`usersData/${targetUID}/followers/${currentUser.uid}`] = null;
+    updates[`usersData/${currentUser.uid}/following/${targetUID}`] = null;
+    updates[`usersData/${targetUID}/following/${currentUser.uid}`] = null;
     await update(ref(db), updates);
-    toast.info("Unfriended");
+    toast.info("Unfriended ❌");
   };
 
   const openUserProfile = (userUID) => navigate(`/user-profile/${userUID}`);
 
   return (
     <div className="container mt-3" style={{ maxWidth: 600 }}>
-      <h3 className="mb-3">Users</h3>
+      <h3 className="mb-3">All Users</h3>
       <ul className="list-group">
         {users
           .filter((u) => u.uid !== currentUser?.uid)
           .map((user) => (
             <li key={user.uid} className="list-group-item d-flex align-items-center justify-content-between">
-              <div className="d-flex align-items-center" style={{ cursor: "pointer" }} onClick={() => openUserProfile(user.uid)}>
-                <img src={user.photoURL || "https://via.placeholder.com/50"} alt="avatar" className="rounded-circle me-3" style={{ width: 50, height: 50, objectFit: "cover" }} />
-                <div><h6 className="mb-0">{user.username || "Unnamed User"}</h6></div>
+              <div
+                className="d-flex align-items-center"
+                style={{ cursor: "pointer" }}
+                onClick={() => openUserProfile(user.uid)}
+              >
+                <img
+                  src={user.photoURL || "https://via.placeholder.com/50"}
+                  alt="avatar"
+                  className="rounded-circle me-3"
+                  style={{ width: 50, height: 50, objectFit: "cover" }}
+                />
+                <div>
+                  <h6 className="mb-0">{user.username || "Unnamed User"}</h6>
+                  {user.isPrivate && <small className="text-muted">🔒 Private</small>}
+                </div>
               </div>
               <div>
                 {friends.includes(user.uid) ? (
-                  <button className="btn btn-sm btn-success" onClick={() => unfriendUser(user.uid)}>Friends</button>
+                  <button className="btn btn-sm btn-success" onClick={() => unfriendUser(user.uid)}>
+                    Friends
+                  </button>
                 ) : sentRequests.includes(user.uid) ? (
-                  <button className="btn btn-sm btn-outline-warning" onClick={() => cancelFollowRequest(user.uid)}>Cancel</button>
+                  <button className="btn btn-sm btn-outline-warning" onClick={() => cancelFollowRequest(user.uid)}>
+                    Cancel
+                  </button>
                 ) : (
-                  <button className="btn btn-sm btn-outline-primary" onClick={() => sendFollowRequest(user.uid)}>Add</button>
+                  <button className="btn btn-sm btn-outline-primary" onClick={() => sendFollowRequest(user.uid)}>
+                    Add
+                  </button>
                 )}
               </div>
             </li>

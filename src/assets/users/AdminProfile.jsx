@@ -1,33 +1,127 @@
 // src/assets/users/AdminProfile.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { db, auth } from "../../assets/utils/firebaseConfig";
-import { ref, onValue, remove, update, get } from "firebase/database";
+import { ref, onValue, update, get, remove } from "firebase/database";
 import { signOut, updateProfile } from "firebase/auth";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
+import axios from "axios";
+
+/* =========================
+   Fullscreen Video Feed
+========================= */
+const VideoFeed = ({ videos, startIndex, onClose }) => {
+  const [currentIndex, setCurrentIndex] = useState(startIndex);
+  const containerRef = useRef(null);
+  const videoRefs = useRef([]);
+
+  useEffect(() => {
+    setCurrentIndex(startIndex);
+    if (containerRef.current) {
+      containerRef.current.scrollTo({
+        top: startIndex * window.innerHeight,
+        behavior: "instant",
+      });
+    }
+  }, [startIndex]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const handleScroll = () => {
+      const index = Math.round(container.scrollTop / window.innerHeight);
+      if (index !== currentIndex) setCurrentIndex(index);
+    };
+    container.addEventListener("scroll", handleScroll);
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, [currentIndex]);
+
+  useEffect(() => {
+    videoRefs.current.forEach((vid, i) => {
+      if (vid) {
+        if (i === currentIndex) {
+          vid.play().catch(() => { });
+        } else {
+          vid.pause();
+        }
+      }
+    });
+  }, [currentIndex]);
+
+  return (
+    <div
+      className="position-fixed top-0 start-0 w-100 h-100 bg-black"
+      style={{ zIndex: 1050, overflowY: "scroll", scrollSnapType: "y mandatory" }}
+      ref={containerRef}
+      onClick={onClose}
+    >
+      {videos.map((video, i) => (
+        <div
+          key={video.id}
+          className="w-100 d-flex justify-content-center align-items-center"
+          style={{ height: "100vh", scrollSnapAlign: "start" }}
+        >
+          <video
+            ref={(el) => (videoRefs.current[i] = el)}
+            src={video.src}
+            className="w-100 h-100 object-fit-cover"
+            style={{ maxHeight: "100vh" }}
+            loop
+            controls
+          />
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/* =========================
+   Fullscreen Image Viewer
+========================= */
+const ImageViewer = ({ src, onClose }) => (
+  <div
+    className="position-fixed top-0 start-0 w-100 h-100 bg-black d-flex justify-content-center align-items-center"
+    style={{ zIndex: 1050 }}
+    onClick={onClose}
+  >
+    <img
+      src={src}
+      alt="Fullscreen"
+      className="img-fluid"
+      style={{ maxHeight: "90%", maxWidth: "90%" }}
+    />
+  </div>
+);
 
 const AdminProfile = () => {
   const [profileData, setProfileData] = useState(null);
   const [userPosts, setUserPosts] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const [followersList, setFollowersList] = useState([]);
-  const [followingList, setFollowingList] = useState([]);
-  const [requests, setRequests] = useState([]);
-
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [selectedPostId, setSelectedPostId] = useState(null);
-
   const [file, setFile] = useState(null);
   const [bio, setBio] = useState("");
   const [uploading, setUploading] = useState(false);
 
+  const [activeTab, setActiveTab] = useState("all");
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [selectedPostId, setSelectedPostId] = useState(null);
+
+  // Feed & Viewer states
+  const [showVideoFeed, setShowVideoFeed] = useState(false);
+  const [videoStartIndex, setVideoStartIndex] = useState(0);
+  const [showImageViewer, setShowImageViewer] = useState(null);
+
+  // Followers/Following/Requests state
+  const [followers, setFollowers] = useState([]);
+  const [following, setFollowing] = useState([]);
+  const [requested, setRequested] = useState([]);
+
   const navigate = useNavigate();
   const { uid: paramUid } = useParams();
-  const imgbbAPI = import.meta.env.VITE_IMGBB_API_KEY;
-
   const currentUser = auth.currentUser;
   const uid = paramUid || currentUser?.uid;
+
+  const cloudinaryPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+  const cloudinaryCloud = import.meta.env.VITE_CLOUDINARY_NAME;
 
   useEffect(() => {
     if (!uid) {
@@ -35,22 +129,19 @@ const AdminProfile = () => {
       return;
     }
 
-    // 🔹 Profile data
     const userRef = ref(db, `usersData/${uid}`);
-    const unsubscribeUser = onValue(userRef, async (snapshot) => {
+    const unsubscribeUser = onValue(userRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        setProfileData({
-          ...data,
-          followers: data.followers ? Object.keys(data.followers).length : 0,
-          following: data.following ? Object.keys(data.following).length : 0,
-        });
+        setProfileData(data);
         setBio(data.bio || "");
+        + setFollowers(Object.keys(data.followers || {}));
+        + setFollowing(Object.keys(data.following || {}));
+        + setRequested(Object.keys(data.followRequests?.received || {}));
       } else setProfileData(null);
       setLoading(false);
     });
 
-    // 🔹 Posts
     const postsRef = ref(db, "galleryImages");
     const unsubscribePosts = onValue(postsRef, (snapshot) => {
       const data = snapshot.val();
@@ -62,270 +153,337 @@ const AdminProfile = () => {
       } else setUserPosts([]);
     });
 
-    // 🔹 Followers & Following
-    const followersRef = ref(db, `usersData/${uid}/followers`);
-    const followingRef = ref(db, `usersData/${uid}/following`);
-    const requestsRef = ref(db, `usersData/${uid}/followRequests/received`);
-
-    const unsubscribeFollowers = onValue(followersRef, async (snap) => {
-      const followersData = snap.val() || {};
-      const arr = await Promise.all(Object.keys(followersData).map(async fUid => {
-        const snapUser = await get(ref(db, `usersData/${fUid}`));
-        return snapUser.exists() ? {
-          uid: fUid,
-          username: snapUser.val().username || "Someone",
-          photoURL: snapUser.val().photoURL || `https://ui-avatars.com/api/?name=${snapUser.val().username || "U"}`
-        } : null;
-      }));
-      setFollowersList(arr.filter(Boolean));
-    });
-
-    const unsubscribeFollowing = onValue(followingRef, async (snap) => {
-      const followingData = snap.val() || {};
-      const arr = await Promise.all(Object.keys(followingData).map(async fUid => {
-        const snapUser = await get(ref(db, `usersData/${fUid}`));
-        return snapUser.exists() ? {
-          uid: fUid,
-          username: snapUser.val().username || "Someone",
-          photoURL: snapUser.val().photoURL || `https://ui-avatars.com/api/?name=${snapUser.val().username || "U"}`
-        } : null;
-      }));
-      setFollowingList(arr.filter(Boolean));
-    });
-
-    const unsubscribeRequests = onValue(requestsRef, async (snap) => {
-      const reqUIDs = snap.exists() ? Object.keys(snap.val()) : [];
-      const reqData = await Promise.all(reqUIDs.map(async rUid => {
-        const snapUser = await get(ref(db, `usersData/${rUid}`));
-        return snapUser.exists() ? {
-          uid: rUid,
-          username: snapUser.val().username || "Someone",
-          photoURL: snapUser.val().photoURL || `https://ui-avatars.com/api/?name=${snapUser.val().username || "U"}`
-        } : { uid: rUid };
-      }));
-      setRequests(reqData.filter(Boolean));
-    });
-
     return () => {
       unsubscribeUser();
       unsubscribePosts();
-      unsubscribeFollowers();
-      unsubscribeFollowing();
-      unsubscribeRequests();
     };
   }, [uid, navigate]);
 
-  // 🔹 Bio Update
+  // Bio Update
   const handleBioUpdate = async () => {
     if (!currentUser) return;
     try {
       await update(ref(db, `usersData/${currentUser.uid}`), { bio });
       setProfileData((prev) => ({ ...prev, bio }));
-      toast.success("✅ Bio updated successfully!");
+      toast.success("✅ Bio updated!");
     } catch {
       toast.error("❌ Failed to update bio!");
     }
   };
 
-  // 🔹 DP Upload
+  // DP Upload
   const handleDpUpdate = async () => {
     if (!currentUser || !file) return toast.warn("Select an image first!");
     setUploading(true);
     try {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onloadend = async () => {
-        const base64Image = reader.result.split(",")[1];
-        const formData = new FormData();
-        formData.append("image", base64Image);
-        const response = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbAPI}`, { method: "POST", body: formData });
-        const data = await response.json();
-        if (data.success) {
-          const photoURL = data.data.url;
-          await update(ref(db, `usersData/${currentUser.uid}`), { photoURL });
-          await updateProfile(currentUser, { photoURL });
-          setProfileData((prev) => ({ ...prev, photoURL }));
-          toast.success("🎉 Profile picture updated!");
-        } else toast.error("❌ Upload failed.");
-        setFile(null);
-        setUploading(false);
-      };
-    } catch {
-      toast.error("❌ Error updating DP!");
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", cloudinaryPreset);
+
+      const res = await axios.post(
+        `https://api.cloudinary.com/v1_1/${cloudinaryCloud}/image/upload`,
+        formData
+      );
+
+      const photoURL = res.data.secure_url;
+      await update(ref(db, `usersData/${currentUser.uid}`), { photoURL });
+      await updateProfile(currentUser, { photoURL });
+      setProfileData((prev) => ({ ...prev, photoURL }));
+
+      toast.success("🎉 Profile picture updated!");
+    } catch (err) {
+      console.error(err);
+      toast.error("❌ Error uploading DP!");
+    } finally {
+      setFile(null);
       setUploading(false);
     }
   };
 
-  // 🔹 Delete Post
+  // Delete Post
   const handleDeletePost = async (postId) => {
+    if (!postId) return;
     try {
       await remove(ref(db, `galleryImages/${postId}`));
+      setUserPosts((prev) => prev.filter((p) => p.id !== postId));
       toast.success("🗑️ Post deleted!");
-    } catch { toast.error("❌ Failed to delete post."); }
+    } catch (err) {
+      console.error(err);
+      toast.error("❌ Failed to delete post!");
+    }
   };
 
-  // 🔹 Privacy toggle
-  const handlePrivacyToggle = async () => {
+  // Lock/Unlock Profile
+  const toggleLockProfile = async () => {
     if (!currentUser) return;
     try {
-      await update(ref(db, `usersData/${currentUser.uid}`), { isPrivate: !profileData.isPrivate });
-      setProfileData((prev) => ({ ...prev, isPrivate: !prev.isPrivate }));
-      toast.success(`Profile ${!profileData.isPrivate ? "locked 🔒" : "unlocked 🔓"}`);
-    } catch { toast.error("❌ Failed to update privacy!"); }
+      const isLocked = !profileData.isLocked;
+      await update(ref(db, `usersData/${currentUser.uid}`), { isLocked });
+      setProfileData((prev) => ({ ...prev, isLocked }));
+      toast.success(isLocked ? "🔒 Profile locked!" : "🔓 Profile unlocked!");
+    } catch {
+      toast.error("❌ Failed to update profile privacy!");
+    }
   };
 
-  const acceptRequest = async (reqUid) => {
-    if (!uid) return;
-
-    await update(ref(db), {
-      [`usersData/${uid}/friends/${reqUid}`]: true,
-      [`usersData/${reqUid}/friends/${uid}`]: true,
-      [`usersData/${uid}/followRequests/received/${reqUid}`]: null,
-      [`usersData/${reqUid}/followRequests/sent/${uid}`]: null,
-      [`usersData/${uid}/followers/${reqUid}`]: true,
-      [`usersData/${uid}/following/${reqUid}`]: true,
-      [`usersData/${reqUid}/followers/${uid}`]: true,
-      [`usersData/${reqUid}/following/${uid}`]: true,
-    });
-
-    toast.success("Friend request accepted! ✅");
-  };
-
-  const rejectRequest = async (reqUid) => {
-    await update(ref(db), {
-      [`usersData/${uid}/followRequests/received/${reqUid}`]: null,
-      [`usersData/${reqUid}/followRequests/sent/${uid}`]: null,
-    });
-    toast.error("Request rejected!");
-  };
-
-  // 🔹 Logout
+  // Logout
   const handleLogout = async () => {
-    try { await signOut(auth); navigate("/login"); toast.info("👋 Logged out!"); }
-    catch { toast.error("❌ Logout failed!"); }
+    try {
+      await signOut(auth);
+      navigate("/login");
+      toast.info("👋 Logged out!");
+    } catch {
+      toast.error("❌ Logout failed!");
+    }
   };
 
   if (loading) return <p>Loading profile...</p>;
-  if (!profileData) return <p>No profile data found.</p>;
+  if (!profileData) return <p>No profile found.</p>;
 
   const isOwner = currentUser?.uid === uid;
+  const filteredPosts =
+    activeTab === "all" ? userPosts : userPosts.filter((p) => p.type === activeTab);
 
   return (
     <div className="container my-5" style={{ maxWidth: 900 }}>
-      {/* Profile Header */}
+      {/* Profile Info */}
       <div className="row d-flex align-items-start justify-content-center mb-4">
-        <div className="col-4 text-center">
-          <img src={profileData.photoURL || "https://via.placeholder.com/150"} alt="Profile" className="rounded-circle mb-2" width={100} height={100} style={{ objectFit: "cover" }} />
-          <div className="d-flex flex-column align-items-center">
-            {isOwner && <>
-              <input type="file" className="form-control mb-2" accept="image/*" onChange={(e) => setFile(e.target.files[0])} style={{ width: "100px", height: "35px" }} />
-              <button className="btn btn-primary btn-sm mb-2" onClick={handleDpUpdate} disabled={uploading}>{uploading ? "Uploading..." : "Upload DP"}</button>
-              <button className="btn btn-warning btn-sm" onClick={handlePrivacyToggle}>
-                {profileData.isPrivate ? "Unlock Profile" : "Lock Profile"}
+        <div className="col-4 d-flex flex-column justify-content-center align-items-center text-center">
+          <img
+            src={profileData.photoURL || "https://via.placeholder.com/150"}
+            alt="Profile"
+            className="rounded-circle mb-2"
+            width={100}
+            height={100}
+            style={{ objectFit: "cover" }}
+          />
+          {isOwner && (
+            <>
+              <input
+                type="file"
+                className="form-control mb-2"
+                accept="image/*"
+                onChange={(e) => setFile(e.target.files[0])}
+                style={{ width: "100px", height: "35px" }}
+              />
+              <button
+                className="btn btn-primary btn-sm mb-2"
+                onClick={handleDpUpdate}
+                disabled={uploading}
+              >
+                {uploading ? "Uploading..." : "Upload DP"}
               </button>
-            </>}
-          </div>
+            </>
+          )}
+          {isOwner && (
+            <button
+              className={`btn ${profileData.isLocked ? "btn-warning" : "btn-outline-warning"} btn-sm`}
+              onClick={toggleLockProfile}
+            >
+              {profileData.isLocked ? "Unlock Profile 🔓" : "Lock Profile 🔒"}
+            </button>
+          )}
         </div>
         <div className="col-8">
           <h2>{profileData.username}</h2>
-          <p><strong>Email:</strong> {profileData.email || "Not provided"}</p>
-          <p><strong>Bio:</strong> {profileData.bio || "No bio yet"}</p>
+          <p>
+            <strong>Email:</strong> {profileData.email || "Not provided"}
+          </p>
+          <p>
+            <strong>Bio:</strong> {profileData.bio || "No bio yet"}
+          </p>
 
-          {/* Followers / Following */}
-          <button className="btn btn-primary btn-sm mx-1" onClick={() => navigate(`/followers/${uid}`)}>
-            Followers: {profileData.followers}
-          </button>
-          <button className="btn btn-primary btn-sm mx-1" onClick={() => navigate(`/following/${uid}`)}>
-            Following: {profileData.following}
-          </button>
+          {/* Followers/Following/Requested */}
+          <div className="d-flex gap-1 small p-0  my-2 mx-0">
+            <button
+              className="btn btn-outline-primary btn-sm"
+              onClick={() => navigate(`/followers/${uid}`)}
+            >
+              Followers ({followers.length})
+            </button>
+            <button
+              className="btn btn-outline-primary btn-sm"
+              onClick={() => navigate(`/following/${uid}`)}
+            >
+              Following ({following.length})
+            </button>
+            <button
+              className="btn btn-outline-secondary btn-sm"
+              onClick={() => navigate(`/requested/${uid}`)}
+            >
+              Requested ({requested.length})
+            </button>
+          </div>
+
         </div>
       </div>
 
-      {/* Follow Requests */}
-      {isOwner && requests.length > 0 && (
-        <div className="mb-4">
-          <h5>Follow Requests</h5>
-          {requests.map(r => (
-            <div key={r.uid} className="d-flex justify-content-between align-items-center border p-2 mb-1">
-              <div className="d-flex align-items-center">
-                <img src={r.photoURL || `https://ui-avatars.com/api/?name=${r.username || r.uid}`} alt={r.username || r.uid} className="rounded-circle me-2" width={35} height={35} style={{ objectFit: "cover" }} />
-                <span>{r.username || r.uid}</span>
-              </div>
-              <div>
-                <button className="btn btn-success btn-sm me-1" onClick={() => acceptRequest(r.uid)}>Accept</button>
-                <button className="btn btn-danger btn-sm" onClick={() => rejectRequest(r.uid)}>Reject</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* Bio Edit */}
-      {isOwner && <div className="accordion my-3" id="profileEditAccordion">
-        <div className="accordion-item">
-          <h2 className="accordion-header" id="headingBio">
-            <button className="accordion-button bg-light" type="button" data-bs-toggle="collapse" data-bs-target="#collapseBio">Edit Bio</button>
-          </h2>
-          <div id="collapseBio" className="accordion-collapse collapse">
-            <div className="accordion-body">
-              <textarea className="form-control mb-2" rows={3} value={bio} onChange={(e) => setBio(e.target.value)} />
-              <button className="btn btn-success" onClick={handleBioUpdate}>Save Bio</button>
+      {isOwner && (
+        <div className="accordion my-3" id="profileEditAccordion">
+          <div className="accordion-item">
+            <h2 className="accordion-header" id="headingBio">
+              <button
+                className="accordion-button bg-light"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#collapseBio"
+              >
+                Edit Bio
+              </button>
+            </h2>
+            <div id="collapseBio" className="accordion-collapse collapse">
+              <div className="accordion-body">
+                <textarea
+                  className="form-control mb-2"
+                  rows={3}
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                />
+                <button className="btn btn-success" onClick={handleBioUpdate}>
+                  Save Bio
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      </div>}
+      )}
+
+      {/* Tabs */}
+      <ul className="nav nav-tabs mb-3">
+        {"all,image,video,pdf".split(",").map((tab) => (
+          <li key={tab} className="nav-item">
+            <button
+              className={`nav-link ${activeTab === tab ? "active" : ""}`}
+              onClick={() => setActiveTab(tab)}
+            >
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </button>
+          </li>
+        ))}
+      </ul>
 
       {/* Posts */}
       <h4>Posts</h4>
       <div className="row g-3 mb-4">
-        {userPosts.length > 0 ? userPosts.map(post => (
-          <div key={post.id} className="col-12 col-sm-6 col-md-4">
-            <div className="card shadow-sm">
-              <img src={post.src} className="card-img-top rounded" alt={post.caption || ""} style={{ objectFit: "cover", height: 200 }} />
-              <div className="card-body">
-                <p className="card-text">{post.caption}</p>
-                {isOwner && <button className="btn btn-sm btn-outline-danger mt-2" onClick={() => { setSelectedPostId(post.id); setShowDeleteModal(true); }}>Delete</button>}
+        {filteredPosts.length > 0 ? (
+          filteredPosts.map((post) => (
+            <div key={post.id} className="col-12 col-sm-6 col-md-4">
+              <div className="card shadow-sm">
+                {post.type === "image" && (
+                  <img
+                    src={post.src}
+                    className="card-img-top rounded"
+                    alt={post.caption || ""}
+                    style={{ objectFit: "cover", height: 200, cursor: "pointer" }}
+                    onClick={() => setShowImageViewer(post.src)}
+                  />
+                )}
+                {post.type === "video" && (
+                  <video
+                    src={post.src}
+                    className="card-img-top rounded"
+                    style={{ objectFit: "cover", height: 200, cursor: "pointer" }}
+                    muted
+                    onClick={() => {
+                      const videoPostsFiltered = filteredPosts.filter((p) => p.type === "video");
+                      const index = videoPostsFiltered.findIndex((v) => v.id === post.id);
+                      setVideoStartIndex(index);
+                      setShowVideoFeed(true);
+                    }}
+                  />
+                )}
+                {post.type === "pdf" && (
+                  <iframe
+                    src={`https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(
+                      post.src
+                    )}`}
+                    className="card-img-top rounded"
+                    style={{ height: 200 }}
+                    title="PDF Preview"
+                  />
+                )}
+                <div className="card-body">
+                  <p className="card-text">{post.caption || "No caption"}</p>
+                  {isOwner && (
+                    <button
+                      className="btn btn-sm btn-danger"
+                      onClick={() => {
+                        setSelectedPostId(post.id);
+                        setShowDeleteModal(true);
+                      }}
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        )) : <p>No posts available</p>}
+          ))
+        ) : (
+          <p>No posts yet.</p>
+        )}
       </div>
 
       {/* Delete Modal */}
-      {showDeleteModal &&
-        <div className="modal fade show custom-modal" style={{ display: "block" }} onClick={() => setShowDeleteModal(false)}>
-          <div className="modal-dialog modal-dialog-centered modal-sm" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-content border-0 shadow-lg animate-zoom">
+      {showDeleteModal && (
+        <div
+          className="modal fade show custom-modal"
+          style={{ display: "block" }}
+          onClick={() => setShowDeleteModal(false)}
+        >
+          <div
+            className="modal-dialog modal-dialog-centered modal-sm"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-content border-0 shadow-lg">
               <div className="modal-header border-0 pb-0">
                 <h6 className="modal-title fw-bold">Delete this post?</h6>
               </div>
               <div className="modal-body pt-2">
-                <p className="small text-muted mb-0">This action <strong>cannot be undone</strong>. Do you really want to delete this post?</p>
+                <p className="small text-muted mb-0">
+                  This action <strong>cannot be undone</strong>. Do you really want to delete this post?
+                </p>
               </div>
               <div className="modal-footer border-0 pt-2">
-                <button className="btn btn-sm btn-light" onClick={() => setShowDeleteModal(false)}>Cancel</button>
-                <button className="btn btn-sm btn-danger" onClick={async () => { await handleDeletePost(selectedPostId); setShowDeleteModal(false); }}>Delete</button>
+                <button className="btn btn-sm btn-light" onClick={() => setShowDeleteModal(false)}>
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-sm btn-danger"
+                  onClick={async () => {
+                    await handleDeletePost(selectedPostId);
+                    setShowDeleteModal(false);
+                  }}
+                >
+                  Delete
+                </button>
               </div>
             </div>
           </div>
         </div>
-      }
+      )}
 
-      <button className="btn btn-danger mb-3" onClick={handleLogout}>Logout</button>
+      {/* Logout */}
+      {isOwner && (
+        <button className="btn btn-danger" onClick={handleLogout}>
+          Logout
+        </button>
 
-      <footer className="text-center py-4 mb-4 border-top bg-light">
-        <p className="fw-bold mb-0">Hridesh Bharati</p>
-        <small className="text-muted">Founder · Creator of this App</small>
-      </footer>
+      )}
 
-      <style>{`
-        .custom-modal { background-color: rgba(0,0,0,0.7); z-index:1055; }
-        @keyframes zoomIn { from{transform:scale(0.7);opacity:0;} to{transform:scale(1);opacity:1;} }
-        .animate-zoom { animation: zoomIn 0.25s ease-out; }
-        .custom-modal .modal-dialog { max-width:360px; }
-        .custom-modal .modal-content { border-radius:12px; padding:5px; }
-        .custom-modal .modal-footer { display:flex; justify-content:flex-end; gap:8px; }
-      `}</style>
+      {/* Fullscreen Viewers */}
+      {showVideoFeed && (
+        <VideoFeed
+          videos={filteredPosts.filter((p) => p.type === "video")}
+          startIndex={videoStartIndex}
+          onClose={() => setShowVideoFeed(false)}
+        />
+      )}
+
+      {showImageViewer && (
+        <ImageViewer src={showImageViewer} onClose={() => setShowImageViewer(null)} />
+      )}
     </div>
   );
 };

@@ -1,210 +1,336 @@
-// src/assets/users/InstaUserProfile.jsx
+
+// src/assets/users/UserProfile.jsx
 import React, { useEffect, useState } from "react";
 import { db, auth } from "../../assets/utils/firebaseConfig";
-import { ref, get, update } from "firebase/database";
-import { useParams, useNavigate } from "react-router-dom";
+import {
+  ref,
+  update,
+  onValue,
+  remove,
+  set,
+  push,
+  serverTimestamp,
+} from "firebase/database";
+import { useParams } from "react-router-dom";
 import { toast } from "react-toastify";
+import Heart from "../../assets/uploads/Heart";
+import ShareButton from "../../assets/uploads/ShareBtn";
 
-export default function InstaUserProfile() {
+export default function UserProfile() {
   const { uid } = useParams();
-  const navigate = useNavigate();
+  const [userData, setUserData] = useState(null);
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [commentText, setCommentText] = useState("");
+
   const currentUser = auth.currentUser;
 
-  const [userData, setUserData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [canView, setCanView] = useState(false);
-  const [status, setStatus] = useState("loading"); // "follow", "requested", "friends"
-  const [followersCount, setFollowersCount] = useState(0);
-  const [followingCount, setFollowingCount] = useState(0);
-  const [isFollowing, setIsFollowing] = useState(false);
-
-  // Fetch profile and status
-  const fetchProfileAndStatus = async () => {
-    try {
-      const userSnap = await get(ref(db, `usersData/${uid}`));
-      if (!userSnap.exists()) {
-        toast.error("User not found!");
-        navigate("/all-insta-users");
-        return;
-      }
-      const data = userSnap.val();
-      setUserData(data);
-
-      // Privacy logic
-      if (!data.isPrivate || currentUser?.uid === uid) {
-        setCanView(true);
-      } else {
-        const friendSnap = await get(ref(db, `usersData/${uid}/friends/${currentUser?.uid}`));
-        setCanView(friendSnap.exists());
-      }
-
-      // Followers / Following counts
-      const followersSnap = await get(ref(db, `usersData/${uid}/followers`));
-      const followingSnap = await get(ref(db, `usersData/${uid}/following`));
-      setFollowersCount(followersSnap.exists() ? Object.keys(followersSnap.val()).length : 0);
-      setFollowingCount(followingSnap.exists() ? Object.keys(followingSnap.val()).length : 0);
-
-      // Status logic
-      if (currentUser?.uid && currentUser.uid !== uid) {
-        const friendSnap = await get(ref(db, `usersData/${currentUser.uid}/friends/${uid}`));
-        if (friendSnap.exists()) {
-          setStatus("friends");
-        } else {
-          const sentSnap = await get(ref(db, `usersData/${currentUser.uid}/followRequests/sent/${uid}`));
-          const receivedSnap = await get(ref(db, `usersData/${currentUser.uid}/followRequests/received/${uid}`));
-          setStatus(sentSnap.exists() || receivedSnap.exists() ? "requested" : "follow");
-        }
-
-        const followingSnap2 = await get(ref(db, `usersData/${currentUser.uid}/following/${uid}`));
-        setIsFollowing(followingSnap2.exists());
-      }
-
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to load profile");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchProfileAndStatus();
-  }, [uid, currentUser, navigate]);
+    if (!uid) return;
 
-  // Handle friend request / add / cancel
-  const handleFriendRequest = async () => {
-    if (!currentUser?.uid) return toast.error("Login first!");
+    // user info
+    const userRef = ref(db, `usersData/${uid}`);
+    const unsubscribeUser = onValue(userRef, (snap) => {
+      if (snap.exists()) setUserData(snap.val());
+    });
 
-    try {
-      if (status === "follow") {
-        if (userData.isPrivate) {
-          // Send request
-          await update(ref(db), {
-            [`usersData/${uid}/followRequests/received/${currentUser.uid}`]: true,
-            [`usersData/${currentUser.uid}/followRequests/sent/${uid}`]: true,
-          });
-          toast.info("Follow request sent ⏳");
-        } else {
-          // Auto friend if public
-          await update(ref(db), {
-            [`usersData/${uid}/friends/${currentUser.uid}`]: true,
-            [`usersData/${currentUser.uid}/friends/${uid}`]: true,
-          });
-          toast.success("Now friends ✅");
-        }
-      } else if (status === "requested") {
-        // Cancel request
-        await update(ref(db), {
-          [`usersData/${uid}/followRequests/received/${currentUser.uid}`]: null,
-          [`usersData/${currentUser.uid}/followRequests/sent/${uid}`]: null,
-        });
-        toast.info("Follow request cancelled ❌");
-      } else if (status === "friends") {
-        // Unfriend
-        await update(ref(db), {
-          [`usersData/${uid}/friends/${currentUser.uid}`]: null,
-          [`usersData/${currentUser.uid}/friends/${uid}`]: null,
-        });
-        toast.info("Friend removed ❌");
-      }
-
-      // 🔹 Refresh status live after action
-      fetchProfileAndStatus();
-
-    } catch (err) {
-      console.error(err);
-      toast.error("Action failed!");
-    }
-  };
-
-  // Independent follow/unfollow after friends
-  const handleFollowToggle = async () => {
-    try {
-      if (isFollowing) {
-        await update(ref(db), {
-          [`usersData/${uid}/followers/${currentUser.uid}`]: null,
-          [`usersData/${currentUser.uid}/following/${uid}`]: null,
-        });
-        setIsFollowing(false);
-        setFollowersCount(prev => prev - 1);
-        toast.info("Unfollowed ❌");
+    // posts
+    const postsRef = ref(db, "galleryImages");
+    const unsubscribePosts = onValue(postsRef, (snap) => {
+      if (snap.exists()) {
+        const all = Object.entries(snap.val()).map(([id, val]) => ({
+          id,
+          ...val,
+        }));
+        // check uid or userId
+        const uPosts = all.filter(
+          (p) => p.uid === uid || p.userId === uid
+        );
+        setPosts(uPosts);
       } else {
-        await update(ref(db), {
-          [`usersData/${uid}/followers/${currentUser.uid}`]: true,
-          [`usersData/${currentUser.uid}/following/${uid}`]: true,
-        });
-        setIsFollowing(true);
-        setFollowersCount(prev => prev + 1);
-        toast.success("Now following ✅");
+        setPosts([]);
       }
-    } catch (err) {
-      console.error(err);
-      toast.error("Follow action failed!");
+      setLoading(false);
+    });
+
+    return () => {
+      unsubscribeUser();
+      unsubscribePosts();
+    };
+  }, [uid]);
+
+  if (loading) return <p>Loading profile...</p>;
+  if (!userData) return <p>No user found</p>;
+
+  const isLocked = userData?.isLocked === true;
+  const isFriend =
+    currentUser && userData?.friends && userData.friends[currentUser.uid];
+  const isFollowing =
+    currentUser && userData?.followers && userData.followers[currentUser.uid];
+  const hasRequested =
+    currentUser &&
+    userData?.followRequests?.received &&
+    Object.keys(userData.followRequests.received || {}).includes(
+      currentUser.uid
+    );
+
+  // follow request
+  const sendRequest = async () => {
+    if (!currentUser) return toast.error("Login first!");
+    await update(ref(db), {
+      [`usersData/${uid}/followRequests/received/${currentUser.uid}`]: true,
+      [`usersData/${currentUser.uid}/followRequests/sent/${uid}`]: true,
+    });
+    toast.success("Follow request sent ✅");
+  };
+
+  // cancel request
+  const cancelRequest = async () => {
+    if (!currentUser) return;
+    await update(ref(db), {
+      [`usersData/${uid}/followRequests/received/${currentUser.uid}`]: null,
+      [`usersData/${currentUser.uid}/followRequests/sent/${uid}`]: null,
+    });
+    toast.info("Request canceled ❌");
+  };
+
+  // unfollow
+  const unfollow = async () => {
+    if (!currentUser) return;
+    await update(ref(db), {
+      [`usersData/${uid}/followers/${currentUser.uid}`]: null,
+      [`usersData/${currentUser.uid}/following/${uid}`]: null,
+      [`usersData/${uid}/friends/${currentUser.uid}`]: null,
+      [`usersData/${currentUser.uid}/friends/${uid}`]: null,
+      [`usersData/${uid}/followRequests/received/${currentUser.uid}`]: null,
+      [`usersData/${currentUser.uid}/followRequests/sent/${uid}`]: null,
+    });
+    toast.info("Unfollowed");
+  };
+
+  // like toggle
+  const toggleLike = async (id) => {
+    const userId = currentUser?.uid;
+    if (!userId) return;
+    const post = posts.find((p) => p.id === id);
+    const alreadyLiked = post?.likes?.[userId];
+    if (alreadyLiked) {
+      await remove(ref(db, `galleryImages/${id}/likes/${userId}`));
+    } else {
+      await set(ref(db, `galleryImages/${id}/likes/${userId}`), true);
     }
   };
 
-  if (loading) return <p className="text-center mt-5">Loading...</p>;
-  if (!userData) return <p className="text-center mt-5">User not found.</p>;
+  // add comment
+  const addComment = async (id) => {
+    if (!commentText.trim()) return;
+    await push(ref(db, `galleryImages/${id}/comments`), {
+      userId: currentUser.uid,
+      userName:
+        currentUser.displayName ||
+        currentUser.email?.split("@")[0] ||
+        "User",
+      text: commentText.trim(),
+      timestamp: serverTimestamp(),
+    });
+    setCommentText("");
+  };
 
-  const isOwner = currentUser?.uid === uid;
+  // delete comment
+  const deleteComment = async (postId, commentId, commentUserId) => {
+    if (currentUser?.uid === commentUserId) {
+      await remove(ref(db, `galleryImages/${postId}/comments/${commentId}`));
+    }
+  };
 
   return (
-    <div className="container my-4">
-      <div className="card p-3 shadow-sm text-center">
+    <div className="container mt-3">
+      {/* Profile info */}
+      <div className="d-flex align-items-center mb-3">
         <img
-          src={userData.photoURL || "https://via.placeholder.com/150"}
+          src={userData.photoURL || "https://via.placeholder.com/80"}
           alt="DP"
-          className="rounded-circle mb-3"
-          style={{ width: 120, height: 120, objectFit: "cover" }}
+          style={{
+            width: 80,
+            height: 80,
+            borderRadius: "50%",
+            objectFit: "cover",
+            marginRight: 15,
+          }}
         />
-        <h4>{userData.username || "Unnamed User"}</h4>
-
-        {canView && (
-          <>
-            <p className="text-muted">{userData.email || "No email"}</p>
-            <p><strong>Bio:</strong> {userData.bio || "No bio added."}</p>
-            <p>Followers: {followersCount} | Following: {followingCount}</p>
-          </>
-        )}
-
-        {/* Friend / Request button */}
-        {!isOwner && (
-          <button
-            className={`btn mt-3 ${status === "friends" ? "btn-success" : status === "requested" ? "btn-secondary" : "btn-primary"}`}
-            onClick={handleFriendRequest}
-          >
-            {status === "friends" ? "Friends" : status === "requested" ? "Requested ⏳" : "Add Friend / Follow"}
-          </button>
-        )}
-
-        {/* Extra follow button after being friends */}
-        {!isOwner && status === "friends" && (
-          <button
-            className={`btn w-100 mt-2 ${isFollowing ? "btn-success" : "btn-primary"}`}
-            onClick={handleFollowToggle}
-          >
-            {isFollowing ? "Following ✅" : "Follow +"}
-          </button>
-        )}
-
-        {/* Privacy toggle for owner */}
-        {isOwner && (
-          <button
-            className="btn btn-warning mt-2"
-            onClick={async () => {
-              await update(ref(db, `usersData/${uid}`), { isPrivate: !userData.isPrivate });
-              setUserData(prev => ({ ...prev, isPrivate: !prev.isPrivate }));
-              toast.success(userData.isPrivate ? "Profile unlocked" : "Profile locked");
-            }}
-          >
-            {userData.isPrivate ? "Unlock Profile 🔓" : "Lock Profile 🔒"}
-          </button>
-        )}
-
-        {!canView && !isOwner && (
-          <p className="text-muted mt-2">This profile is private 🔒</p>
-        )}
+        <div>
+          <h5>{userData.username}</h5>
+          <p className="text-muted">{userData.email}</p>
+        </div>
       </div>
+
+      {/* Follow / Unfollow / Request */}
+      {currentUser?.uid !== uid && (
+        <div className="mb-3">
+          {isFriend || isFollowing ? (
+            <button className="btn btn-sm btn-danger" onClick={unfollow}>
+              Unfollow
+            </button>
+          ) : hasRequested ? (
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={cancelRequest}
+            >
+              Cancel Request
+            </button>
+          ) : (
+            <button className="btn btn-sm btn-primary" onClick={sendRequest}>
+              Follow
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Bio */}
+      <p>{userData.bio || "No bio"}</p>
+
+      {/* Posts */}
+      {isLocked && !isFriend && currentUser?.uid !== uid ? (
+        <p className="text-muted">This profile is locked 🔒</p>
+      ) : (
+        <div className="row">
+          {posts.length === 0 && <p>No posts</p>}
+          {posts.map((post) => {
+            const liked = post.likes?.[currentUser?.uid];
+            const likeCount = post.likes
+              ? Object.keys(post.likes).length
+              : 0;
+
+            return (
+              <div key={post.id} className="col-12 col-md-6 mb-3">
+                <div className="card shadow-sm">
+                  {/* Media */}
+                  {post.type === "image" && (
+                    <img
+                      src={post.url || post.src}
+                      alt="img"
+                      className="card-img-top rounded"
+                      style={{ objectFit: "cover", height: 250 }}
+                    />
+                  )}
+                  {post.type === "video" && (
+                    <video
+                      src={post.url || post.src}
+                      className="card-img-top rounded"
+                      style={{ objectFit: "cover", height: 250 }}
+                      controls
+                    />
+                  )}
+                  {post.type === "pdf" && (
+                    <iframe
+                      src={`https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(
+                        post.url || post.src
+                      )}`}
+                      className="card-img-top rounded"
+                      style={{ height: 250 }}
+                      title="PDF Preview"
+                    />
+                  )}
+
+                  {/* Body */}
+                  <div className="card-body">
+                    <p className="mb-2">
+                      <strong>{post.user}</strong> {post.caption}
+                    </p>
+
+                    {/* Actions */}
+                    <div className="d-flex align-items-center mb-2">
+                      <Heart
+                        liked={liked}
+                        onToggle={() => toggleLike(post.id)}
+                      />
+                      <small className="text-muted ms-2">
+                        {likeCount} likes
+                      </small>
+
+                      <button
+                        className="btn btn-link p-0 mx-3 text-dark"
+                        onClick={() => {
+                          const input = document.getElementById(
+                            `commentInput_${post.id}`
+                          );
+                          if (input) input.focus();
+                        }}
+                      >
+                        <i className="bi bi-chat fs-5"></i>
+                      </button>
+
+                      <ShareButton link={post.url || post.src} />
+                    </div>
+
+                    {/* Comments */}
+                    <div
+                      className="comments mb-2"
+                      style={{ maxHeight: 120, overflowY: "auto" }}
+                    >
+                      {post.comments &&
+                        Object.entries(post.comments)
+                          .sort(
+                            (a, b) =>
+                              (a[1].timestamp || 0) -
+                              (b[1].timestamp || 0)
+                          )
+                          .map(([cid, comment]) => (
+                            <div
+                              key={cid}
+                              className="d-flex justify-content-between align-items-start mb-1"
+                              style={{ fontSize: "0.9rem" }}
+                            >
+                              <div>
+                                <strong>
+                                  {comment.userName || "User"}
+                                </strong>
+                                : {comment.text}
+                              </div>
+                              {currentUser?.uid === comment.userId && (
+                                <button
+                                  className="btn btn-sm btn-close"
+                                  onClick={() =>
+                                    deleteComment(
+                                      post.id,
+                                      cid,
+                                      comment.userId
+                                    )
+                                  }
+                                />
+                              )}
+                            </div>
+                          ))}
+                    </div>
+
+                    {/* Add comment */}
+                    <div className="input-group">
+                      <input
+                        id={`commentInput_${post.id}`}
+                        type="text"
+                        className="form-control"
+                        placeholder="Add a comment..."
+                        value={commentText}
+                        onChange={(e) => setCommentText(e.target.value)}
+                        onKeyDown={(e) =>
+                          e.key === "Enter" && addComment(post.id)
+                        }
+                      />
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => addComment(post.id)}
+                        disabled={!commentText.trim()}
+                      >
+                        Post
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

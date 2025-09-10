@@ -5,7 +5,7 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    host: true,          
+    host: true,
     port: 5173,
   },
   build: {
@@ -13,6 +13,12 @@ export default defineConfig({
     assetsDir: 'assets',  // default folder for JS/CSS/images
   },
   base: './',             // ✅ important for relative asset paths on Vercel
+  optimizeDeps: {
+    include: ["react-pdf", "pdfjs-dist"],
+  },
 })
+
+
+
 
 

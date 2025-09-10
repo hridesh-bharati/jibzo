@@ -1,21 +1,11 @@
-import React, { useEffect, useState, useRef } from "react";
+// src/components/Gallery/GetPost.jsx
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { db, auth } from "../../assets/utils/firebaseConfig";
-import { ref, onValue, set, remove, push, serverTimestamp, get } from "firebase/database";
+import { ref, onValue, set, remove, push, serverTimestamp } from "firebase/database";
 import { onAuthStateChanged } from "firebase/auth";
-import { useParams } from "react-router-dom";
 import Heart from "./Heart";
 import ShareButton from "./ShareBtn";
 import "./Gallery.css";
-
-const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL?.toLowerCase().trim();
-
-// Shuffle function
-function shuffleArray(array) {
-  return array
-    .map((item) => ({ item, sortKey: Math.random() }))
-    .sort((a, b) => a.sortKey - b.sortKey)
-    .map(({ item }) => item);
-}
 
 // Skeleton loader (kept same)
 function CardSkeleton() {
@@ -81,73 +71,81 @@ function CardSkeleton() {
     </div>
   );
 }
+function VideoPlayer({ src, id, videoRefs }) {
+  const refEl = useRef(null);
+
+  useEffect(() => {
+    videoRefs.current[id] = refEl.current;
+    return () => {
+      delete videoRefs.current[id];
+    };
+  }, [id, videoRefs]);
+
+  const handleUserClick = () => {
+    const v = refEl.current;
+    if (!v) return;
+    try {
+      v.muted = false;
+      v.play().catch(() => {});
+      if (v.requestFullscreen) v.requestFullscreen();
+      else if (v.webkitEnterFullscreen) v.webkitEnterFullscreen(); // iOS
+    } catch (err) {
+      console.error("Fullscreen error", err);
+    }
+  };
+
+  return (
+    <div className="position-relative">
+      <video
+        ref={refEl}
+        data-id={id}
+        src={src}
+        className="insta-video w-100"
+        style={{
+          maxHeight: "80vh",
+          objectFit: "cover",
+          borderRadius: 8,
+          cursor: "pointer",
+        }}
+        loop
+        playsInline
+        muted
+        controls={false} // ✅ remove default browser controls
+        onClick={handleUserClick}
+      />
+      {/* optional play icon overlay */}
+      <div
+        onClick={handleUserClick}
+        className="position-absolute top-50 start-50 translate-middle bg-dark bg-opacity-50 text-white rounded-circle d-flex align-items-center justify-content-center"
+        style={{ width: 60, height: 60, fontSize: 30, cursor: "pointer" }}
+      >
+        ▶
+      </div>
+    </div>
+  );
+}
+
+
+function PdfViewer({ url }) {
+  // Use Mozilla PDF.js viewer hosted page as viewer (reliable fallback)
+  const viewerUrl = `https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(url)}`;
+
+  return (
+    <div>
+      <iframe src={viewerUrl} title="pdf-viewer" style={{ width: "100%", height: 600, border: "none", borderRadius: 8 }} />
+      <a href={url} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-outline-primary mt-2 w-100">Open PDF in New Tab</a>
+    </div>
+  );
+}
 
 export default function GetPost() {
-  const [rawImages, setRawImages] = useState([]);
-  const [shuffledImages, setShuffledImages] = useState([]);
+  const [posts, setPosts] = useState([]);
+  const [filter, setFilter] = useState("all"); // all | image | video | pdf
   const [commentText, setCommentText] = useState("");
-  const [offcanvasImage, setOffcanvasImage] = useState(null);
+  const [offcanvasPost, setOffcanvasPost] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [guestId, setGuestId] = useState(null);
-  const { postId } = useParams();
-  const feedRef = useRef(null);
-
-  // Copy link
-  const copyLink = async (url) => {
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(url);
-        alert("✅ Link copied!");
-      } else {
-        const input = document.createElement("input");
-        input.value = url;
-        document.body.appendChild(input);
-        input.select();
-        document.execCommand("copy");
-        document.body.removeChild(input);
-        alert("✅ Link copied!");
-      }
-    } catch (err) {
-      alert("❌ Failed to copy link!");
-    }
-  };
-
-  // Download helper
-  const downloadImage = (url, filename) => {
-    try {
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", filename);
-      link.setAttribute("target", "_blank");
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (err) {
-      alert("❌ Download failed!");
-    }
-  };
-
-  const saveToGallery = async (url, filename) => {
-    if ("showSaveFilePicker" in window) {
-      const response = await fetch(url);
-      const blob = await response.blob();
-      const handle = await window.showSaveFilePicker({
-        suggestedName: filename,
-        types: [{ description: "Image", accept: { "image/jpeg": [".jpg"] } }],
-      });
-      const writable = await handle.createWritable();
-      await writable.write(blob);
-      await writable.close();
-      alert("✅ Saved directly to chosen folder!");
-    } else {
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", filename);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-  };
+  const videoRefs = useRef({});
 
   // guest id
   useEffect(() => {
@@ -161,334 +159,202 @@ export default function GetPost() {
 
   // auth listener
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-    });
+    const unsub = onAuthStateChanged(auth, (u) => setCurrentUser(u));
     return () => unsub();
   }, []);
 
-  // fetch gallery images
+  // fetch posts realtime
   useEffect(() => {
-    const galleryRef = ref(db, "galleryImages");
-    const unsub = onValue(galleryRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const imagesArray = Object.entries(data).map(([id, v]) => ({ id, ...v }));
-        // maintain shuffle while supporting new items update
-        if (shuffledImages.length === 0) {
-          setShuffledImages(shuffleArray(imagesArray));
-        } else {
-          setShuffledImages((prev) => {
-            const oldMap = new Map(prev.map((img) => [img.id, img]));
-            imagesArray.forEach((img) => oldMap.set(img.id, img));
-            const ordered = prev.map((img) => oldMap.get(img.id)).filter(Boolean);
-            const newImages = imagesArray.filter((img) => !prev.some((p) => p.id === img.id));
-            return [...ordered, ...newImages];
-          });
-        }
-        setRawImages(imagesArray);
-      } else {
-        setRawImages([]);
-        setShuffledImages([]);
+    const postsRef = ref(db, "galleryImages");
+    return onValue(postsRef, (snap) => {
+      const data = snap.val();
+      if (!data) {
+        setPosts([]);
+        return;
       }
+      const arr = Object.entries(data).map(([id, v]) => ({ id, ...v }));
+      // newest first
+      arr.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      setPosts(arr);
     });
+  }, []);
 
-    return () => unsub();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shuffledImages.length]);
+  const isAdmin = () => (currentUser?.email || "").toLowerCase().trim() === (import.meta.env.VITE_ADMIN_EMAIL || "").toLowerCase().trim();
 
-  const isAdmin = () => (currentUser?.email || "").toLowerCase().trim() === ADMIN_EMAIL;
-
-  // toggle like
+  // like toggle
   const toggleLike = async (id) => {
     const userId = currentUser?.uid || guestId;
     if (!userId) return;
-
-    const img = shuffledImages.find((img) => img.id === id);
-    const alreadyLiked = img?.likes?.[userId];
-
+    const post = posts.find((p) => p.id === id);
+    const alreadyLiked = post?.likes?.[userId];
     if (alreadyLiked) {
-      // Unlike → remove like & notification
       await remove(ref(db, `galleryImages/${id}/likes/${userId}`));
-
-      if (img.userId && userId !== img.userId) {
-        // remove notification
-        const notifRef = ref(db, `notifications/${img.userId}`);
-        const snap = await get(notifRef);
-        if (snap.exists()) {
-          const notifs = snap.val();
-          const notifEntry = Object.entries(notifs).find(
-            ([, v]) => v.likerId === userId && v.postId === id
-          );
-          if (notifEntry) {
-            const [notifId] = notifEntry;
-            await remove(ref(db, `notifications/${img.userId}/${notifId}`));
-          }
-        }
-      }
     } else {
-      // Like → add like
       await set(ref(db, `galleryImages/${id}/likes/${userId}`), true);
-
-      if (img.userId && userId !== img.userId) {
-        // add notification
-        const notifRef = ref(db, `notifications/${img.userId}`);
-        const newNotifRef = push(notifRef);
-        await set(newNotifRef, {
-          likerId: userId,
-          postId: id,
-          postCaption: img.caption || "your post",
-          timestamp: Date.now(),
-          seen: false,
-        });
-      }
     }
   };
 
-  // add comment
+  // comments
   const addComment = async (id) => {
     if (!commentText.trim()) return;
     const userId = currentUser?.uid || guestId;
-    let userName = currentUser ? currentUser.displayName || currentUser.email?.split("@")[0] || "User" : "Guest";
-
+    const userName = currentUser?.displayName || currentUser?.email?.split("@")[0] || "Guest";
     await push(ref(db, `galleryImages/${id}/comments`), {
       userId,
       userName,
-      text: commentText,
+      text: commentText.trim(),
       timestamp: serverTimestamp(),
     });
-
     setCommentText("");
   };
 
-  // delete comment
   const deleteComment = async (postId, commentId, commentUserId) => {
     const currentId = currentUser?.uid || guestId;
     if (isAdmin() || currentId === commentUserId) {
       await remove(ref(db, `galleryImages/${postId}/comments/${commentId}`));
-      setShuffledImages((prevImages) =>
-        prevImages.map((img) => {
-          if (img.id === postId) {
-            const updatedComments = Object.entries(img.comments || {})
-              .filter(([id]) => id !== commentId)
-              .reduce((acc, [id, comment]) => ({ ...acc, [id]: comment }), {});
-            return { ...img, comments: updatedComments };
-          }
-          return img;
-        })
-      );
     }
   };
 
-  // delete image
-  const deleteImage = async (imgId, imgUserId) => {
+  const deletePost = async (postId, postUserId) => {
     const currentId = currentUser?.uid || guestId;
-    if (!(isAdmin() || currentId === imgUserId)) return;
-    await remove(ref(db, `galleryImages/${imgId}`));
-    setShuffledImages((prev) => prev.filter((img) => img.id !== imgId));
-    setRawImages((prev) => prev.filter((img) => img.id !== imgId));
-    setOffcanvasImage(null);
+    if (!(isAdmin() || currentId === postUserId)) return;
+    await remove(ref(db, `galleryImages/${postId}`));
   };
 
-  // Scroll to post when route contains postId
+  // IntersectionObserver for auto play/pause videos
   useEffect(() => {
-    if (!postId) return;
-    // wait a tick so DOM is rendered
-    const tryScroll = () => {
-      const el = document.getElementById(`post_${postId}`);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-        // optionally highlight
-        el.style.transition = "box-shadow 0.3s ease";
-        el.style.boxShadow = "0 6px 20px rgba(0,0,0,0.12)";
-        setTimeout(() => {
-          el.style.boxShadow = "";
-        }, 2200);
-      }
-    };
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const id = entry.target.dataset.id;
+          const v = videoRefs.current[id];
+          if (!v) return;
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+            // keep muted autoplay (browser policy)
+            v.muted = true;
+            v.play().catch(() => { });
+          } else {
+            v.pause();
+          }
+        });
+      },
+      { threshold: [0.25, 0.5, 0.6, 0.75] }
+    );
 
-    // If images are not loaded yet, wait until they are
-    if (shuffledImages.length === 0) {
-      // watch for when images load then scroll
-      const unwatch = setInterval(() => {
-        const el = document.getElementById(`post_${postId}`);
-        if (el) {
-          clearInterval(unwatch);
-          tryScroll();
-        }
-      }, 250);
-      // clear interval after some time to avoid infinite loop
-      setTimeout(() => clearInterval(unwatch), 8000);
-    } else {
-      tryScroll();
+    Object.values(videoRefs.current).forEach((el) => {
+      try { observer.observe(el); } catch { }
+    });
+
+    return () => {
+      try { Object.values(videoRefs.current).forEach((el) => observer.unobserve(el)); } catch { }
+    };
+  }, [posts]);
+
+  // visible posts based on filter
+  const visiblePosts = filter === "all" ? posts : posts.filter((p) => p.type === filter);
+
+  const renderPreview = useCallback((post) => {
+    if (!post?.src) return null;
+    if (post.type === "image") {
+      return <img src={post.src} alt={post.caption} className="insta-img img-fluid" style={{ borderRadius: 8 }} />;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [postId, shuffledImages]);
+    if (post.type === "video") {
+      return <VideoPlayer src={post.src} id={post.id} videoRefs={videoRefs} />;
+    }
+    if (post.type === "pdf") {
+      return <PdfViewer url={post.src} />;
+    }
+    return <a href={post.src} target="_blank" rel="noopener noreferrer">Open file</a>;
+  }, []);
 
   return (
-    <div ref={feedRef}>
+    <div className="container py-3">
+      {/* Tabs */}
+      <div className="d-flex justify-content-center gap-2 mb-3">
+        <button className={`btn btn-sm ${filter === "all" ? "btn-primary" : "btn-outline-primary"}`} onClick={() => setFilter("all")}>ALL</button>
+        <button className={`btn btn-sm ${filter === "image" ? "btn-primary" : "btn-outline-primary"}`} onClick={() => setFilter("image")}>PHOTO</button>
+        <button className={`btn btn-sm ${filter === "video" ? "btn-primary" : "btn-outline-primary"}`} onClick={() => setFilter("video")}>VIDEO</button>
+        <button className={`btn btn-sm ${filter === "pdf" ? "btn-primary" : "btn-outline-primary"}`} onClick={() => setFilter("pdf")}>PDF</button>
+      </div>
+
       <div className="gallery-feed">
-        {shuffledImages.length === 0
-          ? [...Array(3)].map((_, i) => <CardSkeleton key={i} />)
-          : shuffledImages.map((img) => {
+        {visiblePosts.length === 0 ? (
+          [...Array(3)].map((_, i) => <CardSkeleton key={i} />)
+        ) : (
+          visiblePosts.map((post) => {
             const userId = currentUser?.uid || guestId;
-            const liked = img.likes?.[userId];
-            const likeCount = img.likes ? Object.keys(img.likes).length : 0;
+            const liked = post.likes?.[userId];
+            const likeCount = post.likes ? Object.keys(post.likes).length : 0;
 
             return (
-              <div key={img.id} id={`post_${img.id}`} className="card insta-card mb-4">
+              <div key={post.id} id={`post_${post.id}`} className="card insta-card mb-4">
                 <div className="card-header d-flex align-items-center bg-white border-0">
-                  <img
-                    src={img.userPic || "icons/avatar.jpg"}
-                    alt="profile"
-                    className="rounded-circle me-2"
-                    style={{ width: "40px", height: "40px", objectFit: "cover" }}
-                  />
-                  <strong>{img.user || "Guest User"}</strong>
-                  <button
-                    className="btn btn-sm border rounded-pill ms-auto"
-                    data-bs-toggle="offcanvas"
-                    data-bs-target="#imageOffcanvas"
-                    onClick={() => setOffcanvasImage(img)}
-                    aria-label="Open options"
-                  >
+                  <img src={post.userPic || "icons/avatar.jpg"} alt="profile" className="rounded-circle me-2" style={{ width: 40, height: 40, objectFit: "cover" }} />
+                  <strong>{post.user || "Guest User"}</strong>
+
+                  <button className="btn btn-sm border rounded-pill ms-auto" data-bs-toggle="offcanvas" data-bs-target="#imageOffcanvas" onClick={() => setOffcanvasPost(post)} aria-label="Open options">
                     <i className="bi bi-three-dots"></i>
                   </button>
                 </div>
 
-                <div className="insta-img-wrapper border border-light">
-                  <img src={img.src} alt="Gallery" className="insta-img img-fluid" />
+                <div className="insta-img-wrapper border border-light p-2">
+                  {renderPreview(post)}
                 </div>
 
                 <div className="card-body p-2">
                   <div className="d-flex align-items-center mb-2">
-                    <div className="p-0 m-0 d-flex align-items-center">
-                      <Heart liked={liked} onToggle={() => toggleLike(img.id)} />
+                    <div className="d-flex align-items-center">
+                      <Heart liked={liked} onToggle={() => toggleLike(post.id)} />
                       <small className="text-muted ms-2">{likeCount} likes</small>
                     </div>
 
-                    <button
-                      className="btn btn-link p-0 mx-4 text-dark"
-                      onClick={() => {
-                        const input = document.getElementById(`commentInput_${img.id}`);
-                        if (input) input.focus();
-                      }}
-                      aria-label="Focus comment"
-                    >
-                      <i className="bi bi-chat fs-1"></i>
+                    <button className="btn btn-link p-0 mx-3 text-dark" onClick={() => {
+                      const input = document.getElementById(`commentInput_${post.id}`);
+                      if (input) input.focus();
+                    }} aria-label="Focus comment">
+                      <i className="bi bi-chat fs-4"></i>
                     </button>
-                    <ShareButton link={img.src} />
+
+                    <ShareButton link={post.src} />
                   </div>
 
-                  <p className="mb-2">
-                    <strong>{img.user || "Guest User"}</strong> {img.caption}
-                  </p>
+                  <p className="mb-2"><strong>{post.user}</strong> {post.caption}</p>
 
-                  <div className="comments mb-2" style={{ maxHeight: "150px", overflowY: "auto" }}>
-                    {img.comments &&
-                      Object.entries(img.comments)
-                        .sort((a, b) => (a[1].timestamp || 0) - (b[1].timestamp || 0))
-                        .map(([commentId, comment]) => (
-                          <div
-                            key={commentId}
-                            className="d-flex justify-content-between align-items-start mb-1"
-                            style={{ fontSize: "0.9rem" }}
-                          >
-                            <div>
-                              <strong>{comment.userName || "User"}</strong>: {comment.text}
-                            </div>
-                            {(isAdmin() || currentUser?.uid === comment.userId) && (
-                              <button
-                                className="btn btn-sm btn-danger btn-close"
-                                aria-label="Delete comment"
-                                onClick={() => deleteComment(img.id, commentId, comment.userId)}
-                              />
-                            )}
-                          </div>
-                        ))}
+                  <div className="comments mb-2" style={{ maxHeight: 150, overflowY: "auto" }}>
+                    {post.comments && Object.entries(post.comments).sort((a, b) => (a[1].timestamp || 0) - (b[1].timestamp || 0)).map(([cid, comment]) => (
+                      <div key={cid} className="d-flex justify-content-between align-items-start mb-1" style={{ fontSize: "0.9rem" }}>
+                        <div><strong>{comment.userName || "User"}</strong>: {comment.text}</div>
+                        {(isAdmin() || currentUser?.uid === comment.userId) && (
+                          <button className="btn btn-sm btn-danger btn-close" aria-label="Delete comment" onClick={() => deleteComment(post.id, cid, comment.userId)} />
+                        )}
+                      </div>
+                    ))}
                   </div>
 
                   <div className="input-group">
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder="Add a comment..."
-                      id={`commentInput_${img.id}`}
-                      value={commentText}
-                      onChange={(e) => setCommentText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") addComment(img.id);
-                      }}
-                      aria-label="Add comment"
-                    />
-                    <button
-                      className="btn btn-primary"
-                      onClick={() => addComment(img.id)}
-                      disabled={!commentText.trim()}
-                    >
-                      Post
-                    </button>
+                    <input id={`commentInput_${post.id}`} type="text" className="form-control" placeholder="Add a comment..." value={commentText} onChange={(e) => setCommentText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addComment(post.id); }} />
+                    <button className="btn btn-primary" onClick={() => addComment(post.id)} disabled={!commentText.trim()}>Post</button>
                   </div>
                 </div>
               </div>
             );
-          })}
+          })
+        )}
       </div>
 
-      {/* Offcanvas/modal for image options */}
-      <div
-        className="offcanvas offcanvas-bottom"
-        tabIndex={-1}
-        id="imageOffcanvas"
-        aria-labelledby="imageOffcanvasLabel"
-        style={{ zIndex: 999, height: "40vh" }}
-        data-bs-backdrop="false"
-      >
+      {/* Offcanvas */}
+      <div className="offcanvas offcanvas-bottom" tabIndex={-1} id="imageOffcanvas" style={{ height: "40vh" }}>
         <div className="offcanvas-header">
-          <h5 className="offcanvas-title" id="imageOffcanvasLabel">
-            Options
-          </h5>
-          <button
-            type="button"
-            className="btn-close text-reset"
-            data-bs-dismiss="offcanvas"
-            aria-label="Close"
-          ></button>
+          <h5 className="offcanvas-title">Options</h5>
+          <button type="button" className="btn-close" data-bs-dismiss="offcanvas" />
         </div>
-
         <div className="offcanvas-body">
-          {offcanvasImage && (
+          {offcanvasPost && (
             <>
-              {offcanvasImage.timestamp && (
-                <small className="text-muted d-block mb-3" style={{ fontSize: "0.8rem" }}>
-                  {new Date(offcanvasImage.timestamp).toLocaleString()}
-                </small>
-              )}
-
-              <button
-                className="btn btn-outline-primary w-100 mb-2"
-                onClick={() => copyLink(offcanvasImage.src)}
-              >
-                <i className="bi bi-link-45deg me-2"></i> Copy Link
-              </button>
-
-              <button
-                className="btn btn-outline-success w-100 mb-2"
-                onClick={() =>
-                  downloadImage(offcanvasImage.src, `post_${offcanvasImage.id || Date.now()}.jpg`)
-                }
-              >
-                <i className="bi bi-download me-2"></i> Download Image
-              </button>
-
-              {(isAdmin() || currentUser?.uid === offcanvasImage.userId) && (
-                <button
-                  className="btn btn-danger w-100"
-                  onClick={() => deleteImage(offcanvasImage.id, offcanvasImage.userId)}
-                  data-bs-dismiss="offcanvas"
-                >
-                  Delete Image
-                </button>
+              <button className="btn btn-outline-primary w-100 mb-2" onClick={() => navigator.clipboard.writeText(offcanvasPost.src)}>Copy Link</button>
+              <a href={offcanvasPost.src} target="_blank" rel="noopener noreferrer" className="btn btn-outline-success w-100 mb-2">Open</a>
+              {(isAdmin() || currentUser?.uid === offcanvasPost.userId) && (
+                <button className="btn btn-danger w-100" onClick={() => deletePost(offcanvasPost.id, offcanvasPost.userId)} data-bs-dismiss="offcanvas">Delete</button>
               )}
             </>
           )}

@@ -19,6 +19,7 @@ import UploadPost from "./assets/uploads/UploadPost";
 import GetPost from "./assets/uploads/GetPost";
 import Messages from "./assets/messages/Messages";
 import Loader from "./assets/Loader/Loader";
+import Requested from "./assets/users/Requested";
 
 const App = () => {
   const [user, setUser] = useState(() => {
@@ -63,8 +64,11 @@ const App = () => {
         <Route path="/home" element={user ? <Home /> : <Navigate to="/login" />} />
         <Route path="/followers" element={user ? <Followers /> : <Navigate to="/login" />} />
         <Route path="/following" element={user ? <Following /> : <Navigate to="/login" />} />
+        <Route path="/Requested" element={user ? <Requested /> : <Navigate to="/login" />} />
+        
         <Route path="/followers/:uid" element={<Followers />} />
         <Route path="/following/:uid" element={<Following />} />
+        <Route path="/requested/:uid" element={<Requested />} />
         <Route path="/all-insta-users" element={user ? <InstaUsers /> : <Navigate to="/login" />} />
         <Route path="/admin-profile" element={user ? <Profile /> : <Navigate to="/login" />} />
         <Route path="/user-profile/:uid" element={user ? <InstaUserProfile /> : <Navigate to="/login" />} />
