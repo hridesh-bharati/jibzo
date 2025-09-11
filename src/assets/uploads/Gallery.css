@@ -9,7 +9,7 @@
   border: none;
   border-radius: 12px;
   background: #fff;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 /* Header */
@@ -22,8 +22,9 @@
 /* Image */
 .insta-img-wrapper {
   width: 100%;
-  background: #000;
+  background: #ffffff;
 }
+
 .insta-img {
   width: 100%;
   height: auto;
@@ -49,6 +50,7 @@
   font-size: 0.9rem;
   margin: 0;
 }
+
 .card-body p strong {
   margin-right: 4px;
 }
@@ -57,10 +59,12 @@
 .comments {
   margin-top: 6px;
 }
+
 .comments p {
   font-size: 0.85rem;
   margin-bottom: 2px;
 }
+
 .comments button {
   font-size: 0.7rem;
 }
@@ -70,6 +74,7 @@
   border-radius: 20px;
   font-size: 0.85rem;
 }
+
 .card-body button {
   border-radius: 20px;
   padding: 2px 12px;
@@ -80,4 +85,43 @@
 .offcanvas-bottom {
   border-top-left-radius: 16px;
   border-top-right-radius: 16px;
+}
+
+
+/* Hide top toolbar */
+#toolbarContainer,
+#secondaryToolbar,
+#findbar,
+#pageNumber,
+#sidebarContainer,
+#viewerContainer .toolbar,
+#mainContainer .toolbar {
+  display: none !important;
+}
+
+/* Hide left sidebar (thumbnails, outline, attachments) */
+#sidebarContainer,
+#sidebarToggle,
+#splitter {
+  display: none !important;
+}
+
+/* Expand viewer to full */
+#viewerContainer {
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  position: absolute !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Page style (A4 full white page, no margin/padding) */
+.pdfViewer .page {
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  background: #fff !important;
+  box-shadow: none !important;
 }
