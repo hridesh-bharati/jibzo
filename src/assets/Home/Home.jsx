@@ -125,7 +125,8 @@ const Home = () => {
         />
 
         <div className="mb-5 pb-4">
-          <GetPost />
+        <GetPost showFilter={false} />
+
         </div>
       </div>
     </>

@@ -9,6 +9,7 @@ body,
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
+
 html::-webkit-scrollbar,
 body::-webkit-scrollbar,
 #root::-webkit-scrollbar {
@@ -32,7 +33,32 @@ body {
 }
 
 input {
-  border:thick;
+  border: thick;
   outline: none !important;
   box-shadow: none !important;
+}
+
+/*-----------------3D btns--------------------*/
+.threeD-btn {
+  background: linear-gradient(145deg, #e6e6e6, #ffffff);
+  border: none;
+  color: #333;
+  font-weight: 600;
+  padding: 6px 18px;
+  border-radius: 10px;
+  box-shadow: 4px 4px 10px #c5c5c5, -4px -4px 10px #ffffff;
+  transition: all 0.2s ease-in-out;
+}
+
+/* hover effect */
+.threeD-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 6px 6px 14px #c5c5c5, -6px -6px 14px #ffffff;
+}
+
+/* when active */
+.threeD-btn.active-btn {
+  background: linear-gradient(145deg, #007bff, #0056d2);
+  color: #fff;
+  box-shadow: inset 3px 3px 6px #004bb5, inset -3px -3px 6px #008cff;
 }

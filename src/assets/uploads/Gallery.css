@@ -88,34 +88,6 @@
 }
 
 
-/* Hide top toolbar */
-#toolbarContainer,
-#secondaryToolbar,
-#findbar,
-#pageNumber,
-#sidebarContainer,
-#viewerContainer .toolbar,
-#mainContainer .toolbar {
-  display: none !important;
-}
-
-/* Hide left sidebar (thumbnails, outline, attachments) */
-#sidebarContainer,
-#sidebarToggle,
-#splitter {
-  display: none !important;
-}
-
-/* Expand viewer to full */
-#viewerContainer {
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  position: absolute !important;
-  width: 100% !important;
-  height: 100% !important;
-}
 
 /* Page style (A4 full white page, no margin/padding) */
 .pdfViewer .page {
@@ -124,4 +96,17 @@
   border: none !important;
   background: #fff !important;
   box-shadow: none !important;
+}
+
+#toolbarContainer,
+#toolbarViewer,
+#toolbarContainer,
+.toolbar,
+.toolbarHorizontalGroup {
+  display: none !important;
+}
+
+
+#toolbarContainer {
+  display: none !important;
 }

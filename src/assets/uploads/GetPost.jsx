@@ -1,13 +1,22 @@
 // src/components/Gallery/GetPost.jsx
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { db, auth } from "../../assets/utils/firebaseConfig";
-import { ref, onValue, set, remove, push, serverTimestamp } from "firebase/database";
+import {
+  ref,
+  onValue,
+  set,
+  remove,
+  push,
+  serverTimestamp,
+} from "firebase/database";
 import { onAuthStateChanged } from "firebase/auth";
 import Heart from "./Heart";
 import ShareButton from "./ShareBtn";
 import "./Gallery.css";
 
-// Skeleton loader
+/* -----------------------
+   Skeleton loader
+----------------------- */
 function CardSkeleton() {
   return (
     <div className="card insta-card mb-4" aria-busy="true">
@@ -21,31 +30,38 @@ function CardSkeleton() {
 
 /* -----------------------
    Fullscreen Modal Player
-   (opens when user clicks a feed video)
-   ----------------------- */
+----------------------- */
 function FullscreenVideoModal({ show, src, onClose }) {
   if (!show) return null;
 
   return (
     <div
-      className="position-fixed top-0 start-0 w-100 h-75 d-flex align-items-center justify-content-center"
-      style={{ zIndex: 2000, backgroundColor: "rgba(0,0,0,0.85)" }}
-      onClick={onClose}
+      className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
+      style={{ zIndex: 2000, backgroundColor: "rgba(0,0,0,0.95)" }}
     >
-      <div
-        style={{ width: "100%", maxWidth: 1100, padding: 20 }}
-        onClick={(e) => e.stopPropagation()}
+      {/* Close button */}
+      <button
+        className="btn btn-light position-absolute top-0 end-0 m-3 rounded-circle"
+        style={{ width: 40, height: 40 }}
+        onClick={onClose}
       >
+        ✕
+      </button>
+
+      <div style={{ width: "100%", maxWidth: 1100, padding: 20 }}>
         <video
           src={src}
           autoPlay
           controls
           playsInline
-          style={{ width: "100%", height: "auto", borderRadius: 10, background: "#000" }}
+          style={{
+            width: "100%",
+            height: "auto",
+            maxHeight: "90vh",
+            borderRadius: 10,
+            background: "#000",
+          }}
         />
-        {/* <div className="text-end mt-2">
-          <button className="btn btn-light btn-sm" onClick={onClose}>Close</button>
-        </div> */}
       </div>
     </div>
   );
@@ -53,9 +69,7 @@ function FullscreenVideoModal({ show, src, onClose }) {
 
 /* -----------------------
    VideoPreview (All tab)
-   - muted autoplay
-   - onClick opens Fullscreen modal
-   ----------------------- */
+----------------------- */
 function VideoPreview({ src, id, videoRefs, onOpen }) {
   const refEl = useRef(null);
 
@@ -70,7 +84,12 @@ function VideoPreview({ src, id, videoRefs, onOpen }) {
       data-id={id}
       src={src}
       className="w-100"
-      style={{ maxHeight: "80vh", borderRadius: 8, objectFit: "cover", cursor: "pointer" }}
+      style={{
+        maxHeight: "80vh",
+        borderRadius: 8,
+        objectFit: "cover",
+        cursor: "pointer",
+      }}
       loop
       playsInline
       autoPlay
@@ -82,10 +101,8 @@ function VideoPreview({ src, id, videoRefs, onOpen }) {
 
 /* -----------------------
    ReelsPlayer (Video tab)
-   - vertical fullscreen scrolling with one video active
-   ----------------------- */
+----------------------- */
 function ReelsPlayer({ posts }) {
-  const containerRef = useRef(null);
   const videoRefs = useRef({});
 
   useEffect(() => {
@@ -112,20 +129,17 @@ function ReelsPlayer({ posts }) {
 
     return () => {
       try {
-        Object.values(videoRefs.current).forEach((el) => observer.unobserve(el));
+        Object.values(videoRefs.current).forEach((el) =>
+          observer.unobserve(el)
+        );
       } catch {}
     };
   }, [posts]);
 
   return (
     <div
-      ref={containerRef}
       className="reels-container"
-      style={{
-        height: "100vh",
-        overflowY: "scroll",
-        scrollSnapType: "y mandatory",
-      }}
+      style={{ height: "100vh", overflowY: "scroll", scrollSnapType: "y mandatory" }}
     >
       {posts.map((post) => (
         <div
@@ -165,40 +179,58 @@ function ReelsPlayer({ posts }) {
 }
 
 /* -----------------------
-   PDF Viewer (simple iframe preview)
-   ----------------------- */
-function PdfViewer({ url }) {
+   PDF Preview Card
+----------------------- */
+function PdfPreview({ url, name }) {
   return (
-    <iframe
-      src={url}
-      title="pdf-viewer"
+    <div
       style={{
-        width: "100%",
-        height: "80vh",
-        border: "none",
+        border: "1px solid #ddd",
         borderRadius: 8,
-        display: "block",
+        overflow: "hidden",
+        marginBottom: 10,
+        background: "#fff",
       }}
-    />
+    >
+      <iframe
+        src={`https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(
+          url
+        )}`}
+        title={name || "Document.pdf"}
+        style={{
+          width: "100%",
+          height: "400px",
+          border: "none",
+        }}
+      />
+
+      {/* Footer Info */}
+      <div style={{ padding: "8px 12px", background: "#f8f9fa" }}>
+        <strong>{name || "Document.pdf"}</strong>
+        <button
+          className="btn btn-sm btn-outline-primary float-end"
+          onClick={() => window.open(url, "_blank")}
+        >
+          Open
+        </button>
+      </div>
+    </div>
   );
 }
 
 /* -----------------------
    Main GetPost component
-   ----------------------- */
-export default function GetPost() {
+----------------------- */
+export default function GetPost({ showFilter = true }) {
   const [posts, setPosts] = useState([]);
   const [filter, setFilter] = useState("all");
   const [commentText, setCommentText] = useState("");
   const [offcanvasPost, setOffcanvasPost] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [guestId, setGuestId] = useState(null);
-
-  // video refs used in All tab auto-play logic
-  const videoRefs = useRef({});
-
-  // fullscreen modal state
   const [fullscreenSrc, setFullscreenSrc] = useState(null);
+
+  const videoRefs = useRef({});
 
   // guest id
   useEffect(() => {
@@ -210,13 +242,13 @@ export default function GetPost() {
     setGuestId(id);
   }, []);
 
-  // auth listener
+  // auth
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setCurrentUser(u));
     return () => unsub();
   }, []);
 
-  // realtime posts fetch
+  // fetch posts
   useEffect(() => {
     const postsRef = ref(db, "galleryImages");
     return onValue(postsRef, (snap) => {
@@ -232,7 +264,7 @@ export default function GetPost() {
     (currentUser?.email || "").toLowerCase() ===
     (import.meta.env.VITE_ADMIN_EMAIL || "").toLowerCase();
 
-  // likes
+  // like
   const toggleLike = async (id) => {
     const userId = currentUser?.uid || guestId;
     const post = posts.find((p) => p.id === id);
@@ -241,7 +273,7 @@ export default function GetPost() {
     else await set(ref(db, `galleryImages/${id}/likes/${userId}`), true);
   };
 
-  // comments
+  // comment
   const addComment = async (id) => {
     if (!commentText.trim()) return;
     const userId = currentUser?.uid || guestId;
@@ -271,7 +303,7 @@ export default function GetPost() {
     await remove(ref(db, `galleryImages/${postId}`));
   };
 
-  // Auto-play/pause videos in All tab (muted autoplay)
+  // autoplay videos in All tab
   useEffect(() => {
     if (filter !== "all") return;
 
@@ -281,7 +313,6 @@ export default function GetPost() {
           const v = videoRefs.current[entry.target.dataset.id];
           if (!v) return;
           if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
-            // muted autoplay in feed
             v.muted = false;
             v.play().catch(() => {});
           } else {
@@ -300,23 +331,28 @@ export default function GetPost() {
 
     return () => {
       try {
-        Object.values(videoRefs.current).forEach((el) => observer.unobserve(el));
+        Object.values(videoRefs.current).forEach((el) =>
+          observer.unobserve(el)
+        );
       } catch {}
     };
   }, [posts, filter]);
 
-  // Pause all feed videos when modal is open
+  // pause feed videos when modal open
   useEffect(() => {
     if (fullscreenSrc) {
       Object.values(videoRefs.current).forEach((v) => {
-        try { v && v.pause(); } catch {}
+        try {
+          v && v.pause();
+        } catch {}
       });
     }
   }, [fullscreenSrc]);
 
-  const visiblePosts = filter === "all" ? posts : posts.filter((p) => p.type === filter);
+  const visiblePosts =
+    filter === "all" ? posts : posts.filter((p) => p.type === filter);
 
-  // Render preview depending on type
+  // render post preview
   const renderPreview = useCallback(
     (post) => {
       if (post.type === "image") {
@@ -330,7 +366,6 @@ export default function GetPost() {
         );
       }
       if (post.type === "video") {
-        // pass onOpen to open fullscreen modal
         return (
           <VideoPreview
             src={post.src}
@@ -341,44 +376,48 @@ export default function GetPost() {
         );
       }
       if (post.type === "pdf") {
-        return <PdfViewer url={post.src} />;
+        return <PdfPreview url={post.src} name={post.caption} />;
       }
-      return (
-        <a href={post.src} target="_blank" rel="noopener noreferrer">
-          Open file
-        </a>
-      );
+      return null;
     },
     [videoRefs]
   );
 
   return (
-    <div className="container-fluid p-0">
-      {/* Tabs */}
-      <div className="d-flex justify-content-center gap-2 mb-3">
-        {["all", "image", "video", "pdf"].map((t) => (
-          <button
-            key={t}
-            className={`btn btn-sm ${filter === t ? "btn-primary" : "btn-outline-primary"}`}
-            onClick={() => setFilter(t)}
-          >
-            {t.toUpperCase()}
-          </button>
-        ))}
-      </div>
+    <div className="container-fluid p-0 mt-3">
+      {/* Tabs → only render if showFilter = true */}
+{showFilter && (
+  <div className="d-flex justify-content-center gap-2 mb-3">
+    {["all", "image", "video", "pdf"].map((t) => (
+      <button
+        key={t}
+        className={`btn btn-sm threeD-btn ${
+          filter === t ? "active-btn" : ""
+        }`}
+        onClick={() => setFilter(t)}
+      >
+        {t.toUpperCase()}
+      </button>
+    ))}
+  </div>
+  
+)}
 
-      {/* Video tab: reels style */}
+
+      {/* Video tab → reels */}
       {filter === "video" ? (
         <ReelsPlayer posts={visiblePosts} />
       ) : (
-        <div className="gallery-feed container">
+        <div className="gallery-feed p-0 container">
           {visiblePosts.length === 0 ? (
             [...Array(3)].map((_, i) => <CardSkeleton key={i} />)
           ) : (
             visiblePosts.map((post) => {
               const uid = currentUser?.uid || guestId;
               const liked = post.likes?.[uid];
-              const likeCount = post.likes ? Object.keys(post.likes).length : 0;
+              const likeCount = post.likes
+                ? Object.keys(post.likes).length
+                : 0;
 
               return (
                 <div key={post.id} className="card insta-card mb-4">
@@ -404,29 +443,55 @@ export default function GetPost() {
 
                   <div className="card-body p-2">
                     <div className="d-flex align-items-center mb-2">
-                      <Heart liked={liked} onToggle={() => toggleLike(post.id)} />
-                      <small className="ms-2 text-muted">{likeCount} likes</small>
+                      <Heart
+                        liked={liked}
+                        onToggle={() => toggleLike(post.id)}
+                      />
+                      <small className="ms-2 text-muted">
+                        {likeCount} likes
+                      </small>
                       <button
                         className="btn btn-link p-0 mx-3"
-                        onClick={() => document.getElementById(`commentInput_${post.id}`)?.focus()}
+                        onClick={() =>
+                          document
+                            .getElementById(`commentInput_${post.id}`)
+                            ?.focus()
+                        }
                       >
                         <i className="bi bi-chat fs-4"></i>
                       </button>
                       <ShareButton link={post.src} />
                     </div>
 
-                    <p><strong>{post.user}</strong> {post.caption}</p>
+                    <p>
+                      <strong>{post.user}</strong> {post.caption}
+                    </p>
 
                     {/* Comments */}
-                    <div className="comments mb-2" style={{ maxHeight: 150, overflowY: "auto" }}>
-                      {post.comments && Object.entries(post.comments).map(([cid, c]) => (
-                        <div key={cid} className="d-flex justify-content-between" style={{ fontSize: "0.9rem" }}>
-                          <div><strong>{c.userName}</strong>: {c.text}</div>
-                          {(isAdmin() || currentUser?.uid === c.userId) && (
-                            <button className="btn-close btn-sm" onClick={() => deleteComment(post.id, cid, c.userId)} />
-                          )}
-                        </div>
-                      ))}
+                    <div
+                      className="comments mb-2"
+                      style={{ maxHeight: 150, overflowY: "auto" }}
+                    >
+                      {post.comments &&
+                        Object.entries(post.comments).map(([cid, c]) => (
+                          <div
+                            key={cid}
+                            className="d-flex justify-content-between"
+                            style={{ fontSize: "0.9rem" }}
+                          >
+                            <div>
+                              <strong>{c.userName}</strong>: {c.text}
+                            </div>
+                            {(isAdmin() || currentUser?.uid === c.userId) && (
+                              <button
+                                className="btn-close btn-sm"
+                                onClick={() =>
+                                  deleteComment(post.id, cid, c.userId)
+                                }
+                              />
+                            )}
+                          </div>
+                        ))}
                     </div>
 
                     <div className="input-group">
@@ -437,9 +502,17 @@ export default function GetPost() {
                         placeholder="Add a comment..."
                         value={commentText}
                         onChange={(e) => setCommentText(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && addComment(post.id)}
+                        onKeyDown={(e) =>
+                          e.key === "Enter" && addComment(post.id)
+                        }
                       />
-                      <button className="btn btn-primary" disabled={!commentText.trim()} onClick={() => addComment(post.id)}>Post</button>
+                      <button
+                        className="btn btn-primary"
+                        disabled={!commentText.trim()}
+                        onClick={() => addComment(post.id)}
+                      >
+                        Post
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -450,7 +523,11 @@ export default function GetPost() {
       )}
 
       {/* Offcanvas */}
-      <div className="offcanvas offcanvas-bottom" id="imageOffcanvas" style={{ height: "40vh" }}>
+      <div
+        className="offcanvas offcanvas-bottom"
+        id="imageOffcanvas"
+        style={{ height: "40vh" }}
+      >
         <div className="offcanvas-header">
           <h5>Options</h5>
           <button className="btn-close" data-bs-dismiss="offcanvas" />
@@ -458,9 +535,24 @@ export default function GetPost() {
         <div className="offcanvas-body">
           {offcanvasPost && (
             <>
-              <button className="btn btn-outline-primary w-100 mb-2" onClick={() => navigator.clipboard.writeText(offcanvasPost.src)}>Copy Link</button>
+              <button
+                className="btn btn-outline-primary w-100 mb-2"
+                onClick={() =>
+                  navigator.clipboard.writeText(offcanvasPost.src)
+                }
+              >
+                Copy Link
+              </button>
               {(isAdmin() || currentUser?.uid === offcanvasPost.userId) && (
-                <button className="btn btn-danger w-100" onClick={() => deletePost(offcanvasPost.id, offcanvasPost.userId)} data-bs-dismiss="offcanvas">Delete</button>
+                <button
+                  className="btn btn-danger w-100"
+                  onClick={() =>
+                    deletePost(offcanvasPost.id, offcanvasPost.userId)
+                  }
+                  data-bs-dismiss="offcanvas"
+                >
+                  Delete
+                </button>
               )}
             </>
           )}
