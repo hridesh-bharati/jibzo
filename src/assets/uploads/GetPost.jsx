@@ -435,6 +435,7 @@ export default function GetPost({ showFilter = true }) {
 
               return (
                 <div key={post.id} className="card insta-card mb-4">
+                  {/* Header */}
                   <div className="card-header d-flex align-items-center bg-white border-0">
                     <img
                       src={post.userPic || "icons/avatar.jpg"}
@@ -443,6 +444,7 @@ export default function GetPost({ showFilter = true }) {
                       style={{ width: 40, height: 40, objectFit: "cover" }}
                     />
                     <strong>{post.user || "Guest"}</strong>
+
                     <button
                       className="btn btn-sm border ms-auto"
                       data-bs-toggle="offcanvas"
@@ -453,44 +455,40 @@ export default function GetPost({ showFilter = true }) {
                     </button>
                   </div>
 
+                  {/* Post Content */}
                   <div className="p-2">{renderPreview(post)}</div>
 
+                  {/* Card Body */}
                   <div className="card-body p-2">
                     <div className="d-flex align-items-center justify-content-between mb-2">
-                      <div className="d-flex align-items-center justify-content-between">
-                        <Heart
-                          liked={liked}
-                          onToggle={() => toggleLike(post.id)}
-                        />
-                        <small className="ms-2 text-muted">
-                          {likeCount} likes
-                        </small>
-                      </div>
-                      <button
-                        className="btn btn-link text-muted p-0 mx-3"
-                        onClick={() =>
-                          document
-                            .getElementById(`commentInput_${post.id}`)
-                            ?.focus()
-                        }
-                      >
-                        <i className="bi bi-chat fs-1"></i>
-                      </button>
-                      <ShareButton link={post.src} />
-                      {post.type === "pdf" && (
-                        <div className="d-flex align-items-center justify-content-between">
-                          <button
-                            className="btn btn-sm btn-light d-flex align-items-center"
-                            onClick={() => window.open(post.url || post.src, "_blank")}
-                          >
-                            <i className="bi bi-file-earmark-pdf fs-4 text-danger me-2"></i>
-                            Open PDF
-                          </button>
-                        </div>
-                      )}
+                      <div className="d-flex align-items-center">
+                        <Heart liked={liked} onToggle={() => toggleLike(post.id)} />
+                        <small className="ms-2 text-muted">{likeCount} likes</small>
 
+                        <button
+                          className="btn btn-link text-muted p-0 mx-3"
+                          onClick={() =>
+                            document.getElementById(`commentInput_${post.id}`)?.focus()
+                          }
+                        >
+                          <i className="bi bi-chat fs-1"></i>
+                        </button>
+
+                        <ShareButton link={post.src} />
+                      </div>
+
+                      {post.type === "pdf" && (
+                        <button
+                          className="btn btn-sm btn-light d-flex align-items-center"
+                          onClick={() => window.open(post.url || post.src, "_blank")}
+                        >
+                          <i className="bi bi-file-earmark-pdf fs-4 text-danger me-2"></i>
+                          Open PDF
+                        </button>
+                      )}
                     </div>
 
+                    {/* Caption */}
                     <p>
                       <strong>{post.user}</strong> {post.caption}
                     </p>
@@ -513,15 +511,14 @@ export default function GetPost({ showFilter = true }) {
                             {(isAdmin() || currentUser?.uid === c.userId) && (
                               <button
                                 className="btn-close btn-sm"
-                                onClick={() =>
-                                  deleteComment(post.id, cid, c.userId)
-                                }
+                                onClick={() => deleteComment(post.id, cid, c.userId)}
                               />
                             )}
                           </div>
                         ))}
                     </div>
 
+                    {/* Add Comment */}
                     <div className="input-group">
                       <input
                         id={`commentInput_${post.id}`}
@@ -530,9 +527,7 @@ export default function GetPost({ showFilter = true }) {
                         placeholder="Add a comment..."
                         value={commentText}
                         onChange={(e) => setCommentText(e.target.value)}
-                        onKeyDown={(e) =>
-                          e.key === "Enter" && addComment(post.id)
-                        }
+                        onKeyDown={(e) => e.key === "Enter" && addComment(post.id)}
                       />
                       <button
                         className="btn btn-primary"
@@ -544,6 +539,7 @@ export default function GetPost({ showFilter = true }) {
                     </div>
                   </div>
                 </div>
+
               );
             })
           )}
