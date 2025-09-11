@@ -2,6 +2,7 @@
 import React, { useState, useRef } from "react";
 import { ref as dbRef, push } from "firebase/database";
 import { db, auth } from "../../assets/utils/firebaseConfig";
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import axios from "axios";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -19,6 +20,7 @@ export default function UploadPost() {
   const [uploadType, setUploadType] = useState(null);
   const fileInputRef = useRef();
   const currentUser = auth.currentUser;
+  const storage = getStorage();
 
   // 📂 Handle file input
   const handleFileChange = (e) => {
@@ -53,46 +55,69 @@ export default function UploadPost() {
     setProgress(0);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+      let fileUrl = "";
 
-      const folder =
-        uploadType === "image"
-          ? "images"
-          : uploadType === "video"
-          ? "videos"
-          : "pdfs";
-      formData.append("folder", folder);
+      if (uploadType === "pdf") {
+        // First try Cloudinary RAW upload
+        try {
+          const formData = new FormData();
+          formData.append("file", file);
+          formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+          formData.append("folder", "pdfs");
 
-      // ✅ PDF ke liye raw/upload use karna hai
-      const uploadEndpoint =
-        uploadType === "pdf"
-          ? `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/raw/upload`
-          : `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`;
+          const res = await axios.post(
+            `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/raw/upload`,
+            formData,
+            {
+              onUploadProgress: (event) => {
+                if (event.total) {
+                  setProgress(Math.round((event.loaded * 100) / event.total));
+                }
+              },
+            }
+          );
+          fileUrl = res.data.secure_url;
+        } catch (cloudErr) {
+          console.warn("Cloudinary blocked PDF, falling back to Firebase Storage");
+          // Firebase fallback
+          const storagePath = `pdfs/${Date.now()}_${file.name}`;
+          const fileRef = storageRef(storage, storagePath);
+          await uploadBytes(fileRef, file);
+          fileUrl = await getDownloadURL(fileRef);
+        }
+      } else {
+        // Image or Video → Cloudinary AUTO
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+        formData.append("folder", uploadType === "image" ? "images" : "videos");
 
-      const res = await axios.post(uploadEndpoint, formData, {
-        onUploadProgress: (event) => {
-          if (event.total) {
-            setProgress(Math.round((event.loaded * 100) / event.total));
+        const res = await axios.post(
+          `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`,
+          formData,
+          {
+            onUploadProgress: (event) => {
+              if (event.total) {
+                setProgress(Math.round((event.loaded * 100) / event.total));
+              }
+            },
           }
-        },
-      });
+        );
+        fileUrl = res.data.secure_url;
+      }
 
-      if (!res.data?.secure_url) throw new Error("Upload failed");
+      if (!fileUrl) throw new Error("Upload failed");
 
-      // Save in Firebase
+      // ✅ Save in Firebase Realtime DB
       await push(dbRef(db, "galleryImages"), {
-        src: res.data.secure_url,
+        src: fileUrl,
         caption: caption.trim(),
         timestamp: Date.now(),
-        type: uploadType, // image | video | pdf
-        source: "cloudinary",
+        type: uploadType,
+        source: uploadType === "pdf" ? "firebase" : "cloudinary",
         user:
           currentUser?.displayName ||
-          (currentUser?.email
-            ? currentUser.email.split("@")[0]
-            : "Guest User"),
+          (currentUser?.email ? currentUser.email.split("@")[0] : "Guest User"),
         userId: currentUser?.uid || "guest_" + Date.now(),
         userPic: currentUser?.photoURL || "icons/avatar.jpg",
       });
@@ -149,7 +174,6 @@ export default function UploadPost() {
                 loop
                 playsInline
                 controls
-                muted={false} // 🔊 default unmuted
                 style={{
                   maxHeight: 200,
                   borderRadius: 10,
@@ -189,10 +213,7 @@ export default function UploadPost() {
         {/* 📤 Upload form */}
         <form onSubmit={handleUpload} className="d-flex flex-column gap-3">
           <div className="d-flex gap-2">
-            <label
-              className="btn btn-outline-primary flex-fill"
-              style={{ borderRadius: 12 }}
-            >
+            <label className="btn btn-outline-primary flex-fill" style={{ borderRadius: 12 }}>
               <BsImage className="me-1" /> Image
               <input
                 type="file"
@@ -206,10 +227,7 @@ export default function UploadPost() {
               />
             </label>
 
-            <label
-              className="btn btn-outline-success flex-fill"
-              style={{ borderRadius: 12 }}
-            >
+            <label className="btn btn-outline-success flex-fill" style={{ borderRadius: 12 }}>
               🎥 Video
               <input
                 type="file"
@@ -222,10 +240,7 @@ export default function UploadPost() {
               />
             </label>
 
-            <label
-              className="btn btn-outline-danger flex-fill"
-              style={{ borderRadius: 12 }}
-            >
+            <label className="btn btn-outline-danger flex-fill" style={{ borderRadius: 12 }}>
               📄 PDF
               <input
                 type="file"
