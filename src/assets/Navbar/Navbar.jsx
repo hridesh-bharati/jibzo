@@ -5,7 +5,7 @@ import { auth, db } from "../../assets/utils/firebaseConfig";
 import { ref, onValue, get, update } from "firebase/database";
 import { onAuthStateChanged } from "firebase/auth";
 import { toast } from "react-toastify";
-
+import './Navbar.css'
 const Navbar = () => {
   const navigate = useNavigate();
   const [currentUid, setCurrentUid] = useState(null);
@@ -201,110 +201,94 @@ const Navbar = () => {
   const openPost = (postId) => { navigate(`/post/${postId}`); setIsNotifOpen(false); };
 
   return (
-    <nav className="navbar bg-white shadow-sm border-0 position-relative" style={{ zIndex: 3000 }}>
-      <div className="container d-flex align-items-center m-0 p-0">
-        <Link to="/home" className="fw-bold text-primary d-inline-flex align-items-center">
-          <img src="icons/logo.png" className="img-fluid" width={120} alt="logo" />
-        </Link>
+  <nav className="navbar shadow-sm p-2 d-flex align-items-center justify-content-between">
+  {/* Logo */}
+  <Link to="/home" className="d-flex align-items-center">
+    <img src="icons/logo.png" width={100} alt="logo" />
+  </Link>
 
-        <div className="ms-auto d-flex align-items-center gap-3">
-          {/* Friend Requests */}
-          <div className="position-relative">
-            <button className="btn btn-sm position-relative p-0 m-0" onClick={() => setIsFriendReqOpen(prev => !prev)} style={{ border: 0, background: "transparent" }}>
-              <i className="bi bi-person-plus-fill fs-3 text-success"></i>
-              {friendRequests.length > 0 && <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">{friendRequests.length}</span>}
-            </button>
-            {isFriendReqOpen && (
-              <div className="inbox-dropdown">
-                <h6 className="fw-bold mb-2">Friend Requests</h6>
-                {friendRequests.length === 0 ? <p className="text-center text-muted">No requests</p> :
-                  friendRequests.map(req => (
-                    <div key={req.uid} className="d-flex align-items-center justify-content-between mb-2">
-                      <div className="d-flex align-items-center">
-                        <img src={req.photoURL} width={35} height={35} className="rounded-circle me-2" alt={req.username} />
-                        <span>{req.username}</span>
-                      </div>
-                      <div className="btn-group btn-sm">
-                        <button className="btn btn-sm btn-primary" onClick={() => acceptRequest(req.uid)}>Accept</button>
-                        <button className="btn btn-sm btn-outline-secondary" onClick={() => rejectRequest(req.uid)}>Reject</button>
-                      </div>
-                    </div>
-                  ))
-                }
+  <div className="d-flex align-items-center gap-3">
+
+    {/* Friend Requests */}
+    <div className="position-relative">
+      <button className="icon-btn" onClick={() => setIsFriendReqOpen(prev => !prev)}>
+        <i className="bi bi-person-plus-fill fs-4 text-success"></i>
+        {friendRequests.length > 0 && (
+          <span className="badge">{friendRequests.length > 99 ? "99+" : friendRequests.length}</span>
+        )}
+      </button>
+
+      {isFriendReqOpen && (
+        <div className="dropdown-card">
+          <h6>Friend Requests</h6>
+          {friendRequests.length === 0 ? <p className="text-muted">No requests</p> :
+            friendRequests.map(req => (
+              <div key={req.uid} className="d-flex align-items-center justify-content-between mb-2">
+                <div className="d-flex align-items-center gap-2">
+                  <img src={req.photoURL} className="avatar-sm" alt={req.username} />
+                  <span>{req.username}</span>
+                </div>
+                <div className="btn-group-sm">
+                  <button className="btn btn-sm btn-primary" onClick={() => acceptRequest(req.uid)}>Accept</button>
+                  <button className="btn btn-sm btn-outline-secondary" onClick={() => rejectRequest(req.uid)}>Reject</button>
+                </div>
               </div>
-            )}
-          </div>
-
-          {/* Messages */}
-          <div className="position-relative">
-            <button className="btn btn-sm position-relative p-0 m-0" onClick={toggleInbox} style={{ border: 0, background: "transparent" }}>
-              <i className="bi bi-chat-dots-fill fs-3 text-primary"></i>
-              {unreadCount > 0 && <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">{unreadCount > 99 ? "99+" : unreadCount}</span>}
-            </button>
-            {isInboxOpen && (
-              <div className="inbox-dropdown">
-                <h6 className="fw-bold mb-2">Messages</h6>
-                {unreadUsers.length === 0 ? <p className="text-center text-muted">No unread messages</p> :
-                  unreadUsers.map(user => (
-                    <div key={user.uid} className="cursor-pointer d-flex align-items-center p-2 rounded mb-1 hover-bg" onClick={() => openChat(user.uid)}>
-                      <img src={`https://ui-avatars.com/api/?name=${user.username}&background=random`} width={35} height={35} className="rounded-circle me-2" alt={user.username} />
-                      <div className="flex-grow-1">
-                        <strong>{user.username}</strong>
-                        <div className="text-muted small">{user.unreadCount} unread</div>
-                      </div>
-                      <span className="badge bg-danger">{user.unreadCount}</span>
-                    </div>
-                  ))
-                }
-              </div>
-            )}
-          </div>
-
-          {/* Likes */}
-          <div className="position-relative">
-            <button className="btn btn-sm position-relative p-0 m-0" onClick={toggleNotif} style={{ border: 0, background: "transparent" }}>
-              <i className="bi bi-heart-fill fs-3 text-danger"></i>
-              {unreadLikes > 0 && <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">{unreadLikes > 99 ? "99+" : unreadLikes}</span>}
-            </button>
-            {isNotifOpen && (
-              <div className="inbox-dropdown">
-                <h6 className="fw-bold mb-2">Likes</h6>
-                {notifications.length === 0 ? <p className="text-center text-muted">No likes yet</p> :
-                  notifications.map(notif => (
-                    <div key={notif.id} className="d-flex align-items-center justify-content-between mb-2 cursor-pointer" onClick={() => openPost(notif.postId)}>
-                      <div>❤️ <strong>{notif.likerName}</strong> liked <span>{notif.postCaption}</span></div>
-                      <small className="text-muted">{new Date(notif.timestamp).toLocaleString()}</small>
-                    </div>
-                  ))
-                }
-              </div>
-            )}
-          </div>
-
-        </div>
-      </div>
-
-      <style>
-        {`
-          .inbox-dropdown {
-            position: absolute;
-            top: 56px;
-            right: 0;
-            border: 1px solid #ccc;
-            background-color: white;
-            width: 320px;
-            max-height: 360px;
-            overflow-y: auto;
-            box-shadow: 0px 8px 18px rgba(0,0,0,0.12);
-            z-index: 2500;
-            border-radius: 8px;
-            padding: 8px;
+            ))
           }
-          .cursor-pointer { cursor: pointer; list-style:none; }
-          .hover-bg:hover { background-color: #f8f9fa; }
-        `}
-      </style>
-    </nav>
+        </div>
+      )}
+    </div>
+
+    {/* Messages */}
+    <div className="position-relative">
+      <button className="icon-btn" onClick={toggleInbox}>
+        <i className="bi bi-chat-dots-fill fs-4 text-primary"></i>
+        {unreadCount > 0 && <span className="badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
+      </button>
+      {isInboxOpen && (
+        <div className="dropdown-card">
+          <h6>Messages</h6>
+          {unreadUsers.length === 0 ? <p className="text-muted">No unread messages</p> :
+            unreadUsers.map(user => (
+              <div key={user.uid} className="d-flex align-items-center gap-2 cursor-pointer" onClick={() => openChat(user.uid)}>
+                <img src={`https://ui-avatars.com/api/?name=${user.username}&background=random`} className="avatar-sm" alt={user.username} />
+                <div className="flex-grow-1">
+                  <strong>{user.username}</strong>
+                  <div className="text-muted small">{user.unreadCount} unread</div>
+                </div>
+                <span className="badge">{user.unreadCount}</span>
+              </div>
+            ))
+          }
+        </div>
+      )}
+    </div>
+
+    {/* Likes */}
+    <div className="position-relative">
+      <button className="icon-btn" onClick={toggleNotif}>
+        <i className="bi bi-heart-fill fs-4 text-danger"></i>
+        {unreadLikes > 0 && <span className="badge">{unreadLikes > 99 ? "99+" : unreadLikes}</span>}
+      </button>
+      {isNotifOpen && (
+        <div className="dropdown-card">
+          <h6>Likes</h6>
+          {notifications.length === 0 ? <p className="text-muted">No likes yet</p> :
+            notifications.map(n => (
+              <div key={n.id} className="d-flex align-items-center justify-content-between mb-2 cursor-pointer" onClick={() => openPost(n.postId)}>
+                <div>❤️ <strong>{n.likerName}</strong> liked <span>{n.postCaption}</span></div>
+                <small className="text-muted">{new Date(n.timestamp).toLocaleTimeString()}</small>
+              </div>
+            ))
+          }
+        </div>
+      )}
+    </div>
+
+  </div>
+ 
+</nav>
+
   );
 };
 

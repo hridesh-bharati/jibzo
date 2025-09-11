@@ -83,12 +83,15 @@ function VideoPreview({ src, id, videoRefs, onOpen }) {
       ref={refEl}
       data-id={id}
       src={src}
-      className="w-100"
+      className="video-preview"
       style={{
-        maxHeight: "80vh",
+        width: "auto",          // actual width
+        height: "auto",         // actual height
+        maxWidth: "100%",       // prevent overflow
+        maxHeight: "80vh",      // limit to viewport
         borderRadius: 8,
-        objectFit: "cover",
         cursor: "pointer",
+        background: "#000",     // optional: black bars
       }}
       loop
       playsInline
@@ -96,6 +99,7 @@ function VideoPreview({ src, id, videoRefs, onOpen }) {
       controls={false}
       onClick={() => onOpen(src)}
     />
+
   );
 }
 
@@ -112,7 +116,7 @@ function ReelsPlayer({ posts }) {
           const v = videoRefs.current[entry.target.dataset.id];
           if (!v) return;
           if (entry.isIntersecting && entry.intersectionRatio > 0.8) {
-            v.play().catch(() => {});
+            v.play().catch(() => { });
           } else {
             v.pause();
           }
@@ -124,7 +128,7 @@ function ReelsPlayer({ posts }) {
     Object.values(videoRefs.current).forEach((el) => {
       try {
         observer.observe(el);
-      } catch {}
+      } catch { }
     });
 
     return () => {
@@ -132,7 +136,7 @@ function ReelsPlayer({ posts }) {
         Object.values(videoRefs.current).forEach((el) =>
           observer.unobserve(el)
         );
-      } catch {}
+      } catch { }
     };
   }, [posts]);
 
@@ -150,28 +154,48 @@ function ReelsPlayer({ posts }) {
             position: "relative",
           }}
         >
-          <video
-            ref={(el) => (videoRefs.current[post.id] = el)}
-            data-id={post.id}
-            src={post.src}
-            className="w-100 h-100"
-            style={{ objectFit: "cover" }}
-            loop
-            controls
-            playsInline
-          />
           <div
+            key={post.id}
             style={{
-              position: "absolute",
-              bottom: 20,
-              left: 20,
-              color: "#fff",
-              textShadow: "0 0 5px rgba(0,0,0,0.8)",
+              height: "100vh",
+              scrollSnapAlign: "start",
+              position: "relative",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              background: "#ffffffff",
             }}
           >
-            <strong>{post.user}</strong>
-            <p style={{ margin: 0 }}>{post.caption}</p>
+            <video
+              ref={(el) => (videoRefs.current[post.id] = el)}
+              data-id={post.id}
+              src={post.src}
+              loop
+              playsInline
+              style={{
+                width: "auto",
+                height: "auto",
+                maxWidth: "100%",
+                maxHeight: "90vh",
+                shadow: '2px 2px 10px black',
+                background: "#ffffffff",
+              }}
+            />
+
+            <div
+              style={{
+                position: "absolute",
+                bottom: 20,
+                left: 20,
+                color: "#fff",
+                textShadow: "0 0 5px rgba(255, 255, 255, 0.8)",
+              }}
+            >
+              <strong>{post.user}</strong>
+              <p style={{ margin: 0 }}>{post.caption}</p>
+            </div>
           </div>
+
         </div>
       ))}
     </div>
@@ -204,16 +228,7 @@ function PdfPreview({ url, name }) {
         }}
       />
 
-      {/* Footer Info */}
-      <div style={{ padding: "8px 12px", background: "#f8f9fa" }}>
-        <strong>{name || "Document.pdf"}</strong>
-        <button
-          className="btn btn-sm btn-outline-primary float-end"
-          onClick={() => window.open(url, "_blank")}
-        >
-          Open
-        </button>
-      </div>
+
     </div>
   );
 }
@@ -314,7 +329,7 @@ export default function GetPost({ showFilter = true }) {
           if (!v) return;
           if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
             v.muted = false;
-            v.play().catch(() => {});
+            v.play().catch(() => { });
           } else {
             v.pause();
           }
@@ -326,7 +341,7 @@ export default function GetPost({ showFilter = true }) {
     Object.values(videoRefs.current).forEach((el) => {
       try {
         observer.observe(el);
-      } catch {}
+      } catch { }
     });
 
     return () => {
@@ -334,7 +349,7 @@ export default function GetPost({ showFilter = true }) {
         Object.values(videoRefs.current).forEach((el) =>
           observer.unobserve(el)
         );
-      } catch {}
+      } catch { }
     };
   }, [posts, filter]);
 
@@ -344,7 +359,7 @@ export default function GetPost({ showFilter = true }) {
       Object.values(videoRefs.current).forEach((v) => {
         try {
           v && v.pause();
-        } catch {}
+        } catch { }
       });
     }
   }, [fullscreenSrc]);
@@ -386,22 +401,21 @@ export default function GetPost({ showFilter = true }) {
   return (
     <div className="container-fluid p-0 mt-3">
       {/* Tabs → only render if showFilter = true */}
-{showFilter && (
-  <div className="d-flex justify-content-center gap-2 mb-3">
-    {["all", "image", "video", "pdf"].map((t) => (
-      <button
-        key={t}
-        className={`btn btn-sm threeD-btn ${
-          filter === t ? "active-btn" : ""
-        }`}
-        onClick={() => setFilter(t)}
-      >
-        {t.toUpperCase()}
-      </button>
-    ))}
-  </div>
-  
-)}
+      {showFilter && (
+        <div className="d-flex justify-content-center gap-2 mb-3">
+          {["all", "image", "video", "pdf"].map((t) => (
+            <button
+              key={t}
+              className={`btn btn-sm threeD-btn ${filter === t ? "active-btn" : ""
+                }`}
+              onClick={() => setFilter(t)}
+            >
+              {t.toUpperCase()}
+            </button>
+          ))}
+        </div>
+
+      )}
 
 
       {/* Video tab → reels */}
@@ -442,25 +456,39 @@ export default function GetPost({ showFilter = true }) {
                   <div className="p-2">{renderPreview(post)}</div>
 
                   <div className="card-body p-2">
-                    <div className="d-flex align-items-center mb-2">
-                      <Heart
-                        liked={liked}
-                        onToggle={() => toggleLike(post.id)}
-                      />
-                      <small className="ms-2 text-muted">
-                        {likeCount} likes
-                      </small>
+                    <div className="d-flex align-items-center justify-content-between mb-2">
+                      <div className="d-flex align-items-center justify-content-between">
+                        <Heart
+                          liked={liked}
+                          onToggle={() => toggleLike(post.id)}
+                        />
+                        <small className="ms-2 text-muted">
+                          {likeCount} likes
+                        </small>
+                      </div>
                       <button
-                        className="btn btn-link p-0 mx-3"
+                        className="btn btn-link text-muted p-0 mx-3"
                         onClick={() =>
                           document
                             .getElementById(`commentInput_${post.id}`)
                             ?.focus()
                         }
                       >
-                        <i className="bi bi-chat fs-4"></i>
+                        <i className="bi bi-chat fs-1"></i>
                       </button>
                       <ShareButton link={post.src} />
+                      {post.type === "pdf" && (
+                        <div className="d-flex align-items-center justify-content-between">
+                          <button
+                            className="btn btn-sm btn-light d-flex align-items-center"
+                            onClick={() => window.open(post.url || post.src, "_blank")}
+                          >
+                            <i className="bi bi-file-earmark-pdf fs-4 text-danger me-2"></i>
+                            Open PDF
+                          </button>
+                        </div>
+                      )}
+
                     </div>
 
                     <p>
@@ -526,7 +554,8 @@ export default function GetPost({ showFilter = true }) {
       <div
         className="offcanvas offcanvas-bottom"
         id="imageOffcanvas"
-        style={{ height: "40vh" }}
+        data-bs-backdrop="false"
+        style={{ height: "40vh", zIndex: 1000 }}
       >
         <div className="offcanvas-header">
           <h5>Options</h5>
@@ -558,6 +587,7 @@ export default function GetPost({ showFilter = true }) {
           )}
         </div>
       </div>
+
 
       {/* Fullscreen video modal */}
       <FullscreenVideoModal

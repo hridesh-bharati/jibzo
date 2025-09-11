@@ -25,7 +25,8 @@ const buttonStyle = (isActive) => ({
   position: "relative",
   transition: "all 0.3s ease-in-out",
   boxShadow: isActive ? "0 4px 12px rgba(0, 122, 255, 0.4)" : "none",
-  overflow: "hidden", // for DP circle
+  overflow: "hidden", 
+  zIndex:1100
 });
 
 export default function BottomFooter() {

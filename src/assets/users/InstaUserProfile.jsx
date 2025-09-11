@@ -1,4 +1,3 @@
-
 // src/assets/users/UserProfile.jsx
 import React, { useEffect, useState } from "react";
 import { db, auth } from "../../assets/utils/firebaseConfig";
@@ -11,7 +10,7 @@ import {
   push,
   serverTimestamp,
 } from "firebase/database";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { toast } from "react-toastify";
 import Heart from "../../assets/uploads/Heart";
 import ShareButton from "../../assets/uploads/ShareBtn";
@@ -22,6 +21,7 @@ export default function UserProfile() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [commentText, setCommentText] = useState("");
+  const [filter, setFilter] = useState("all");
 
   const currentUser = auth.currentUser;
 
@@ -42,10 +42,7 @@ export default function UserProfile() {
           id,
           ...val,
         }));
-        // check uid or userId
-        const uPosts = all.filter(
-          (p) => p.uid === uid || p.userId === uid
-        );
+        const uPosts = all.filter((p) => p.uid === uid || p.userId === uid);
         setPosts(uPosts);
       } else {
         setPosts([]);
@@ -63,10 +60,8 @@ export default function UserProfile() {
   if (!userData) return <p>No user found</p>;
 
   const isLocked = userData?.isLocked === true;
-  const isFriend =
-    currentUser && userData?.friends && userData.friends[currentUser.uid];
-  const isFollowing =
-    currentUser && userData?.followers && userData.followers[currentUser.uid];
+  const isFriend = currentUser && userData?.friends?.[currentUser.uid];
+  const isFollowing = currentUser && userData?.followers?.[currentUser.uid];
   const hasRequested =
     currentUser &&
     userData?.followRequests?.received &&
@@ -74,7 +69,7 @@ export default function UserProfile() {
       currentUser.uid
     );
 
-  // follow request
+  // Follow request
   const sendRequest = async () => {
     if (!currentUser) return toast.error("Login first!");
     await update(ref(db), {
@@ -84,7 +79,6 @@ export default function UserProfile() {
     toast.success("Follow request sent ✅");
   };
 
-  // cancel request
   const cancelRequest = async () => {
     if (!currentUser) return;
     await update(ref(db), {
@@ -94,7 +88,6 @@ export default function UserProfile() {
     toast.info("Request canceled ❌");
   };
 
-  // unfollow
   const unfollow = async () => {
     if (!currentUser) return;
     await update(ref(db), {
@@ -108,7 +101,6 @@ export default function UserProfile() {
     toast.info("Unfollowed");
   };
 
-  // like toggle
   const toggleLike = async (id) => {
     const userId = currentUser?.uid;
     if (!userId) return;
@@ -121,7 +113,6 @@ export default function UserProfile() {
     }
   };
 
-  // add comment
   const addComment = async (id) => {
     if (!commentText.trim()) return;
     await push(ref(db, `galleryImages/${id}/comments`), {
@@ -136,15 +127,18 @@ export default function UserProfile() {
     setCommentText("");
   };
 
-  // delete comment
   const deleteComment = async (postId, commentId, commentUserId) => {
     if (currentUser?.uid === commentUserId) {
       await remove(ref(db, `galleryImages/${postId}/comments/${commentId}`));
     }
   };
 
+  // Filtered posts
+  const filteredPosts =
+    filter === "all" ? posts : posts.filter((p) => p.type === filter);
+
   return (
-    <div className="container mt-3">
+    <div className="container mt-2 mb-5">
       {/* Profile info */}
       <div className="d-flex align-items-center mb-3">
         <img
@@ -161,10 +155,45 @@ export default function UserProfile() {
         <div>
           <h5>{userData.username}</h5>
           <p className="text-muted">{userData.email}</p>
+
+          {/* Followers / Following / Requests */}
+          {!(isLocked && !isFriend && currentUser?.uid !== uid) && (
+            <div className="d-flex gap-2 mt-2 flex-wrap">
+              <Link
+                to={`/followers/${uid}`}
+                className="btn btn-sm btn-outline-primary"
+              >
+                Followers:{" "}
+                {userData.followers
+                  ? Object.keys(userData.followers).length
+                  : 0}
+              </Link>
+
+              <Link
+                to={`/following/${uid}`}
+                className="btn btn-sm btn-outline-success"
+              >
+                Following:{" "}
+                {userData.following
+                  ? Object.keys(userData.following).length
+                  : 0}
+              </Link>
+
+              {currentUser?.uid === uid && userData.followRequests?.received && (
+                <Link
+                  to={`/requested/${uid}`}
+                  className="btn btn-sm btn-outline-warning"
+                >
+                  Requests:{" "}
+                  {Object.keys(userData.followRequests.received).length}
+                </Link>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Follow / Unfollow / Request */}
+      {/* Follow / Unfollow / Request buttons */}
       {currentUser?.uid !== uid && (
         <div className="mb-3">
           {isFriend || isFollowing ? (
@@ -172,10 +201,7 @@ export default function UserProfile() {
               Unfollow
             </button>
           ) : hasRequested ? (
-            <button
-              className="btn btn-sm btn-secondary"
-              onClick={cancelRequest}
-            >
+            <button className="btn btn-sm btn-secondary" onClick={cancelRequest}>
               Cancel Request
             </button>
           ) : (
@@ -189,17 +215,45 @@ export default function UserProfile() {
       {/* Bio */}
       <p>{userData.bio || "No bio"}</p>
 
+      {/* Post Filters */}
+      <div className="mb-3 d-flex align-items-center justify-content-center  gap-2 flex-wrap border-top pt-2">
+        {["all", "image", "video", "pdf"].map((type) => (
+          <button
+            key={type}
+            className={`btn btn-sm px-3 border-0 myshadow ${filter === type ? "btn-primary" : "btn-outline-secondary"
+              }`}
+            onClick={() => setFilter(type)}
+          >
+            {type === "all"
+              ? "All"
+              : type === "image"
+                ? "Photo"
+                : type === "video"
+                  ? "Video"
+                  : "PDF"}
+          </button>
+        ))}
+      </div>
+
       {/* Posts */}
       {isLocked && !isFriend && currentUser?.uid !== uid ? (
         <p className="text-muted">This profile is locked 🔒</p>
       ) : (
-        <div className="row">
-          {posts.length === 0 && <p>No posts</p>}
-          {posts.map((post) => {
+        <div className="row pb-5">
+          <div className="p-4">
+            <Link
+              to={currentUser?.uid ? `/messages/${uid}` : "/login"}
+              className="chat-3d-btn d-inline-flex align-items-center justify-content-center mb-3"
+            >
+              <i className="bi bi-chat-dots me-2"></i>
+              Chat with {userData.username}
+            </Link>
+          </div>
+
+          {filteredPosts.length === 0 && <p>No posts</p>}
+          {filteredPosts.map((post) => {
             const liked = post.likes?.[currentUser?.uid];
-            const likeCount = post.likes
-              ? Object.keys(post.likes).length
-              : 0;
+            const likeCount = post.likes ? Object.keys(post.likes).length : 0;
 
             return (
               <div key={post.id} className="col-12 col-md-6 mb-3">
@@ -232,6 +286,8 @@ export default function UserProfile() {
                     />
                   )}
 
+
+
                   {/* Body */}
                   <div className="card-body">
                     <p className="mb-2">
@@ -240,29 +296,25 @@ export default function UserProfile() {
 
                     {/* Actions */}
                     <div className="d-flex align-items-center mb-2">
-                      <Heart
-                        liked={liked}
-                        onToggle={() => toggleLike(post.id)}
-                      />
-                      <small className="text-muted ms-2">
-                        {likeCount} likes
-                      </small>
+                      <Heart liked={liked} onToggle={() => toggleLike(post.id)} />
+                      <small className="text-muted ms-2">{likeCount} likes</small>
 
-                      <button
-                        className="btn btn-link p-0 mx-3 text-dark"
-                        onClick={() => {
-                          const input = document.getElementById(
-                            `commentInput_${post.id}`
-                          );
-                          if (input) input.focus();
-                        }}
+                      <button className="btn btn-link p-0 mx-3 text-dark" onClick={() => {
+                        const input = document.getElementById(
+                          `commentInput_${post.id}`
+                        );
+                        if (input) input.focus();
+                      }}
                       >
                         <i className="bi bi-chat fs-5"></i>
                       </button>
-
                       <ShareButton link={post.url || post.src} />
-                    </div>
 
+                      {post.type === "pdf" && (<button className="bg-light btn btn-sm" onClick={() => window.open(post.url || post.src, "_blank")}>
+                        <i className="bi bi-file-earmark-pdf fs-1 text-danger"></i>Open
+                      </button>
+                      )}
+                    </div>
                     {/* Comments */}
                     <div
                       className="comments mb-2"
@@ -270,11 +322,7 @@ export default function UserProfile() {
                     >
                       {post.comments &&
                         Object.entries(post.comments)
-                          .sort(
-                            (a, b) =>
-                              (a[1].timestamp || 0) -
-                              (b[1].timestamp || 0)
-                          )
+                          .sort((a, b) => (a[1].timestamp || 0) - (b[1].timestamp || 0))
                           .map(([cid, comment]) => (
                             <div
                               key={cid}
@@ -282,20 +330,14 @@ export default function UserProfile() {
                               style={{ fontSize: "0.9rem" }}
                             >
                               <div>
-                                <strong>
-                                  {comment.userName || "User"}
-                                </strong>
-                                : {comment.text}
+                                <strong>{comment.userName || "User"}</strong>:{" "}
+                                {comment.text}
                               </div>
                               {currentUser?.uid === comment.userId && (
                                 <button
                                   className="btn btn-sm btn-close"
                                   onClick={() =>
-                                    deleteComment(
-                                      post.id,
-                                      cid,
-                                      comment.userId
-                                    )
+                                    deleteComment(post.id, cid, comment.userId)
                                   }
                                 />
                               )}
@@ -312,9 +354,7 @@ export default function UserProfile() {
                         placeholder="Add a comment..."
                         value={commentText}
                         onChange={(e) => setCommentText(e.target.value)}
-                        onKeyDown={(e) =>
-                          e.key === "Enter" && addComment(post.id)
-                        }
+                        onKeyDown={(e) => e.key === "Enter" && addComment(post.id)}
                       />
                       <button
                         className="btn btn-primary"

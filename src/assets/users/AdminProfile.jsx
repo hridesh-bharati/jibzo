@@ -15,61 +15,107 @@ const VideoFeed = ({ videos, startIndex, onClose }) => {
   const containerRef = useRef(null);
   const videoRefs = useRef([]);
 
+  // Scroll to initial video
   useEffect(() => {
-    setCurrentIndex(startIndex);
     if (containerRef.current) {
       containerRef.current.scrollTo({
         top: startIndex * window.innerHeight,
-        behavior: "instant",
+        behavior: "auto", // instant scroll
       });
     }
   }, [startIndex]);
 
+  // Handle scroll snapping
   useEffect(() => {
     const container = containerRef.current;
     const handleScroll = () => {
       const index = Math.round(container.scrollTop / window.innerHeight);
       if (index !== currentIndex) setCurrentIndex(index);
     };
-    container.addEventListener("scroll", handleScroll);
+    container.addEventListener("scroll", handleScroll, { passive: true });
     return () => container.removeEventListener("scroll", handleScroll);
   }, [currentIndex]);
 
+  // Play only current video
   useEffect(() => {
     videoRefs.current.forEach((vid, i) => {
-      if (vid) {
-        if (i === currentIndex) {
-          vid.play().catch(() => {});
-        } else {
-          vid.pause();
-        }
-      }
+      if (!vid) return;
+      if (i === currentIndex) vid.play().catch(() => { });
+      else vid.pause();
     });
   }, [currentIndex]);
 
   return (
     <div
       className="position-fixed top-0 start-0 w-100 h-100 bg-black"
-      style={{ zIndex: 1050, overflowY: "scroll", scrollSnapType: "y mandatory" }}
+      style={{
+        zIndex: 1050,
+        overflowY: "scroll",
+        scrollSnapType: "y mandatory",
+      }}
       ref={containerRef}
-      onClick={onClose}
     >
       {videos.map((video, i) => (
         <div
           key={video.id}
-          className="w-100 d-flex justify-content-center align-items-center"
-          style={{ height: "100vh", scrollSnapAlign: "start" }}
+          style={{
+            height: "100vh", // container full height for scroll
+            width: "100%",
+            scrollSnapAlign: "start",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            position: "relative",
+            background: "white", // optional: black bars
+          }}
         >
           <video
             ref={(el) => (videoRefs.current[i] = el)}
             src={video.src}
-            className="w-100 h-100 object-fit-cover"
-            style={{ maxHeight: "100vh" }}
+            style={{
+              width: "auto",   // actual width of the video
+              height: "auto",  // actual height of the video
+              maxWidth: "100%",  // prevent overflow
+              maxHeight: "90vh", // limit to viewport
+            }}
             loop
-            controls
+            controls={false} // hide controls
           />
+
+          {/* Info overlay */}
+          <div
+            style={{
+              position: "absolute",
+              top: 20,
+              left: 20,
+              background: "rgba(255, 255, 255, 0.24)",
+              padding: "8px 12px",
+              borderRadius: "8px",
+            }}
+          >
+            <i className="bi bi-eye"></i> 200k
+          </div>
+
+          {/* Close button */}
+          <button
+            onClick={onClose}
+            style={{
+              position: "absolute",
+              top: 20,
+              right: 20,
+              background: "rgba(12, 4, 4, 0.5)",
+              border: "none",
+              color: "#fff",
+              padding: "8px 12px",
+              borderRadius: "8px",
+              cursor: "pointer",
+            }}
+          >
+            Close ✕
+          </button>
         </div>
       ))}
+
     </div>
   );
 };
@@ -86,7 +132,7 @@ const ImageViewer = ({ src, onClose }) => (
     <img
       src={src}
       alt="Fullscreen"
-      className="img-fluid"
+      className="img-fluid rounded"
       style={{ maxHeight: "90%", maxWidth: "90%" }}
     />
   </div>
@@ -175,28 +221,21 @@ const AdminProfile = () => {
   // DP Upload
   const handleDpUpdate = async () => {
     if (!currentUser || !file) return toast.warn("Select an image first!");
-
-    if (!cloudinaryPreset || !cloudinaryCloud) {
-      toast.error("❌ Cloudinary ENV not configured!");
-      return;
-    }
+    if (!cloudinaryPreset || !cloudinaryCloud) return toast.error("❌ Cloudinary ENV not configured!");
 
     setUploading(true);
     try {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("upload_preset", cloudinaryPreset);
-
       const res = await axios.post(
         `https://api.cloudinary.com/v1_1/${cloudinaryCloud}/image/upload`,
         formData
       );
-
       const photoURL = res.data.secure_url;
       await update(ref(db, `usersData/${currentUser.uid}`), { photoURL });
       await updateProfile(currentUser, { photoURL });
       setProfileData((prev) => ({ ...prev, photoURL }));
-
       toast.success("🎉 Profile picture updated!");
     } catch (err) {
       console.error(err);
@@ -254,128 +293,156 @@ const AdminProfile = () => {
   return (
     <div className="container my-5" style={{ maxWidth: 900 }}>
       {/* Profile Info */}
-      <div className="row d-flex align-items-start justify-content-center mb-4">
-        <div className="col-4 d-flex flex-column justify-content-center align-items-center text-center">
-          <img
-            src={profileData.photoURL || "https://via.placeholder.com/150?text=Profile"}
-            alt="Profile"
-            className="rounded-circle mb-2"
-            width={100}
-            height={100}
-            style={{ objectFit: "cover" }}
-          />
-          {isOwner && (
-            <>
+      <div className="row d-flex align-items-start justify-content-center mb-5 gap-3">
+        <div className="col-auto text-center">
+          <div className="position-relative">
+            <img
+              src={profileData.photoURL || "https://via.placeholder.com/150?text=Profile"}
+              alt="Profile"
+              className="rounded-circle mb-2 shadow"
+              width={120}
+              height={120}
+              style={{ objectFit: "cover", border: "3px solid #007bff" }}
+            />
+            {isOwner && (
               <input
                 type="file"
-                className="form-control mb-2"
+                className="position-absolute bottom-0 end-0 form-control p-0"
+                style={{ width: 35, height: 35, borderRadius: "50%", cursor: "pointer" }}
                 accept="image/*"
                 onChange={(e) => setFile(e.target.files[0])}
-                style={{ width: "100px", height: "35px" }}
               />
-              <button
-                className="btn btn-primary btn-sm mb-2"
-                onClick={handleDpUpdate}
-                disabled={uploading}
-              >
-                {uploading ? "Uploading..." : "Upload DP"}
-              </button>
-            </>
-          )}
+            )}
+          </div>
           {isOwner && (
             <button
-              className={`btn ${profileData.isLocked ? "btn-warning" : "btn-outline-warning"} btn-sm`}
-              onClick={toggleLockProfile}
+              className="threeD-btn blueBtn mt-2"
+              onClick={handleDpUpdate}
+              disabled={uploading}
             >
-              {profileData.isLocked ? "Unlock Profile 🔓" : "Lock Profile 🔒"}
+              {uploading ? "Uploading..." : "Upload DP"}
             </button>
           )}
         </div>
-        <div className="col-8">
-          <h2>{profileData.username}</h2>
-          <p>
+
+        <div className="col text-start d-flex flex-column justify-content-center gap-2">
+          <h2 className="fw-bold">{profileData.username}</h2>
+          <p className="mb-1">
             <strong>Email:</strong> {profileData.email || "Not provided"}
           </p>
-          <p>
+          <p className="mb-1">
             <strong>Bio:</strong> {profileData.bio || "No bio yet"}
           </p>
+          {/* Followers/Following/Requested / Lock buttons/ Dp canger */}
+          <div className="d-flex flex-wrap gap-2 mt-2">
+            <button className="threeD-btn redBtn" onClick={() => navigate(`/followers/${uid}`)}>
+              Followers: {followers.length}
+            </button>
+            <button className="threeD-btn yellowBtn" onClick={() => navigate(`/following/${uid}`)}>
+              Following: {following.length}
+            </button>
+            <button className="threeD-btn blueBtn" onClick={() => navigate(`/requested/${uid}`)}>
+              Requested: {requested.length}
+            </button>
+            {isOwner && (
+              <button
+                className={`threeD-btn ${profileData.isLocked ? "redBtn" : "lightGrayBtn"}`}
+                onClick={toggleLockProfile}
+              >
+                {profileData.isLocked ? "Unlock Profile 🔓" : "Lock Profile🔒"}
+              </button>
+            )}
 
-          {/* Followers/Following/Requested */}
-          <div className="d-flex gap-1 small p-0  my-2 mx-0">
-            <button
-              className="btn btn-outline-primary btn-sm"
-              onClick={() => navigate(`/followers/${uid}`)}
-            >
-              Followers ({followers.length})
-            </button>
-            <button
-              className="btn btn-outline-primary btn-sm"
-              onClick={() => navigate(`/following/${uid}`)}
-            >
-              Following ({following.length})
-            </button>
-            <button
-              className="btn btn-outline-secondary btn-sm"
-              onClick={() => navigate(`/requested/${uid}`)}
-            >
-              Requested ({requested.length})
-            </button>
+            <button class="btn btn-primary threeD-btn blueBtn" type="button" data-bs-toggle="collapse" data-bs-target="#collapseExample" aria-expanded="false" aria-controls="collapseExample">
+              Edit Bio</button>
+
           </div>
         </div>
       </div>
 
-      {/* Bio Edit */}
+      {/* Bio Edit Accordion */}
       {isOwner && (
-        <div className="accordion my-3" id="profileEditAccordion">
-          <div className="accordion-item">
-            <h2 className="accordion-header" id="headingBio">
-              <button
-                className="accordion-button bg-light"
-                type="button"
-                data-bs-toggle="collapse"
-                data-bs-target="#collapseBio"
-              >
-                Edit Bio
-              </button>
-            </h2>
-            <div id="collapseBio" className="accordion-collapse collapse">
-              <div className="accordion-body">
-                <textarea
-                  className="form-control mb-2"
-                  rows={3}
-                  value={bio}
-                  onChange={(e) => setBio(e.target.value)}
-                />
-                <button className="btn btn-success" onClick={handleBioUpdate}>
-                  Save Bio
-                </button>
-              </div>
-            </div>
+        <div class="collapse mb-5 text-end" id="collapseExample">
+          <div className="accordion-body">
+            <textarea
+              className="form-control mb-2"
+              rows={5}
+              value={bio}
+              onChange={(e) => setBio(e.target.value)}
+              placeholder="Write something about yourself..."
+            />
+            <button className="threeD-btn blueBtn" onClick={handleBioUpdate}>
+              Save Bio
+            </button>
           </div>
         </div>
       )}
 
       {/* Tabs */}
-      <ul className="nav nav-tabs mb-3">
+      <div className="mobile-tab-bar">
         {"all,image,video,pdf".split(",").map((tab) => (
-          <li key={tab} className="nav-item">
-            <button
-              className={`nav-link ${activeTab === tab ? "active" : ""}`}
-              onClick={() => setActiveTab(tab)}
-            >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
-            </button>
-          </li>
+          <button
+            key={tab}
+            className={`mobile-tab-btn ${activeTab === tab ? "active" : ""}`}
+            onClick={() => setActiveTab(tab)}
+          >
+            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+          </button>
         ))}
-      </ul>
+        <style>
+          {
+            `
+.mobile-tab-bar {
+  position: sticky;
+  bottom: 0;
+  width: 100%;
+  display: flex;
+  justify-content: space-around;
+  background: #fff;
+  box-shadow: 0 -3px 10px rgba(0,0,0,0.1);
+  padding: 8px 0;
+  border-top-left-radius: 15px;
+  border-top-right-radius: 15px;
+  z-index: 100;
+}
+
+/* Buttons */
+.mobile-tab-btn {
+  flex: 1;
+  text-align: center;
+  padding: 10px 0;
+  border: none;
+  background: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #555;
+  transition: all 0.2s ease;
+  border-radius: 12px;
+  margin: 0 4px;
+}
+
+/* Active tab */
+.mobile-tab-btn.active {
+  background: #007bff;
+  color: #fff;
+  box-shadow: 0 4px 8px rgba(0,123,255,0.3);
+}
+
+.mobile-tab-btn:active {
+  transform: translateY(2px);
+}
+
+`
+          }
+        </style>
+      </div>
 
       {/* Posts */}
-      <h4>Posts</h4>
       <div className="row g-3 mb-4">
         {filteredPosts.length > 0 ? (
           filteredPosts.map((post) => (
             <div key={post.id} className="col-12 col-sm-6 col-md-4">
-              <div className="card shadow-sm">
+              <div className="card shadow-sm hover-shadow rounded">
                 {post.type === "image" && (
                   <img
                     src={post.src}
@@ -390,7 +457,6 @@ const AdminProfile = () => {
                     src={post.src}
                     className="card-img-top rounded"
                     style={{ objectFit: "cover", height: 200, cursor: "pointer" }}
-                    muted
                     onClick={() => {
                       const videoPostsFiltered = filteredPosts.filter((p) => p.type === "video");
                       const index = videoPostsFiltered.findIndex((v) => v.id === post.id);
@@ -409,11 +475,11 @@ const AdminProfile = () => {
                     title="PDF Preview"
                   />
                 )}
-                <div className="card-body">
-                  <p className="card-text">{post.caption || "No caption"}</p>
+                <div className="card-body d-flex justify-content-between align-items-center">
+                  <p className="card-text mb-0 text-truncate">{post.caption || "No caption"}</p>
                   {isOwner && (
                     <button
-                      className="btn btn-sm btn-danger"
+                      className="threeD-btn redBtn btn-sm"
                       onClick={() => {
                         setSelectedPostId(post.id);
                         setShowDeleteModal(true);
@@ -427,7 +493,7 @@ const AdminProfile = () => {
             </div>
           ))
         ) : (
-          <p>No posts yet.</p>
+          <p className="text-center">No posts yet.</p>
         )}
       </div>
 
@@ -435,29 +501,31 @@ const AdminProfile = () => {
       {showDeleteModal && (
         <div
           className="modal fade show custom-modal"
-          style={{ display: "block" }}
+          style={{ display: "block", backgroundColor: "rgba(0,0,0,0.5)" }}
           onClick={() => setShowDeleteModal(false)}
         >
           <div
             className="modal-dialog modal-dialog-centered modal-sm"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="modal-content border-0 shadow-lg">
+            <div className="modal-content border-0 shadow-lg rounded">
               <div className="modal-header border-0 pb-0">
                 <h6 className="modal-title fw-bold">Delete this post?</h6>
               </div>
               <div className="modal-body pt-2">
                 <p className="small text-muted mb-0">
-                  This action <strong>cannot be undone</strong>. Do you really want to delete this
-                  post?
+                  This action <strong>cannot be undone</strong>. Do you really want to delete this post?
                 </p>
               </div>
-              <div className="modal-footer border-0 pt-2">
-                <button className="btn btn-sm btn-light" onClick={() => setShowDeleteModal(false)}>
+              <div className="modal-footer border-0 pt-2 gap-2">
+                <button
+                  className="threeD-btn lightGrayBtn btn-sm"
+                  onClick={() => setShowDeleteModal(false)}
+                >
                   Cancel
                 </button>
                 <button
-                  className="btn btn-sm btn-danger"
+                  className="threeD-btn redBtn btn-sm"
                   onClick={async () => {
                     await handleDeletePost(selectedPostId);
                     setShowDeleteModal(false);
@@ -473,11 +541,13 @@ const AdminProfile = () => {
 
       {/* Logout */}
       {isOwner && (
-        <button className="btn btn-danger mb-2" onClick={handleLogout}>
+        <button className="threeD-btn blackBtn mb-2" onClick={handleLogout}>
           Logout
         </button>
       )}
-      <div className="bg-light p-4 rounded shadow-sm text-center mb-5">
+
+      {/* Footer */}
+      <div className="bg-light p-4 rounded shadow-sm text-center mt-2 mb-5">
         <h6 className="mb-1 fw-bold">Hridesh Bharati</h6>
         <p className="mb-0 text-muted small">Founder & Creator of this App</p>
       </div>
@@ -490,9 +560,7 @@ const AdminProfile = () => {
           onClose={() => setShowVideoFeed(false)}
         />
       )}
-      {showImageViewer && (
-        <ImageViewer src={showImageViewer} onClose={() => setShowImageViewer(null)} />
-      )}
+      {showImageViewer && <ImageViewer src={showImageViewer} onClose={() => setShowImageViewer(null)} />}
     </div>
   );
 };

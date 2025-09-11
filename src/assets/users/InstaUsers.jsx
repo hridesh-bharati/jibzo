@@ -71,9 +71,9 @@ export default function AllUsers() {
   const openUserProfile = (userUID) => navigate(`/user-profile/${userUID}`);
 
   return (
-    <div className="container mt-3" style={{ maxWidth: 600 }}>
+    <div className="container my-3" style={{ maxWidth: 600 }}>
       <h3 className="mb-3">All Users</h3>
-      <ul className="list-group">
+      <ul className="list-group mb-5">
         {users
           .filter((u) => u.uid !== currentUser?.uid)
           .map((user) => (

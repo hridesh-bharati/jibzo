@@ -7,7 +7,7 @@ import axios from "axios";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import Compressor from "compressorjs";
-import { BsImage, BsUpload, BsHash } from "react-icons/bs";
+import { BsImage, BsUpload, BsHash, BsFileEarmarkPdf, BsCameraVideo } from "react-icons/bs";
 
 const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_NAME;
 const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
@@ -22,7 +22,6 @@ export default function UploadPost() {
   const currentUser = auth.currentUser;
   const storage = getStorage();
 
-  // 📂 Handle file input
   const handleFileChange = (e) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
@@ -45,7 +44,6 @@ export default function UploadPost() {
     }
   };
 
-  // 🚀 Upload handler
   const handleUpload = async (e) => {
     e.preventDefault();
     if (!file) return toast.error("Please select a file.");
@@ -58,7 +56,6 @@ export default function UploadPost() {
       let fileUrl = "";
 
       if (uploadType === "pdf") {
-        // First try Cloudinary RAW upload
         try {
           const formData = new FormData();
           formData.append("file", file);
@@ -78,15 +75,12 @@ export default function UploadPost() {
           );
           fileUrl = res.data.secure_url;
         } catch (cloudErr) {
-          console.warn("Cloudinary blocked PDF, falling back to Firebase Storage");
-          // Firebase fallback
           const storagePath = `pdfs/${Date.now()}_${file.name}`;
           const fileRef = storageRef(storage, storagePath);
           await uploadBytes(fileRef, file);
           fileUrl = await getDownloadURL(fileRef);
         }
       } else {
-        // Image or Video → Cloudinary AUTO
         const formData = new FormData();
         formData.append("file", file);
         formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
@@ -106,9 +100,6 @@ export default function UploadPost() {
         fileUrl = res.data.secure_url;
       }
 
-      if (!fileUrl) throw new Error("Upload failed");
-
-      // ✅ Save in Firebase Realtime DB
       await push(dbRef(db, "galleryImages"), {
         src: fileUrl,
         caption: caption.trim(),
@@ -153,7 +144,6 @@ export default function UploadPost() {
           <BsUpload className="me-2" /> New Post
         </h3>
 
-        {/* 🔍 Preview */}
         {file && (
           <div className="mb-3">
             {uploadType === "image" ? (
@@ -161,11 +151,7 @@ export default function UploadPost() {
                 src={URL.createObjectURL(file)}
                 alt="preview"
                 className="img-fluid"
-                style={{
-                  maxHeight: 200,
-                  borderRadius: 10,
-                  objectFit: "cover",
-                }}
+                style={{ maxHeight: 200, borderRadius: 10, objectFit: "cover" }}
               />
             ) : uploadType === "video" ? (
               <video
@@ -174,12 +160,7 @@ export default function UploadPost() {
                 loop
                 playsInline
                 controls
-                style={{
-                  maxHeight: 200,
-                  borderRadius: 10,
-                  width: "100%",
-                  objectFit: "cover",
-                }}
+                style={{ maxHeight: 200, borderRadius: 10, width: "100%", objectFit: "cover" }}
               />
             ) : uploadType === "pdf" ? (
               <iframe
@@ -191,12 +172,8 @@ export default function UploadPost() {
           </div>
         )}
 
-        {/* 📊 Upload progress */}
         {uploading && (
-          <div
-            className="progress mb-3"
-            style={{ height: 8, borderRadius: 4 }}
-          >
+          <div className="progress mb-3" style={{ height: 8, borderRadius: 4 }}>
             <div
               className="progress-bar progress-bar-striped progress-bar-animated"
               role="progressbar"
@@ -209,8 +186,7 @@ export default function UploadPost() {
             </div>
           </div>
         )}
-
-        {/* 📤 Upload form */}
+        <hr />
         <form onSubmit={handleUpload} className="d-flex flex-column gap-3">
           <div className="d-flex gap-2">
             <label className="btn btn-outline-primary flex-fill" style={{ borderRadius: 12 }}>
@@ -228,7 +204,7 @@ export default function UploadPost() {
             </label>
 
             <label className="btn btn-outline-success flex-fill" style={{ borderRadius: 12 }}>
-              🎥 Video
+              <BsCameraVideo className="me-1" /> Video
               <input
                 type="file"
                 accept="video/*"
@@ -241,7 +217,7 @@ export default function UploadPost() {
             </label>
 
             <label className="btn btn-outline-danger flex-fill" style={{ borderRadius: 12 }}>
-              📄 PDF
+              <BsFileEarmarkPdf className="me-1" /> PDF
               <input
                 type="file"
                 accept=".pdf"
