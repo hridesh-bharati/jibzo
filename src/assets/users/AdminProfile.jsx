@@ -466,12 +466,14 @@ const AdminProfile = () => {
 
       {/* Logout */}
       {isOwner && (
-        <button className="btn btn-danger" onClick={handleLogout}>
+        <button className="btn btn-danger mb-2" onClick={handleLogout}>
           Logout
         </button>
-
       )}
-
+      <div className="bg-light p-4 rounded shadow-sm text-center mb-5">
+        <h6 className="mb-1 fw-bold">Hridesh Bharati</h6>
+        <p className="mb-0 text-muted small">Founder & Creator of this App</p>
+      </div>
       {/* Fullscreen Viewers */}
       {showVideoFeed && (
         <VideoFeed
