@@ -1,7 +1,7 @@
 // src/assets/users/AdminProfile.jsx
 import React, { useEffect, useState, useRef } from "react";
 import { db, auth } from "../../assets/utils/firebaseConfig";
-import { ref, onValue, update, get, remove } from "firebase/database";
+import { ref, onValue, update, remove } from "firebase/database";
 import { signOut, updateProfile } from "firebase/auth";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
@@ -39,7 +39,7 @@ const VideoFeed = ({ videos, startIndex, onClose }) => {
     videoRefs.current.forEach((vid, i) => {
       if (vid) {
         if (i === currentIndex) {
-          vid.play().catch(() => { });
+          vid.play().catch(() => {});
         } else {
           vid.pause();
         }
@@ -120,6 +120,7 @@ const AdminProfile = () => {
   const currentUser = auth.currentUser;
   const uid = paramUid || currentUser?.uid;
 
+  // Cloudinary ENV
   const cloudinaryPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
   const cloudinaryCloud = import.meta.env.VITE_CLOUDINARY_NAME;
 
@@ -135,9 +136,9 @@ const AdminProfile = () => {
       if (data) {
         setProfileData(data);
         setBio(data.bio || "");
-        + setFollowers(Object.keys(data.followers || {}));
-        + setFollowing(Object.keys(data.following || {}));
-        + setRequested(Object.keys(data.followRequests?.received || {}));
+        setFollowers(Object.keys(data.followers || {}));
+        setFollowing(Object.keys(data.following || {}));
+        setRequested(Object.keys(data.followRequests?.received || {}));
       } else setProfileData(null);
       setLoading(false);
     });
@@ -174,6 +175,12 @@ const AdminProfile = () => {
   // DP Upload
   const handleDpUpdate = async () => {
     if (!currentUser || !file) return toast.warn("Select an image first!");
+
+    if (!cloudinaryPreset || !cloudinaryCloud) {
+      toast.error("❌ Cloudinary ENV not configured!");
+      return;
+    }
+
     setUploading(true);
     try {
       const formData = new FormData();
@@ -250,7 +257,7 @@ const AdminProfile = () => {
       <div className="row d-flex align-items-start justify-content-center mb-4">
         <div className="col-4 d-flex flex-column justify-content-center align-items-center text-center">
           <img
-            src={profileData.photoURL || "https://via.placeholder.com/150"}
+            src={profileData.photoURL || "https://via.placeholder.com/150?text=Profile"}
             alt="Profile"
             className="rounded-circle mb-2"
             width={100}
@@ -314,7 +321,6 @@ const AdminProfile = () => {
               Requested ({requested.length})
             </button>
           </div>
-
         </div>
       </div>
 
@@ -442,7 +448,8 @@ const AdminProfile = () => {
               </div>
               <div className="modal-body pt-2">
                 <p className="small text-muted mb-0">
-                  This action <strong>cannot be undone</strong>. Do you really want to delete this post?
+                  This action <strong>cannot be undone</strong>. Do you really want to delete this
+                  post?
                 </p>
               </div>
               <div className="modal-footer border-0 pt-2">
@@ -474,6 +481,7 @@ const AdminProfile = () => {
         <h6 className="mb-1 fw-bold">Hridesh Bharati</h6>
         <p className="mb-0 text-muted small">Founder & Creator of this App</p>
       </div>
+
       {/* Fullscreen Viewers */}
       {showVideoFeed && (
         <VideoFeed
@@ -482,7 +490,6 @@ const AdminProfile = () => {
           onClose={() => setShowVideoFeed(false)}
         />
       )}
-
       {showImageViewer && (
         <ImageViewer src={showImageViewer} onClose={() => setShowImageViewer(null)} />
       )}
