@@ -15,36 +15,39 @@ import { onAuthStateChanged } from "firebase/auth";
 import { IoVideocam } from "react-icons/io5";
 
 export default function Messages() {
-  const { uid } = useParams();
+  const { uid } = useParams(); // Chat partner uid
   const [currentUid, setCurrentUid] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [chatUser, setChatUser] = useState(null);
+  const [selectedMsg, setSelectedMsg] = useState(null);
+  const longPressTimerRef = useRef(null);
   const messagesEndRef = useRef(null);
 
-  // Video call refs/states
+  // Video call refs & states
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const pcRef = useRef(null);
   const localStreamRef = useRef(null);
-  const processedCandidatesRef = useRef(new Set());
   const [inCall, setInCall] = useState(false);
   const [incomingCall, setIncomingCall] = useState(null);
-  const [callStatus, setCallStatus] = useState("idle");
-
+  const [callStatus, setCallStatus] = useState(null);
+  const processedCandidatesRef = useRef(new Set());
   const chatId = currentUid && uid ? [currentUid, uid].sort().join("_") : null;
 
-  // Track login
+  // Track logged-in user
   useEffect(() => {
-    return onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) setCurrentUid(user.uid);
     });
+    return () => unsubscribe();
   }, []);
 
-  // Fetch chat partner
+  // Fetch chat partner info
   useEffect(() => {
     if (!uid) return;
-    return onValue(ref(db, `usersData/${uid}`), (snap) => {
+    const userRef = ref(db, `usersData/${uid}`);
+    return onValue(userRef, (snap) => {
       if (snap.exists()) setChatUser(snap.val());
     });
   }, [uid]);
@@ -52,318 +55,375 @@ export default function Messages() {
   // Fetch messages
   useEffect(() => {
     if (!chatId) return;
-    return onValue(ref(db, `chats/${chatId}/messages`), (snap) => {
+    const messagesRef = ref(db, `chats/${chatId}/messages`);
+    const unsub = onValue(messagesRef, (snap) => {
       const data = snap.val();
       const msgs = data
-        ? Object.entries(data).map(([id, m]) => ({
+        ? Object.entries(data).map(([id, msg]) => ({
             id,
-            ...m,
+            ...msg,
             timestamp:
-              typeof m.timestamp === "number"
-                ? m.timestamp
-                : m.timestamp?.toMillis?.() || Date.now(),
+              typeof msg.timestamp === "number"
+                ? msg.timestamp
+                : msg.timestamp?.toMillis?.() || Date.now(),
           }))
         : [];
       setMessages(msgs);
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-      }, 50);
+      setTimeout(() => scrollToBottom(), 100);
     });
+    return () => unsub();
   }, [chatId]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   // Send message
   const sendMessage = async () => {
     if (!input.trim() || !currentUid) return;
-    await push(ref(db, `chats/${chatId}/messages`), {
+    const messagesRef = ref(db, `chats/${chatId}/messages`);
+    await push(messagesRef, {
       sender: currentUid,
       text: input.trim(),
       timestamp: serverTimestamp(),
+      deletedFor: [],
     });
     setInput("");
   };
 
-  // ------------- WebRTC helpers -------------
-  const cleanupCall = async () => {
-    setInCall(false);
-    setCallStatus("idle");
-    setIncomingCall(null);
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((t) => t.stop());
-      localStreamRef.current = null;
+  // Long press handler
+  const startLongPress = (msg) => {
+    longPressTimerRef.current = setTimeout(() => {
+      setSelectedMsg(msg);
+    }, 700);
+  };
+  const cancelLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
     }
-    if (localVideoRef.current) localVideoRef.current.srcObject = null;
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-    if (pcRef.current) {
-      try {
-        pcRef.current.close();
-      } catch {}
-      pcRef.current = null;
-    }
-    processedCandidatesRef.current.clear();
-    if (chatId) await remove(ref(db, `calls/${chatId}`)).catch(() => {});
   };
 
-  const createPC = (onRemoteTrack) => {
+  // Remove message for me
+  const removeForMe = async () => {
+    if (!selectedMsg || !currentUid) return;
+    const msgRef = ref(db, `chats/${chatId}/messages/${selectedMsg.id}/deletedFor`);
+    const updatedDeletedFor = selectedMsg.deletedFor
+      ? [...selectedMsg.deletedFor, currentUid]
+      : [currentUid];
+    await set(msgRef, updatedDeletedFor);
+    setSelectedMsg(null);
+  };
+
+  // Delete for everyone
+  const deleteForEveryone = async () => {
+    if (!selectedMsg) return;
+    const msgRef = ref(db, `chats/${chatId}/messages/${selectedMsg.id}`);
+    try {
+      await remove(msgRef);
+      setSelectedMsg(null);
+    } catch (error) {
+      alert("Error deleting message: " + error.message);
+    }
+  };
+
+  // Click outside modal closes it
+  useEffect(() => {
+    if (!selectedMsg) return;
+    const handleClickOutside = (e) => {
+      if (!e.target.closest(".modal-content")) setSelectedMsg(null);
+    };
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, [selectedMsg]);
+
+  // -------------------- Video call logic (WebRTC + Firebase signaling) --------------------
+  const cleanupCall = async () => {
+    try {
+      setInCall(false);
+      setCallStatus("idle");
+      setIncomingCall(null);
+
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((t) => t.stop());
+        localStreamRef.current = null;
+      }
+      if (localVideoRef.current) localVideoRef.current.srcObject = null;
+      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+
+      if (pcRef.current) {
+        pcRef.current.ontrack = null;
+        pcRef.current.onicecandidate = null;
+        try {
+          pcRef.current.close();
+        } catch {}
+        pcRef.current = null;
+      }
+
+      processedCandidatesRef.current.clear();
+      if (chatId) {
+        await remove(ref(db, `calls/${chatId}`)).catch(() => {});
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const endCall = async () => {
+    await set(ref(db, `calls/${chatId}/status`), "ended").catch(() => {});
+    await cleanupCall();
+  };
+
+  const createPeerConnection = (onRemoteTrack) => {
     const pc = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
-    pc.ontrack = (e) => {
-      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = e.streams[0];
+    pc.ontrack = (event) => {
+      if (onRemoteTrack) onRemoteTrack(event.streams[0]);
     };
-    pc.onicecandidate = (e) => {
-      if (e.candidate && chatId && currentUid) {
-        push(ref(db, `calls/${chatId}/candidates/${currentUid}`), e.candidate.toJSON());
+    pc.onicecandidate = (event) => {
+      if (event.candidate && chatId && currentUid) {
+        const cRef = ref(db, `calls/${chatId}/candidates/${currentUid}`);
+        push(cRef, event.candidate.toJSON()).catch(console.error);
       }
     };
     return pc;
   };
 
-  // Listen for signaling
+  // Signaling listener
   useEffect(() => {
     if (!chatId) return;
-
-    const unsubCall = onValue(ref(db, `calls/${chatId}`), async (snap) => {
+    const callRef = ref(db, `calls/${chatId}`);
+    const unsubCall = onValue(callRef, async (snap) => {
       const data = snap.val();
       if (!data) return;
+      const { offer, answer, status } = data;
 
-      const { offer, answer, status, from } = data;
-
-      if (offer && from !== currentUid && !inCall && callStatus !== "ringing") {
-        setIncomingCall({ from, offer });
+      if (offer && offer.from !== currentUid && !inCall && callStatus !== "ringing") {
+        setIncomingCall({ from: offer.from, offer });
         setCallStatus("ringing");
       }
 
       if (answer && answer.from !== currentUid && pcRef.current) {
-        await pcRef.current.setRemoteDescription(
-          new RTCSessionDescription({ type: answer.type, sdp: answer.sdp })
-        );
-        setCallStatus("in-call");
-        setInCall(true);
+        try {
+          await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
+          setCallStatus("in-call");
+          setInCall(true);
+        } catch (err) {
+          console.error(err);
+        }
       }
 
-      if (status === "rejected") {
-        alert("Call rejected");
-        cleanupCall();
-      }
-      if (status === "ended") {
-        cleanupCall();
+      if (status) {
+        if (status === "accepted") {
+          setCallStatus("in-call");
+          setInCall(true);
+        }
+        if (status === "rejected") cleanupCall();
+        if (status === "ended") cleanupCall();
       }
     });
 
-    const unsubCand = onValue(ref(db, `calls/${chatId}/candidates`), (snap) => {
-      if (!snap.val() || !pcRef.current) return;
-      Object.entries(snap.val()).forEach(([uidKey, obj]) => {
+    const candidatesRef = ref(db, `calls/${chatId}/candidates`);
+    const unsubCandidates = onValue(candidatesRef, async (snap) => {
+      const val = snap.val();
+      if (!val || !pcRef.current) return;
+      Object.entries(val).forEach(([uidKey, cObj]) => {
         if (uidKey === currentUid) return;
-        Object.entries(obj).forEach(([id, cand]) => {
-          const key = uidKey + "|" + id;
+        if (!cObj) return;
+        Object.entries(cObj).forEach(([cid, candData]) => {
+          const key = `${uidKey}|${cid}`;
           if (processedCandidatesRef.current.has(key)) return;
           processedCandidatesRef.current.add(key);
-          pcRef.current.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+          try {
+            pcRef.current.addIceCandidate(new RTCIceCandidate(candData)).catch(console.warn);
+          } catch (err) {
+            console.error(err);
+          }
         });
       });
     });
 
     return () => {
-      unsubCall();
-      unsubCand();
+      try { unsubCall(); } catch {}
+      try { unsubCandidates(); } catch {}
     };
-  }, [chatId, currentUid]);
+  }, [chatId, currentUid, inCall, callStatus]);
 
   const startCall = async () => {
+    if (!currentUid || !chatId) return;
     try {
+      setCallStatus("calling");
       const localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       localStreamRef.current = localStream;
       if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
 
-      const pc = createPC((remote) => {
-        if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remote;
+      const pc = createPeerConnection((remoteStream) => {
+        if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
       });
       pcRef.current = pc;
       localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
 
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
+      const offerDesc = await pc.createOffer();
+      await pc.setLocalDescription(offerDesc);
 
       await set(ref(db, `calls/${chatId}`), {
-        offer: { type: offer.type, sdp: offer.sdp },
+        offer: { sdp: offerDesc.sdp, type: offerDesc.type, from: currentUid },
         status: "calling",
         from: currentUid,
+        createdAt: Date.now(),
       });
 
-      onDisconnect(ref(db, `calls/${chatId}`)).remove();
-      setCallStatus("calling");
+      try {
+        const callRef = ref(db, `calls/${chatId}`);
+        onDisconnect(callRef).remove();
+      } catch {}
     } catch (err) {
-      alert("Error starting call: " + err.message);
-      cleanupCall();
+      console.error(err);
+      await cleanupCall();
     }
   };
 
   const acceptCall = async () => {
+    if (!incomingCall || !chatId || !currentUid) return;
     try {
       const localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       localStreamRef.current = localStream;
       if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
 
-      const pc = createPC((remote) => {
-        if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remote;
+      const pc = createPeerConnection((remoteStream) => {
+        if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
       });
       pcRef.current = pc;
       localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
 
-      await pc.setRemoteDescription(
-        new RTCSessionDescription({ type: incomingCall.offer.type, sdp: incomingCall.offer.sdp })
-      );
+      await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
 
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
+      const answerDesc = await pc.createAnswer();
+      await pc.setLocalDescription(answerDesc);
 
       await set(ref(db, `calls/${chatId}/answer`), {
-        type: answer.type,
-        sdp: answer.sdp,
+        sdp: answerDesc.sdp,
+        type: answerDesc.type,
         from: currentUid,
       });
       await set(ref(db, `calls/${chatId}/status`), "accepted");
 
-      setInCall(true);
       setCallStatus("in-call");
+      setInCall(true);
       setIncomingCall(null);
     } catch (err) {
-      alert("Accept failed: " + err.message);
-      cleanupCall();
+      console.error(err);
+      await cleanupCall();
     }
   };
 
   const declineCall = async () => {
-    await set(ref(db, `calls/${chatId}/status`), "rejected");
-    setIncomingCall(null);
-    setCallStatus("idle");
+    if (!chatId) return;
+    try {
+      await set(ref(db, `calls/${chatId}/status`), "rejected");
+    } finally {
+      setIncomingCall(null);
+      setCallStatus("idle");
+    }
   };
 
-  const endCall = async () => {
-    await set(ref(db, `calls/${chatId}/status`), "ended");
-    cleanupCall();
-  };
+  useEffect(() => {
+    return () => cleanupCall();
+  }, []);
 
-  // ----------- UI -----------
-  if (!currentUid) return <p style={{ textAlign: "center" }}>Please login</p>;
+  if (!currentUid)
+    return <p style={{ textAlign: "center", marginTop: 40, color: "#666", fontSize: 16 }}>Please log in to chat.</p>;
 
   return (
-    <div style={{
-      maxWidth: 600,
-      margin: "20px auto",
-      display: "flex",
-      flexDirection: "column",
-      height: "90vh",
-      border: "1px solid #ccc",
-      borderRadius: 10,
-      overflow: "hidden",
-      fontFamily: "Arial, sans-serif",
-      background: "#f0f0f0"
-    }}>
-      {/* Header */}
-      <header style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        padding: "10px 15px",
-        background: "#075E54",
-        color: "#fff",
-        fontWeight: "bold"
-      }}>
-        <div>{chatUser?.username || "User"}</div>
-        <div>
-          <button onClick={startCall} style={{ background: "transparent", border: "none", color: "#fff" }}>
-            <IoVideocam size={24} />
-          </button>
-          {inCall && (
-            <button onClick={endCall} style={{ marginLeft: 10, padding: "4px 8px", borderRadius: 5, background: "#d32f2f", color: "#fff", border: "none" }}>
-              End
-            </button>
-          )}
-        </div>
-      </header>
-
-      {/* Chat messages */}
-      <main style={{
-        flex: 1,
-        overflowY: "auto",
-        padding: "10px",
-        display: "flex",
-        flexDirection: "column"
-      }}>
-        {messages.map((m) => (
-          <div key={m.id} style={{
-            margin: "6px 0",
-            alignSelf: m.sender === currentUid ? "flex-end" : "flex-start",
-            maxWidth: "70%"
-          }}>
-            <span style={{
-              background: m.sender === currentUid ? "#dcf8c6" : "#fff",
-              color: "#000",
-              padding: "8px 12px",
-              borderRadius: 20,
-              display: "inline-block",
-              wordBreak: "break-word",
-            }}>
-              {m.text}
-            </span>
+    <div style={{ maxWidth: 600, height: "80vh", margin: "20px auto", fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif", color: "#333" }}>
+      {/* Chat container */}
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", borderRadius: 8, boxShadow: "0 2px 10px rgba(0,0,0,0.1)", backgroundColor: "#f9fafb" }}>
+        {/* Header */}
+        <header style={{ padding: "12px 20px", borderBottom: "1px solid #e0e0e0", display: "flex", alignItems: "center", gap: 15, backgroundColor: "#fff", borderTopLeftRadius: 8, borderTopRightRadius: 8, justifyContent: "space-between" }}>
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            {chatUser ? (
+              <>
+                <img src={chatUser.photoURL || "https://via.placeholder.com/40"} alt={chatUser.username || "User"} loading="lazy"
+                  style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover", border: "2px solid #1976d2" }} />
+                <span style={{ fontSize: 18, fontWeight: 600 }}>{chatUser.username || "Unknown User"}</span>
+              </>
+            ) : <span style={{ fontSize: 16, color: "#999" }}>Loading...</span>}
           </div>
-        ))}
-        <div ref={messagesEndRef}></div>
-      </main>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <button onClick={startCall} title="Start video call" style={{ backgroundColor: "#1976d2", color: "#fff", border: "none", padding: "8px 12px", borderRadius: 8, cursor: "pointer" }}>
+              <IoVideocam size={25} />
+            </button>
+            {inCall && <button onClick={endCall} title="End call" style={{ backgroundColor: "#f44336", color: "#fff", border: "none", padding: "8px 12px", borderRadius: 8, fontSize: 14, cursor: "pointer" }}>✖️ End</button>}
+          </div>
+        </header>
 
-      {/* Input */}
-      <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} style={{ display: "flex", padding: 10, background: "#fff", borderTop: "1px solid #ccc" }}>
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message"
-          style={{
-            flex: 1,
-            padding: "10px 15px",
-            borderRadius: 20,
-            border: "1px solid #ccc",
-            outline: "none"
-          }}
-        />
-        <button type="submit" style={{ marginLeft: 10, padding: "0 16px", borderRadius: 20, background: "#075E54", color: "#fff", border: "none" }}>Send</button>
-      </form>
+        {/* Messages */}
+        <main style={{ flexGrow: 1, overflowY: "auto", padding: "20px", backgroundColor: "#fff", display: "flex", flexDirection: "column", gap: 12, scrollbarWidth: "thin" }} aria-live="polite" aria-relevant="additions">
+          {messages.length === 0 && <p style={{ textAlign: "center", color: "#999", marginTop: 60, fontStyle: "italic" }}>No messages yet. Say hi!</p>}
+          {messages.map((msg) => {
+            const isDeleted = msg.deletedFor?.includes(currentUid);
+            if (isDeleted) return null;
+            const time = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+            const isSentByCurrentUser = msg.sender === currentUid;
+            return (
+              <div key={msg.id} onMouseDown={() => startLongPress(msg)} onTouchStart={() => startLongPress(msg)} onMouseUp={cancelLongPress} onMouseLeave={cancelLongPress} onTouchEnd={cancelLongPress} onTouchCancel={cancelLongPress}
+                style={{ alignSelf: isSentByCurrentUser ? "flex-end" : "flex-start", maxWidth: "70%", backgroundColor: isSentByCurrentUser ? "#1976d2" : "#e3e6eb", color: isSentByCurrentUser ? "#fff" : "#222", borderRadius: 14, padding: "10px 15px", boxShadow: "0 1px 4px rgba(0,0,0,0.1)", position: "relative", wordBreak: "break-word", userSelect: "none", touchAction: "manipulation", fontSize: 15, lineHeight: 1.3 }}>
+                {msg.text}
+                <time style={{ fontSize: 11, color: isSentByCurrentUser ? "rgba(255,255,255,0.7)" : "#666", position: "absolute", bottom: 0, right: 10, userSelect: "none" }}>{time}</time>
+              </div>
+            );
+          })}
+          <div ref={messagesEndRef} />
+        </main>
 
-      {/* Incoming call overlay */}
-      {incomingCall && callStatus === "ringing" && (
-        <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: "#0008",
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          zIndex: 9999
-        }}>
-          <div style={{ background: "#fff", padding: 20, borderRadius: 10, textAlign: "center" }}>
-            <p style={{ fontWeight: "bold" }}>{chatUser?.username} is calling</p>
-            <button onClick={acceptCall} style={{ marginRight: 10, padding: "6px 12px", borderRadius: 5, background: "#4caf50", color: "#fff", border: "none" }}>Accept</button>
-            <button onClick={declineCall} style={{ padding: "6px 12px", borderRadius: 5, background: "#f44336", color: "#fff", border: "none" }}>Decline</button>
+        {/* Input */}
+        <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} style={{ display: "flex", gap: 12, padding: "15px 20px", borderTop: "1px solid #e0e0e0", backgroundColor: "#fafafa", borderBottomLeftRadius: 8, borderBottomRightRadius: 8 }}>
+          <input type="text" value={input} autoFocus onChange={(e) => setInput(e.target.value)} placeholder="Type a message..." style={{ flexGrow: 1, padding: "10px 15px", border: "1px solid #e0e0e0", borderRadius: 8, fontSize: 14 }} />
+          <button type="submit" style={{ backgroundColor: "#1976d2", color: "#fff", border: "none", padding: "10px 20px", borderRadius: 8, fontSize: 16 }}>Send</button>
+        </form>
+      </div>
+
+      {/* Long press modal */}
+      {selectedMsg && (
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.4)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 999 }}>
+          <div className="modal-content" style={{ backgroundColor: "#fff", padding: "20px", borderRadius: 8, boxShadow: "0 4px 10px rgba(0,0,0,0.2)", display: "flex", flexDirection: "column", gap: 15 }}>
+            {selectedMsg.sender === currentUid ? (
+              <>
+                <button onClick={removeForMe} style={{ backgroundColor: "#f44336", color: "#fff", border: "none", padding: "10px", borderRadius: 8, fontSize: 16 }}>Remove for Me</button>
+                <button onClick={deleteForEveryone} style={{ backgroundColor: "#1976d2", color: "#fff", border: "none", padding: "10px", borderRadius: 8, fontSize: 16 }}>Delete for Everyone</button>
+              </>
+            ) : (
+              <button onClick={removeForMe} style={{ backgroundColor: "#f44336", color: "#fff", border: "none", padding: "10px", borderRadius: 8, fontSize: 16 }}>Remove for Me</button>
+            )}
           </div>
         </div>
       )}
 
-      {/* Video overlay */}
-      {(callStatus !== "idle") && (
-        <div style={{ position: "fixed", bottom: 20, right: 20, zIndex: 999 }}>
-          <video ref={remoteVideoRef} autoPlay playsInline style={{ width: 300, borderRadius: 10, background: "#000" }} />
-          <video ref={localVideoRef} autoPlay playsInline muted style={{
-            width: 100,
-            position: "absolute",
-            bottom: 10,
-            right: 10,
-            borderRadius: 10,
-            background: "#000",
-            border: "2px solid #075E54"
-          }} />
+      {/* Incoming call modal */}
+      {callStatus === "ringing" && incomingCall && (
+        <div style={{ position: "fixed", left: 0, right: 0, top: 0, bottom: 0, zIndex: 1200, backgroundColor: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ width: 340, padding: 20, borderRadius: 10, backgroundColor: "#fff", textAlign: "center" }}>
+            <h3 style={{ margin: "8px 0" }}>Incoming Video Call</h3>
+            <p style={{ color: "#666" }}>{chatUser?.username || "Unknown"} is calling</p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 12 }}>
+              <button onClick={acceptCall} style={{ padding: "10px 16px", borderRadius: 8, border: "none", backgroundColor: "#1976d2", color: "#fff" }}>Accept</button>
+              <button onClick={declineCall} style={{ padding: "10px 16px", borderRadius: 8, border: "none", backgroundColor: "#f44336", color: "#fff" }}>Decline</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* In-call UI */}
+      {callStatus === "in-call" && (
+        <div style={{ position: "fixed", right: 20, bottom: 20, zIndex: 1300, width: 320, background: "#fff", borderRadius: 12, boxShadow: "0 8px 30px rgba(0,0,0,0.15)", padding: 12, display: "flex", flexDirection: "column", gap: 10, alignItems: "center" }}>
+          <div style={{ width: "100%", display: "flex", gap: 8 }}>
+            <video ref={localVideoRef} autoPlay playsInline muted style={{ width: 100, height: 80, borderRadius: 8, objectFit: "cover", backgroundColor: "#000" }} />
+            <video ref={remoteVideoRef} autoPlay playsInline style={{ flex: 1, height: 120, borderRadius: 8, objectFit: "cover", backgroundColor: "#000" }} />
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={endCall} style={{ backgroundColor: "#f44336", color: "#fff", border: "none", padding: "8px 12px", borderRadius: 8 }}>End Call</button>
+          </div>
         </div>
       )}
     </div>
