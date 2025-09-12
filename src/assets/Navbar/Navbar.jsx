@@ -6,6 +6,7 @@ import { ref, onValue, get, update } from "firebase/database";
 import { onAuthStateChanged } from "firebase/auth";
 import { toast } from "react-toastify";
 import './Navbar.css'
+import PWAInstall from "../Pwa/InstallApp";
 const Navbar = () => {
   const navigate = useNavigate();
   const [currentUid, setCurrentUid] = useState(null);
@@ -201,93 +202,93 @@ const Navbar = () => {
   const openPost = (postId) => { navigate(`/post/${postId}`); setIsNotifOpen(false); };
 
   return (
-  <nav className="navbar shadow-sm p-2 d-flex align-items-center justify-content-between">
-  {/* Logo */}
-  <Link to="/home" className="d-flex align-items-center">
-    <img src="icons/logo.png" width={100} alt="logo" />
-  </Link>
+    <nav className="navbar shadow-sm p-2 d-flex align-items-center justify-content-between">
+      {/* Logo */}
+      <Link to="/home" className="d-flex align-items-center">
+        <img src="icons/logo.png" width={100} alt="logo" />
+      </Link>
+      <PWAInstall /> 
+      <div className="d-flex align-items-center gap-3">
 
-  <div className="d-flex align-items-center gap-3">
+        {/* Friend Requests */}
+        <div className="position-relative">
+          <button className="icon-btn" onClick={() => setIsFriendReqOpen(prev => !prev)}>
+            <i className="bi bi-person-plus-fill fs-4 text-success"></i>
+            {friendRequests.length > 0 && (
+              <span className="badge">{friendRequests.length > 99 ? "99+" : friendRequests.length}</span>
+            )}
+          </button>
 
-    {/* Friend Requests */}
-    <div className="position-relative">
-      <button className="icon-btn" onClick={() => setIsFriendReqOpen(prev => !prev)}>
-        <i className="bi bi-person-plus-fill fs-4 text-success"></i>
-        {friendRequests.length > 0 && (
-          <span className="badge">{friendRequests.length > 99 ? "99+" : friendRequests.length}</span>
-        )}
-      </button>
-
-      {isFriendReqOpen && (
-        <div className="dropdown-card">
-          <h6>Friend Requests</h6>
-          {friendRequests.length === 0 ? <p className="text-muted">No requests</p> :
-            friendRequests.map(req => (
-              <div key={req.uid} className="d-flex align-items-center justify-content-between mb-2">
-                <div className="d-flex align-items-center gap-2">
-                  <img src={req.photoURL} className="avatar-sm" alt={req.username} />
-                  <span>{req.username}</span>
-                </div>
-                <div className="btn-group-sm">
-                  <button className="btn btn-sm btn-primary" onClick={() => acceptRequest(req.uid)}>Accept</button>
-                  <button className="btn btn-sm btn-outline-secondary" onClick={() => rejectRequest(req.uid)}>Reject</button>
-                </div>
-              </div>
-            ))
-          }
+          {isFriendReqOpen && (
+            <div className="dropdown-card">
+              <h6>Friend Requests</h6>
+              {friendRequests.length === 0 ? <p className="text-muted">No requests</p> :
+                friendRequests.map(req => (
+                  <div key={req.uid} className="d-flex align-items-center justify-content-between mb-2">
+                    <div className="d-flex align-items-center gap-2">
+                      <img src={req.photoURL} className="avatar-sm" alt={req.username} />
+                      <span>{req.username}</span>
+                    </div>
+                    <div className="btn-group-sm">
+                      <button className="btn btn-sm btn-primary" onClick={() => acceptRequest(req.uid)}>Accept</button>
+                      <button className="btn btn-sm btn-outline-secondary" onClick={() => rejectRequest(req.uid)}>Reject</button>
+                    </div>
+                  </div>
+                ))
+              }
+            </div>
+          )}
         </div>
-      )}
-    </div>
 
-    {/* Messages */}
-    <div className="position-relative">
-      <button className="icon-btn" onClick={toggleInbox}>
-        <i className="bi bi-chat-dots-fill fs-4 text-primary"></i>
-        {unreadCount > 0 && <span className="badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
-      </button>
-      {isInboxOpen && (
-        <div className="dropdown-card">
-          <h6>Messages</h6>
-          {unreadUsers.length === 0 ? <p className="text-muted">No unread messages</p> :
-            unreadUsers.map(user => (
-              <div key={user.uid} className="d-flex align-items-center gap-2 cursor-pointer" onClick={() => openChat(user.uid)}>
-                <img src={`https://ui-avatars.com/api/?name=${user.username}&background=random`} className="avatar-sm" alt={user.username} />
-                <div className="flex-grow-1">
-                  <strong>{user.username}</strong>
-                  <div className="text-muted small">{user.unreadCount} unread</div>
-                </div>
-                <span className="badge">{user.unreadCount}</span>
-              </div>
-            ))
-          }
+        {/* Messages */}
+        <div className="position-relative">
+          <button className="icon-btn" onClick={toggleInbox}>
+            <i className="bi bi-chat-dots-fill fs-4 text-primary"></i>
+            {unreadCount > 0 && <span className="badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
+          </button>
+          {isInboxOpen && (
+            <div className="dropdown-card">
+              <h6>Messages</h6>
+              {unreadUsers.length === 0 ? <p className="text-muted">No unread messages</p> :
+                unreadUsers.map(user => (
+                  <div key={user.uid} className="d-flex align-items-center gap-2 cursor-pointer" onClick={() => openChat(user.uid)}>
+                    <img src={`https://ui-avatars.com/api/?name=${user.username}&background=random`} className="avatar-sm" alt={user.username} />
+                    <div className="flex-grow-1">
+                      <strong>{user.username}</strong>
+                      <div className="text-muted small">{user.unreadCount} unread</div>
+                    </div>
+                    <span className="badge">{user.unreadCount}</span>
+                  </div>
+                ))
+              }
+            </div>
+          )}
         </div>
-      )}
-    </div>
 
-    {/* Likes */}
-    <div className="position-relative">
-      <button className="icon-btn" onClick={toggleNotif}>
-        <i className="bi bi-heart-fill fs-4 text-danger"></i>
-        {unreadLikes > 0 && <span className="badge">{unreadLikes > 99 ? "99+" : unreadLikes}</span>}
-      </button>
-      {isNotifOpen && (
-        <div className="dropdown-card">
-          <h6>Likes</h6>
-          {notifications.length === 0 ? <p className="text-muted">No likes yet</p> :
-            notifications.map(n => (
-              <div key={n.id} className="d-flex align-items-center justify-content-between mb-2 cursor-pointer" onClick={() => openPost(n.postId)}>
-                <div>❤️ <strong>{n.likerName}</strong> liked <span>{n.postCaption}</span></div>
-                <small className="text-muted">{new Date(n.timestamp).toLocaleTimeString()}</small>
-              </div>
-            ))
-          }
+        {/* Likes */}
+        <div className="position-relative">
+          <button className="icon-btn" onClick={toggleNotif}>
+            <i className="bi bi-heart-fill fs-4 text-danger"></i>
+            {unreadLikes > 0 && <span className="badge">{unreadLikes > 99 ? "99+" : unreadLikes}</span>}
+          </button>
+          {isNotifOpen && (
+            <div className="dropdown-card">
+              <h6>Likes</h6>
+              {notifications.length === 0 ? <p className="text-muted">No likes yet</p> :
+                notifications.map(n => (
+                  <div key={n.id} className="d-flex align-items-center justify-content-between mb-2 cursor-pointer" onClick={() => openPost(n.postId)}>
+                    <div>❤️ <strong>{n.likerName}</strong> liked <span>{n.postCaption}</span></div>
+                    <small className="text-muted">{new Date(n.timestamp).toLocaleTimeString()}</small>
+                  </div>
+                ))
+              }
+            </div>
+          )}
         </div>
-      )}
-    </div>
 
-  </div>
- 
-</nav>
+      </div>
+
+    </nav>
 
   );
 };

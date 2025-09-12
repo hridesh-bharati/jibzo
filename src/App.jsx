@@ -27,8 +27,6 @@ const App = () => {
     return cached ? JSON.parse(cached) : null;
   });
   const [loadingAuth, setLoadingAuth] = useState(true);
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [showPrompt, setShowPrompt] = useState(false);
   const location = useLocation();
 
   // Auth state listener
@@ -40,17 +38,6 @@ const App = () => {
       if (u) localStorage.setItem("currentUser", JSON.stringify(u));
       else localStorage.removeItem("currentUser");
     });
-  }, []);
-
-  // PWA install prompt listener
-  useEffect(() => {
-    const handler = (e) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      setShowPrompt(true);
-    };
-    window.addEventListener("beforeinstallprompt", handler);
-    return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
 
   if (loadingAuth) return <Loader />;
@@ -65,7 +52,7 @@ const App = () => {
         <Route path="/followers" element={user ? <Followers /> : <Navigate to="/login" />} />
         <Route path="/following" element={user ? <Following /> : <Navigate to="/login" />} />
         <Route path="/Requested" element={user ? <Requested /> : <Navigate to="/login" />} />
-        
+
         <Route path="/followers/:uid" element={<Followers />} />
         <Route path="/following/:uid" element={<Following />} />
         <Route path="/requested/:uid" element={<Requested />} />

@@ -1,16 +1,13 @@
-// public/sw.js
-
 const CACHE_NAME = "jibzo-app-cache-v1";
 const urlsToCache = [
   "/",
   "/index.html",
   "/favicon.svg",
-  "/manifest.webmanifest",
+  "/manifest.json",
   "/logo192.png",
   "/logo512.png"
 ];
 
-// Install event – cache core assets
 self.addEventListener("install", (event) => {
   console.log("[Service Worker] Installing...");
   event.waitUntil(
@@ -22,7 +19,6 @@ self.addEventListener("install", (event) => {
   self.skipWaiting();
 });
 
-// Activate event – clean up old caches
 self.addEventListener("activate", (event) => {
   console.log("[Service Worker] Activating...");
   event.waitUntil(
@@ -40,17 +36,13 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Fetch event – serve cached content when offline
 self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") return; // only cache GET requests
+  if (event.request.method !== "GET") return;
 
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse; // serve from cache
-      }
+      if (cachedResponse) return cachedResponse;
 
-      // Fetch from network and cache dynamically
       return fetch(event.request)
         .then((networkResponse) => {
           return caches.open(CACHE_NAME).then((cache) => {
@@ -59,7 +51,6 @@ self.addEventListener("fetch", (event) => {
           });
         })
         .catch(() => {
-          // fallback if offline and resource not cached
           if (event.request.destination === "document") {
             return caches.match("/index.html");
           }

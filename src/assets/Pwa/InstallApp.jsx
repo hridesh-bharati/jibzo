@@ -1,53 +1,55 @@
 import React, { useEffect, useState } from "react";
+import { FaDownload } from "react-icons/fa"; // Using react-icons for a simple icon
 
-const InstallApp = () => {
+export default function PWAInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [isInstalled, setIsInstalled] = useState(false);
+  const [showIcon, setShowIcon] = useState(false);
 
   useEffect(() => {
-    // Save install prompt
     const handler = (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
+      setShowIcon(true);
     };
     window.addEventListener("beforeinstallprompt", handler);
 
-    // Listen for successful install
-    window.addEventListener("appinstalled", () => {
-      console.log("✅ App installed successfully");
-      setIsInstalled(true);
-    });
+    // Detect if app is already installed
+    const handleAppInstalled = () => setShowIcon(false);
+    window.addEventListener("appinstalled", handleAppInstalled);
 
     return () => {
       window.removeEventListener("beforeinstallprompt", handler);
+      window.removeEventListener("appinstalled", handleAppInstalled);
     };
   }, []);
 
   const handleInstall = async () => {
-    if (!deferredPrompt) {
-      alert("❌ Install prompt is not available right now.");
-      return;
-    }
+    if (!deferredPrompt) return;
     deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === "accepted") {
-      console.log("✅ User accepted PWA install");
-    } else {
-      console.log("❌ User dismissed PWA install");
-    }
+    const choice = await deferredPrompt.userChoice;
+    if (choice.outcome === "accepted") setShowIcon(false); // hide icon if installed
     setDeferredPrompt(null);
   };
 
-  if (isInstalled) return null; // hide button if already installed
+  if (!showIcon) return null;
 
   return (
-    <button
-      className={`btn fw-bold small ${deferredPrompt ? "btn-success" : "btn-primary"}`}
+    <div
       onClick={handleInstall}
+      style={{
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "6px",
+        borderRadius: "50%",
+        backgroundColor: "#1976d2",
+        color: "#fff",
+        fontSize: "18px",
+      }}
+      title="Install App"
     >
-      <div className="small">Install App</div>
-    </button>
+      <FaDownload />
+    </div>
   );
-};
-
-export default InstallApp;
+}
