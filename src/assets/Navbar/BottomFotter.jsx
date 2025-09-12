@@ -10,8 +10,8 @@ import { auth, db } from "../../assets/utils/firebaseConfig";
 import { ref, onValue } from "firebase/database";
 
 const buttonStyle = (isActive) => ({
-  width: 60,
-  height: 60,
+  width: 50,
+  height: 50,
   borderRadius: "50%",
   backgroundColor: isActive ? "#007AFF" : "transparent",
   border: "none",
@@ -87,8 +87,8 @@ export default function BottomFooter() {
         bottom: 10,
         left: "50%",
         transform: "translateX(-50%)",
-        width: 380,
-        height: 76,
+        width: "90%",
+        height: 56,
         background: "rgba(255, 255, 255, 0.85)",
         backdropFilter: "blur(12px)",
         borderRadius: 40,

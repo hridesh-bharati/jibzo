@@ -20,7 +20,7 @@ const VideoFeed = ({ videos, startIndex, onClose }) => {
     if (containerRef.current) {
       containerRef.current.scrollTo({
         top: startIndex * window.innerHeight,
-        behavior: "auto", // instant scroll
+        behavior: "auto",
       });
     }
   }, [startIndex]);
@@ -40,7 +40,7 @@ const VideoFeed = ({ videos, startIndex, onClose }) => {
   useEffect(() => {
     videoRefs.current.forEach((vid, i) => {
       if (!vid) return;
-      if (i === currentIndex) vid.play().catch(() => { });
+      if (i === currentIndex) vid.play().catch(() => {});
       else vid.pause();
     });
   }, [currentIndex]);
@@ -59,30 +59,28 @@ const VideoFeed = ({ videos, startIndex, onClose }) => {
         <div
           key={video.id}
           style={{
-            height: "100vh", // container full height for scroll
+            height: "100vh",
             width: "100%",
             scrollSnapAlign: "start",
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
             position: "relative",
-            background: "white", // optional: black bars
+            background: "black",
           }}
         >
           <video
             ref={(el) => (videoRefs.current[i] = el)}
             src={video.src}
             style={{
-              width: "auto",   // actual width of the video
-              height: "auto",  // actual height of the video
-              maxWidth: "100%",  // prevent overflow
-              maxHeight: "90vh", // limit to viewport
+              width: "auto",
+              height: "auto",
+              maxWidth: "100%",
+              maxHeight: "90vh",
             }}
             loop
-            controls={false} // hide controls
+            controls={false}
           />
-
-          {/* Info overlay */}
           <div
             style={{
               position: "absolute",
@@ -95,8 +93,6 @@ const VideoFeed = ({ videos, startIndex, onClose }) => {
           >
             <i className="bi bi-eye"></i> 200k
           </div>
-
-          {/* Close button */}
           <button
             onClick={onClose}
             style={{
@@ -115,7 +111,6 @@ const VideoFeed = ({ videos, startIndex, onClose }) => {
           </button>
         </div>
       ))}
-
     </div>
   );
 };
@@ -206,23 +201,10 @@ const AdminProfile = () => {
     };
   }, [uid, navigate]);
 
-  // Bio Update
-  const handleBioUpdate = async () => {
-    if (!currentUser) return;
-    try {
-      await update(ref(db, `usersData/${currentUser.uid}`), { bio });
-      setProfileData((prev) => ({ ...prev, bio }));
-      toast.success("✅ Bio updated!");
-    } catch {
-      toast.error("❌ Failed to update bio!");
-    }
-  };
-
   // DP Upload
-  const handleDpUpdate = async () => {
+  let handleDpUpdate = async () => {
     if (!currentUser || !file) return toast.warn("Select an image first!");
     if (!cloudinaryPreset || !cloudinaryCloud) return toast.error("❌ Cloudinary ENV not configured!");
-
     setUploading(true);
     try {
       const formData = new FormData();
@@ -236,6 +218,19 @@ const AdminProfile = () => {
       await update(ref(db, `usersData/${currentUser.uid}`), { photoURL });
       await updateProfile(currentUser, { photoURL });
       setProfileData((prev) => ({ ...prev, photoURL }));
+
+      // Update all posts of this user
+      const postsRef = ref(db, "galleryImages");
+      onValue(postsRef, (snapshot) => {
+        const data = snapshot.val();
+        if (!data) return;
+        Object.entries(data).forEach(([id, post]) => {
+          if (post.userId === currentUser.uid) {
+            update(ref(db, `galleryImages/${id}`), { userPic: photoURL });
+          }
+        });
+      });
+
       toast.success("🎉 Profile picture updated!");
     } catch (err) {
       console.error(err);
@@ -243,6 +238,18 @@ const AdminProfile = () => {
     } finally {
       setFile(null);
       setUploading(false);
+    }
+  };
+
+  // Bio Update
+  const handleBioUpdate = async () => {
+    if (!currentUser) return;
+    try {
+      await update(ref(db, `usersData/${currentUser.uid}`), { bio });
+      setProfileData((prev) => ({ ...prev, bio }));
+      toast.success("📝 Bio updated!");
+    } catch {
+      toast.error("❌ Failed to update bio!");
     }
   };
 
@@ -333,7 +340,6 @@ const AdminProfile = () => {
           <p className="mb-1">
             <strong>Bio:</strong> {profileData.bio || "No bio yet"}
           </p>
-          {/* Followers/Following/Requested / Lock buttons/ Dp canger */}
           <div className="d-flex flex-wrap gap-2 mt-2">
             <button className="threeD-btn redBtn" onClick={() => navigate(`/followers/${uid}`)}>
               Followers: {followers.length}
@@ -349,20 +355,28 @@ const AdminProfile = () => {
                 className={`threeD-btn ${profileData.isLocked ? "redBtn" : "lightGrayBtn"}`}
                 onClick={toggleLockProfile}
               >
-                {profileData.isLocked ? "Unlock Profile 🔓" : "Lock Profile🔒"}
+                {profileData.isLocked ? "Unlock Profile 🔓" : "Lock Profile 🔒"}
               </button>
             )}
-
-            <button class="btn btn-primary threeD-btn blueBtn" type="button" data-bs-toggle="collapse" data-bs-target="#collapseExample" aria-expanded="false" aria-controls="collapseExample">
-              Edit Bio</button>
-
+            {isOwner && (
+              <button
+                className="btn btn-primary threeD-btn blueBtn"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#collapseExample"
+                aria-expanded="false"
+                aria-controls="collapseExample"
+              >
+                Edit Bio
+              </button>
+            )}
           </div>
         </div>
       </div>
 
       {/* Bio Edit Accordion */}
       {isOwner && (
-        <div class="collapse mb-5 text-end" id="collapseExample">
+        <div className="collapse mb-5 text-end" id="collapseExample">
           <div className="accordion-body">
             <textarea
               className="form-control mb-2"
@@ -390,8 +404,7 @@ const AdminProfile = () => {
           </button>
         ))}
         <style>
-          {
-            `
+          {`
 .mobile-tab-bar {
   position: sticky;
   bottom: 0;
@@ -405,8 +418,6 @@ const AdminProfile = () => {
   border-top-right-radius: 15px;
   z-index: 100;
 }
-
-/* Buttons */
 .mobile-tab-btn {
   flex: 1;
   text-align: center;
@@ -420,20 +431,13 @@ const AdminProfile = () => {
   border-radius: 12px;
   margin: 0 4px;
 }
-
-/* Active tab */
 .mobile-tab-btn.active {
   background: #007bff;
   color: #fff;
   box-shadow: 0 4px 8px rgba(0,123,255,0.3);
 }
-
-.mobile-tab-btn:active {
-  transform: translateY(2px);
-}
-
-`
-          }
+.mobile-tab-btn:active { transform: translateY(2px); }
+`}
         </style>
       </div>
 
@@ -467,9 +471,7 @@ const AdminProfile = () => {
                 )}
                 {post.type === "pdf" && (
                   <iframe
-                    src={`https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(
-                      post.src
-                    )}`}
+                    src={`https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(post.src)}`}
                     className="card-img-top rounded"
                     style={{ height: 200 }}
                     title="PDF Preview"
@@ -526,8 +528,8 @@ const AdminProfile = () => {
                 </button>
                 <button
                   className="threeD-btn redBtn btn-sm"
-                  onClick={async () => {
-                    await handleDeletePost(selectedPostId);
+                  onClick={() => {
+                    handleDeletePost(selectedPostId);
                     setShowDeleteModal(false);
                   }}
                 >
@@ -539,27 +541,16 @@ const AdminProfile = () => {
         </div>
       )}
 
-      {/* Logout */}
-      {isOwner && (
-        <button className="threeD-btn blackBtn mb-2" onClick={handleLogout}>
-          Logout
-        </button>
-      )}
-
-      {/* Footer */}
-      <div className="bg-light p-4 rounded shadow-sm text-center mt-2 mb-5">
-        <h6 className="mb-1 fw-bold">Hridesh Bharati</h6>
-        <p className="mb-0 text-muted small">Founder & Creator of this App</p>
-      </div>
-
-      {/* Fullscreen Viewers */}
+      {/* Fullscreen Video Feed */}
       {showVideoFeed && (
         <VideoFeed
-          videos={filteredPosts.filter((p) => p.type === "video")}
+          videos={filteredPosts.filter((p) => p.type === "video").map((p) => ({ id: p.id, src: p.src }))}
           startIndex={videoStartIndex}
           onClose={() => setShowVideoFeed(false)}
         />
       )}
+
+      {/* Fullscreen Image Viewer */}
       {showImageViewer && <ImageViewer src={showImageViewer} onClose={() => setShowImageViewer(null)} />}
     </div>
   );

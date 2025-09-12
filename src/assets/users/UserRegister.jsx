@@ -1,11 +1,11 @@
 import React, { useState, useRef } from "react";
 import emailjs from "emailjs-com";
 import { getAuth, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
-import { db, ref, set } from "../../assets/utils/firebaseConfig";
-import { useNavigate,Link } from "react-router-dom";
+import { db, ref, set, get } from "../../assets/utils/firebaseConfig";
+import { useNavigate, Link } from "react-router-dom";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
- 
+
 const IMGBB_API_KEY = import.meta.env.VITE_IMGBB_API_KEY;
 
 const UserRegister = () => {
@@ -16,11 +16,20 @@ const UserRegister = () => {
     password: "",
     photo: null,
   });
+
+  const [usernameTaken, setUsernameTaken] = useState(false);
+  const [usernameSuggestion, setUsernameSuggestion] = useState("");
+
+  const [emailTaken, setEmailTaken] = useState(false);
+
   const [generatedOTP, setGeneratedOTP] = useState(null);
+  const [otpSent, setOtpSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef();
   const auth = getAuth();
   const navigate = useNavigate();
+
+  let typingTimeout = null;
 
   const handleChange = (e) => {
     const { name, value, files } = e.target;
@@ -28,29 +37,68 @@ const UserRegister = () => {
       setFormData({ ...formData, photo: files[0] });
     } else {
       setFormData({ ...formData, [name]: value });
+
+      if (typingTimeout) clearTimeout(typingTimeout);
+      typingTimeout = setTimeout(() => {
+        if (name === "username") checkUsername(value);
+        if (name === "email") checkEmail(value);
+      }, 500);
     }
   };
 
-  // Upload image to imgbb
   const uploadImage = async (file) => {
     const formData = new FormData();
     formData.append("image", file);
-
     const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
       method: "POST",
       body: formData,
     });
-
     const data = await res.json();
     if (!data.success) throw new Error("Image upload failed!");
     return data.data.url;
   };
 
-  // Generate and send OTP
+  const checkUsername = async (username) => {
+    if (!username) return;
+    const snapshot = await get(ref(db, "usersData"));
+    const users = snapshot.val();
+    const usernames = users ? Object.values(users).map(u => u.username.toLowerCase()) : [];
+
+    if (usernames.includes(username.toLowerCase())) {
+      setUsernameTaken(true);
+      let counter = 1;
+      let suggestion = `${username}_${counter}`;
+      while (usernames.includes(suggestion.toLowerCase())) {
+        counter++;
+        suggestion = `${username}_${counter}`;
+      }
+      setUsernameSuggestion(suggestion);
+    } else {
+      setUsernameTaken(false);
+      setUsernameSuggestion("");
+    }
+  };
+
+  const checkEmail = async (email) => {
+    if (!email) return;
+    const snapshot = await get(ref(db, "usersData"));
+    const users = snapshot.val();
+    const emails = users ? Object.values(users).map(u => u.email.toLowerCase()) : [];
+    setEmailTaken(emails.includes(email.toLowerCase()));
+  };
+
   const sendOTP = async () => {
     const { username, email } = formData;
     if (!username || !email) {
-      toast.error("Please enter username and email first.");
+      toast.error("Enter username and email first.");
+      return;
+    }
+    if (usernameTaken) {
+      toast.error(`Username "${username}" is already taken!`);
+      return;
+    }
+    if (emailTaken) {
+      toast.error("Email already in use! Please login.");
       return;
     }
 
@@ -66,6 +114,7 @@ const UserRegister = () => {
         import.meta.env.VITE_EMAIL_API_KEY
       );
       toast.success(`OTP sent to ${email}`);
+      setOtpSent(true);
     } catch (error) {
       console.error(error);
       toast.error("Failed to send OTP.");
@@ -78,13 +127,24 @@ const UserRegister = () => {
     e.preventDefault();
     const { username, email, password, otp, photo } = formData;
 
+    if (!otpSent) {
+      toast.error("Please send OTP first!");
+      return;
+    }
     if (!otp || parseInt(otp) !== generatedOTP) {
       toast.error("Invalid or missing OTP.");
       return;
     }
-
     if (!username || !email || !password || !photo) {
       toast.error("All fields are required!");
+      return;
+    }
+    if (usernameTaken) {
+      toast.error(`Username "${username}" is already taken! Try "${usernameSuggestion}"`);
+      return;
+    }
+    if (emailTaken) {
+      toast.error("Email already in use! Please login.");
       return;
     }
 
@@ -105,7 +165,7 @@ const UserRegister = () => {
         createdAt: Date.now(),
       });
 
-      toast.success("Registration successful! Please login.");
+      toast.success(`Registration successful! Your username: ${username}`);
       setTimeout(() => navigate("/login"), 500);
     } catch (error) {
       console.error(error);
@@ -128,32 +188,46 @@ const UserRegister = () => {
           className="form-control mb-3"
           required
         />
+
         <input
           type="text"
           name="username"
           placeholder="Full Name"
           value={formData.username}
           onChange={handleChange}
-          className="form-control mb-3"
+          className="form-control mb-1"
           required
         />
+        {usernameTaken && (
+          <small className="text-danger mb-2 d-block">
+            Username taken! Try "{usernameSuggestion}"
+          </small>
+        )}
+
         <input
           type="email"
           name="email"
           placeholder="Email"
           value={formData.email}
           onChange={handleChange}
-          className="form-control mb-3"
+          className="form-control mb-1"
           required
         />
+        {emailTaken && (
+          <small className="text-danger mb-2 d-block">
+            Email already in use! Please login.
+          </small>
+        )}
+
         <button
           type="button"
           className="btn btn-primary w-100 mb-3"
           onClick={sendOTP}
-          disabled={loading}
+          disabled={loading || otpSent || usernameTaken || emailTaken}
         >
-          {loading ? "Sending OTP..." : "Send OTP"}
+          {loading ? "Sending OTP..." : otpSent ? "OTP Sent" : "Send OTP"}
         </button>
+
         <input
           type="text"
           name="otp"
@@ -163,6 +237,7 @@ const UserRegister = () => {
           className="form-control mb-3"
           required
         />
+
         <input
           type="password"
           name="password"
@@ -177,6 +252,7 @@ const UserRegister = () => {
           {loading ? "Registering..." : "Register"}
         </button>
       </form>
+
       <p className="text-center mt-3">
         Already have an account? <Link to="/login">Login</Link>
       </p>

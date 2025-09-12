@@ -1,6 +1,6 @@
-// src\firebaseConfig.js
+// src/assets/utils/firebaseConfig.js
 import { initializeApp } from "firebase/app";
-import { getDatabase, ref, set } from "firebase/database";   
+import { getDatabase, ref, set, get } from "firebase/database";   
 import { getStorage } from "firebase/storage";
 import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth";  
 import { getFirestore } from "firebase/firestore";
@@ -37,5 +37,4 @@ setPersistence(auth, browserLocalPersistence).catch((err) =>
   console.error("Auth persistence error:", err)
 );
 
-
-export { db, storage, auth, firestore, ref, set };
+export { db, storage, auth, firestore, ref, set, get };
