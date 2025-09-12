@@ -1,21 +1,32 @@
 import React, { useEffect, useState } from "react";
-import { FaDownload } from "react-icons/fa"; // Using react-icons for a simple icon
+import { FaDownload } from "react-icons/fa";
 
 export default function PWAInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showIcon, setShowIcon] = useState(false);
 
   useEffect(() => {
+    // Listen for beforeinstallprompt event
     const handler = (e) => {
-      e.preventDefault();
+      e.preventDefault(); // Prevent Chrome's mini prompt
       setDeferredPrompt(e);
       setShowIcon(true);
+      localStorage.setItem("pwa-available", "true"); // mark PWA as installable
     };
     window.addEventListener("beforeinstallprompt", handler);
 
-    // Detect if app is already installed
-    const handleAppInstalled = () => setShowIcon(false);
+    // Listen for appinstalled event
+    const handleAppInstalled = () => {
+      setShowIcon(false);
+      localStorage.removeItem("pwa-available");
+      console.log("🎉 App installed!");
+    };
     window.addEventListener("appinstalled", handleAppInstalled);
+
+    // Check localStorage on mount
+    if (localStorage.getItem("pwa-available") === "true") {
+      setShowIcon(true);
+    }
 
     return () => {
       window.removeEventListener("beforeinstallprompt", handler);
@@ -27,7 +38,10 @@ export default function PWAInstall() {
     if (!deferredPrompt) return;
     deferredPrompt.prompt();
     const choice = await deferredPrompt.userChoice;
-    if (choice.outcome === "accepted") setShowIcon(false); // hide icon if installed
+    if (choice.outcome === "accepted") {
+      setShowIcon(false);
+      localStorage.removeItem("pwa-available");
+    }
     setDeferredPrompt(null);
   };
 
@@ -46,6 +60,7 @@ export default function PWAInstall() {
         backgroundColor: "#1976d2",
         color: "#fff",
         fontSize: "18px",
+        marginLeft: "10px",
       }}
       title="Install App"
     >
