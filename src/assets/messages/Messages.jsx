@@ -83,7 +83,6 @@ export default function Messages() {
   };
 
   // ------------- WebRTC helpers -------------
-
   const cleanupCall = async () => {
     setInCall(false);
     setCallStatus("idle");
@@ -170,7 +169,6 @@ export default function Messages() {
     };
   }, [chatId, currentUid]);
 
-  // Caller: start call
   const startCall = async () => {
     try {
       const localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -200,7 +198,6 @@ export default function Messages() {
     }
   };
 
-  // Callee: accept
   const acceptCall = async () => {
     try {
       const localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -251,32 +248,63 @@ export default function Messages() {
   if (!currentUid) return <p style={{ textAlign: "center" }}>Please login</p>;
 
   return (
-    <div style={{ maxWidth: 600, margin: "20px auto" }}>
-      <header style={{ display: "flex", justifyContent: "space-between", padding: 10 }}>
+    <div style={{
+      maxWidth: 600,
+      margin: "20px auto",
+      display: "flex",
+      flexDirection: "column",
+      height: "90vh",
+      border: "1px solid #ccc",
+      borderRadius: 10,
+      overflow: "hidden",
+      fontFamily: "Arial, sans-serif",
+      background: "#f0f0f0"
+    }}>
+      {/* Header */}
+      <header style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "10px 15px",
+        background: "#075E54",
+        color: "#fff",
+        fontWeight: "bold"
+      }}>
         <div>{chatUser?.username || "User"}</div>
         <div>
-          <button onClick={startCall}><IoVideocam size={24} /></button>
-          {inCall && <button onClick={endCall}>End</button>}
+          <button onClick={startCall} style={{ background: "transparent", border: "none", color: "#fff" }}>
+            <IoVideocam size={24} />
+          </button>
+          {inCall && (
+            <button onClick={endCall} style={{ marginLeft: 10, padding: "4px 8px", borderRadius: 5, background: "#d32f2f", color: "#fff", border: "none" }}>
+              End
+            </button>
+          )}
         </div>
       </header>
 
-      <main style={{ height: 400, overflowY: "auto", padding: 10, background: "#fff" }}>
+      {/* Chat messages */}
+      <main style={{
+        flex: 1,
+        overflowY: "auto",
+        padding: "10px",
+        display: "flex",
+        flexDirection: "column"
+      }}>
         {messages.map((m) => (
-          <div
-            key={m.id}
-            style={{
-              margin: "6px 0",
-              textAlign: m.sender === currentUid ? "right" : "left",
-            }}
-          >
-            <span
-              style={{
-                background: m.sender === currentUid ? "#1976d2" : "#eee",
-                color: m.sender === currentUid ? "#fff" : "#000",
-                padding: "6px 10px",
-                borderRadius: 8,
-              }}
-            >
+          <div key={m.id} style={{
+            margin: "6px 0",
+            alignSelf: m.sender === currentUid ? "flex-end" : "flex-start",
+            maxWidth: "70%"
+          }}>
+            <span style={{
+              background: m.sender === currentUid ? "#dcf8c6" : "#fff",
+              color: "#000",
+              padding: "8px 12px",
+              borderRadius: 20,
+              display: "inline-block",
+              wordBreak: "break-word",
+            }}>
               {m.text}
             </span>
           </div>
@@ -284,71 +312,58 @@ export default function Messages() {
         <div ref={messagesEndRef}></div>
       </main>
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          sendMessage();
-        }}
-        style={{ display: "flex", padding: 10 }}
-      >
+      {/* Input */}
+      <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} style={{ display: "flex", padding: 10, background: "#fff", borderTop: "1px solid #ccc" }}>
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          style={{ flex: 1 }}
+          placeholder="Type a message"
+          style={{
+            flex: 1,
+            padding: "10px 15px",
+            borderRadius: 20,
+            border: "1px solid #ccc",
+            outline: "none"
+          }}
         />
-        <button type="submit">Send</button>
+        <button type="submit" style={{ marginLeft: 10, padding: "0 16px", borderRadius: 20, background: "#075E54", color: "#fff", border: "none" }}>Send</button>
       </form>
 
+      {/* Incoming call overlay */}
       {incomingCall && callStatus === "ringing" && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "#0006",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-        >
-          <div style={{ background: "#fff", padding: 20 }}>
-            <p>{chatUser?.username} is calling</p>
-            <button onClick={acceptCall}>Accept</button>
-            <button onClick={declineCall}>Decline</button>
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "#0008",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          zIndex: 9999
+        }}>
+          <div style={{ background: "#fff", padding: 20, borderRadius: 10, textAlign: "center" }}>
+            <p style={{ fontWeight: "bold" }}>{chatUser?.username} is calling</p>
+            <button onClick={acceptCall} style={{ marginRight: 10, padding: "6px 12px", borderRadius: 5, background: "#4caf50", color: "#fff", border: "none" }}>Accept</button>
+            <button onClick={declineCall} style={{ padding: "6px 12px", borderRadius: 5, background: "#f44336", color: "#fff", border: "none" }}>Decline</button>
           </div>
         </div>
       )}
 
+      {/* Video overlay */}
       {(callStatus !== "idle") && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 20,
-            right: 20,
+        <div style={{ position: "fixed", bottom: 20, right: 20, zIndex: 999 }}>
+          <video ref={remoteVideoRef} autoPlay playsInline style={{ width: 300, borderRadius: 10, background: "#000" }} />
+          <video ref={localVideoRef} autoPlay playsInline muted style={{
+            width: 100,
+            position: "absolute",
+            bottom: 10,
+            right: 10,
+            borderRadius: 10,
             background: "#000",
-          }}
-        >
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            style={{ width: 300, background: "#000" }}
-          />
-          <video
-            ref={localVideoRef}
-            autoPlay
-            playsInline
-            muted
-            style={{
-              width: 100,
-              position: "absolute",
-              bottom: 10,
-              right: 10,
-              background: "#000",
-            }}
-          />
+            border: "2px solid #075E54"
+          }} />
         </div>
       )}
     </div>
