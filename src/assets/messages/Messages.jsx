@@ -20,7 +20,6 @@ export default function Messages() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [chatUser, setChatUser] = useState(null);
-  const [selectedMsg, setSelectedMsg] = useState(null);
   const messagesEndRef = useRef(null);
 
   // Video call refs/states
@@ -57,13 +56,13 @@ export default function Messages() {
       const data = snap.val();
       const msgs = data
         ? Object.entries(data).map(([id, m]) => ({
-          id,
-          ...m,
-          timestamp:
-            typeof m.timestamp === "number"
-              ? m.timestamp
-              : m.timestamp?.toMillis?.() || Date.now(),
-        }))
+            id,
+            ...m,
+            timestamp:
+              typeof m.timestamp === "number"
+                ? m.timestamp
+                : m.timestamp?.toMillis?.() || Date.now(),
+          }))
         : [];
       setMessages(msgs);
       setTimeout(() => {
@@ -98,18 +97,20 @@ export default function Messages() {
     if (pcRef.current) {
       try {
         pcRef.current.close();
-      } catch { }
+      } catch {}
       pcRef.current = null;
     }
     processedCandidatesRef.current.clear();
-    if (chatId) await remove(ref(db, `calls/${chatId}`)).catch(() => { });
+    if (chatId) await remove(ref(db, `calls/${chatId}`)).catch(() => {});
   };
 
   const createPC = (onRemoteTrack) => {
     const pc = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
-    pc.ontrack = (e) => onRemoteTrack(e.streams[0]);
+    pc.ontrack = (e) => {
+      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = e.streams[0];
+    };
     pc.onicecandidate = (e) => {
       if (e.candidate && chatId && currentUid) {
         push(ref(db, `calls/${chatId}/candidates/${currentUid}`), e.candidate.toJSON());
@@ -158,7 +159,7 @@ export default function Messages() {
           const key = uidKey + "|" + id;
           if (processedCandidatesRef.current.has(key)) return;
           processedCandidatesRef.current.add(key);
-          pcRef.current.addIceCandidate(new RTCIceCandidate(cand)).catch(() => { });
+          pcRef.current.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
         });
       });
     });
@@ -174,9 +175,11 @@ export default function Messages() {
     try {
       const localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       localStreamRef.current = localStream;
-      localVideoRef.current.srcObject = localStream;
+      if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
 
-      const pc = createPC((remote) => (remoteVideoRef.current.srcObject = remote));
+      const pc = createPC((remote) => {
+        if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remote;
+      });
       pcRef.current = pc;
       localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
 
@@ -202,9 +205,11 @@ export default function Messages() {
     try {
       const localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       localStreamRef.current = localStream;
-      localVideoRef.current.srcObject = localStream;
+      if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
 
-      const pc = createPC((remote) => (remoteVideoRef.current.srcObject = remote));
+      const pc = createPC((remote) => {
+        if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remote;
+      });
       pcRef.current = pc;
       localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
 
@@ -257,8 +262,21 @@ export default function Messages() {
 
       <main style={{ height: 400, overflowY: "auto", padding: 10, background: "#fff" }}>
         {messages.map((m) => (
-          <div key={m.id} style={{ margin: "6px 0", textAlign: m.sender === currentUid ? "right" : "left" }}>
-            <span style={{ background: m.sender === currentUid ? "#1976d2" : "#eee", color: m.sender === currentUid ? "#fff" : "#000", padding: "6px 10px", borderRadius: 8 }}>
+          <div
+            key={m.id}
+            style={{
+              margin: "6px 0",
+              textAlign: m.sender === currentUid ? "right" : "left",
+            }}
+          >
+            <span
+              style={{
+                background: m.sender === currentUid ? "#1976d2" : "#eee",
+                color: m.sender === currentUid ? "#fff" : "#000",
+                padding: "6px 10px",
+                borderRadius: 8,
+              }}
+            >
               {m.text}
             </span>
           </div>
@@ -266,13 +284,35 @@ export default function Messages() {
         <div ref={messagesEndRef}></div>
       </main>
 
-      <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} style={{ display: "flex", padding: 10 }}>
-        <input value={input} onChange={(e) => setInput(e.target.value)} style={{ flex: 1 }} />
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          sendMessage();
+        }}
+        style={{ display: "flex", padding: 10 }}
+      >
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          style={{ flex: 1 }}
+        />
         <button type="submit">Send</button>
       </form>
 
       {incomingCall && callStatus === "ringing" && (
-        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "#0006", display: "flex", justifyContent: "center", alignItems: "center" }}>
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "#0006",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
           <div style={{ background: "#fff", padding: 20 }}>
             <p>{chatUser?.username} is calling</p>
             <button onClick={acceptCall}>Accept</button>
@@ -281,27 +321,36 @@ export default function Messages() {
         </div>
       )}
 
-      {(callStatus === "calling" || callStatus === "in-call" || callStatus === "ringing") && (
-        <div style={{ position: "fixed", bottom: 20, right: 20, background: "#000" }}>
-          {/* Remote video */}
+      {(callStatus !== "idle") && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 20,
+            right: 20,
+            background: "#000",
+          }}
+        >
           <video
             ref={remoteVideoRef}
             autoPlay
             playsInline
-            style={{ width: 300 }}
+            style={{ width: 300, background: "#000" }}
           />
-
-          {/* Local video (always visible after camera starts) */}
           <video
             ref={localVideoRef}
             autoPlay
             playsInline
             muted
-            style={{ width: 100, position: "absolute", bottom: 10, right: 10 }}
+            style={{
+              width: 100,
+              position: "absolute",
+              bottom: 10,
+              right: 10,
+              background: "#000",
+            }}
           />
         </div>
       )}
-
     </div>
   );
 }
