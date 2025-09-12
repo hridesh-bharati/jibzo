@@ -57,13 +57,13 @@ export default function Messages() {
       const data = snap.val();
       const msgs = data
         ? Object.entries(data).map(([id, m]) => ({
-            id,
-            ...m,
-            timestamp:
-              typeof m.timestamp === "number"
-                ? m.timestamp
-                : m.timestamp?.toMillis?.() || Date.now(),
-          }))
+          id,
+          ...m,
+          timestamp:
+            typeof m.timestamp === "number"
+              ? m.timestamp
+              : m.timestamp?.toMillis?.() || Date.now(),
+        }))
         : [];
       setMessages(msgs);
       setTimeout(() => {
@@ -98,11 +98,11 @@ export default function Messages() {
     if (pcRef.current) {
       try {
         pcRef.current.close();
-      } catch {}
+      } catch { }
       pcRef.current = null;
     }
     processedCandidatesRef.current.clear();
-    if (chatId) await remove(ref(db, `calls/${chatId}`)).catch(() => {});
+    if (chatId) await remove(ref(db, `calls/${chatId}`)).catch(() => { });
   };
 
   const createPC = (onRemoteTrack) => {
@@ -158,7 +158,7 @@ export default function Messages() {
           const key = uidKey + "|" + id;
           if (processedCandidatesRef.current.has(key)) return;
           processedCandidatesRef.current.add(key);
-          pcRef.current.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+          pcRef.current.addIceCandidate(new RTCIceCandidate(cand)).catch(() => { });
         });
       });
     });
@@ -281,12 +281,27 @@ export default function Messages() {
         </div>
       )}
 
-      {callStatus === "in-call" && (
+      {(callStatus === "calling" || callStatus === "in-call" || callStatus === "ringing") && (
         <div style={{ position: "fixed", bottom: 20, right: 20, background: "#000" }}>
-          <video ref={remoteVideoRef} autoPlay playsInline style={{ width: 300 }} />
-          <video ref={localVideoRef} autoPlay playsInline muted style={{ width: 100, position: "absolute", bottom: 10, right: 10 }} />
+          {/* Remote video */}
+          <video
+            ref={remoteVideoRef}
+            autoPlay
+            playsInline
+            style={{ width: 300 }}
+          />
+
+          {/* Local video (always visible after camera starts) */}
+          <video
+            ref={localVideoRef}
+            autoPlay
+            playsInline
+            muted
+            style={{ width: 100, position: "absolute", bottom: 10, right: 10 }}
+          />
         </div>
       )}
+
     </div>
   );
 }
