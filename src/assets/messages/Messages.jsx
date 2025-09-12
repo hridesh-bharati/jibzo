@@ -768,8 +768,7 @@ export default function Messages() {
         </div>
       )}
 
-      {/* In-call UI (video) */}
-      {/* In-call UI (video) */}
+          {/* In-call UI (video) */}
       {callStatus === "in-call" && (
         <div
           style={{
@@ -787,7 +786,7 @@ export default function Messages() {
             alignItems: "center",
           }}
         >
-          {/* Remote video (full view) */}
+          {/* Remote video (big) */}
           <video
             ref={remoteVideoRef}
             autoPlay
@@ -801,41 +800,45 @@ export default function Messages() {
             }}
           />
 
-          {/* Local video (small preview) */}
+          {/* Local video (small preview, muted) */}
           <video
             ref={localVideoRef}
             autoPlay
-            playsInline
             muted
+            playsInline
             style={{
-              position: "absolute",
-              bottom: 20,
-              right: 20,
               width: 100,
-              height: 140,
+              height: 70,
+              position: "absolute",
+              right: 25,
+              bottom: 90,
               borderRadius: 8,
-              border: "2px solid #fff",
               objectFit: "cover",
-              backgroundColor: "#000",
+              border: "2px solid #fff",
+              boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
             }}
           />
 
-          <button
-            onClick={endCall}
-            style={{
-              marginTop: 10,
-              padding: "8px 16px",
-              borderRadius: 8,
-              border: "none",
-              backgroundColor: "#f44336",
-              color: "#fff",
-              cursor: "pointer",
-            }}
-          >
-            End Call
-          </button>
+          {/* Controls */}
+          <div style={{ marginTop: 10 }}>
+            <button
+              onClick={endCall}
+              style={{
+                background: "#f44336",
+                border: "none",
+                padding: "10px 20px",
+                borderRadius: 8,
+                color: "#fff",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              End Call
+            </button>
+          </div>
         </div>
       )}
+
 
     </div>
   );
