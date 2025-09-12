@@ -14,8 +14,8 @@ import {
 } from "firebase/database";
 import { onAuthStateChanged } from "firebase/auth";
 import { FaVideo } from "react-icons/fa";
-import { MdVideoCall } from "react-icons/md"; 
-import { IoVideocam } from "react-icons/io5"; 
+import { MdVideoCall } from "react-icons/md";
+import { IoVideocam } from "react-icons/io5";
 
 export default function Messages() {
   const { uid } = useParams(); // Chat partner uid
@@ -769,6 +769,7 @@ export default function Messages() {
       )}
 
       {/* In-call UI (video) */}
+      {/* In-call UI (video) */}
       {callStatus === "in-call" && (
         <div
           style={{
@@ -776,49 +777,66 @@ export default function Messages() {
             right: 20,
             bottom: 20,
             zIndex: 1300,
-            width: 320,
-            background: "#fff",
+            width: 360,
+            background: "#000",
             borderRadius: 12,
             boxShadow: "0 8px 30px rgba(0,0,0,0.15)",
-            padding: 12,
+            padding: 8,
             display: "flex",
             flexDirection: "column",
-            gap: 10,
             alignItems: "center",
           }}
         >
-          <div style={{ width: "100%", display: "flex", gap: 8 }}>
-            <video
-              ref={localVideoRef}
-              autoPlay
-              playsInline
-              muted
-              style={{ width: 100, height: 80, borderRadius: 8, objectFit: "cover", backgroundColor: "#000" }}
-            />
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              style={{ flex: 1, height: 120, borderRadius: 8, objectFit: "cover", backgroundColor: "#000" }}
-            />
-          </div>
+          {/* Remote video (full view) */}
+          <video
+            ref={remoteVideoRef}
+            autoPlay
+            playsInline
+            style={{
+              width: "100%",
+              height: "240px",
+              backgroundColor: "#000",
+              borderRadius: 8,
+              objectFit: "cover",
+            }}
+          />
 
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              onClick={endCall}
-              style={{
-                backgroundColor: "#f44336",
-                color: "#fff",
-                border: "none",
-                padding: "8px 12px",
-                borderRadius: 8,
-              }}
-            >
-              End Call
-            </button>
-          </div>
+          {/* Local video (small preview) */}
+          <video
+            ref={localVideoRef}
+            autoPlay
+            playsInline
+            muted
+            style={{
+              position: "absolute",
+              bottom: 20,
+              right: 20,
+              width: 100,
+              height: 140,
+              borderRadius: 8,
+              border: "2px solid #fff",
+              objectFit: "cover",
+              backgroundColor: "#000",
+            }}
+          />
+
+          <button
+            onClick={endCall}
+            style={{
+              marginTop: 10,
+              padding: "8px 16px",
+              borderRadius: 8,
+              border: "none",
+              backgroundColor: "#f44336",
+              color: "#fff",
+              cursor: "pointer",
+            }}
+          >
+            End Call
+          </button>
         </div>
       )}
+
     </div>
   );
 }
