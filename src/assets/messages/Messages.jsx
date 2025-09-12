@@ -1,6 +1,6 @@
 // src/components/Messages/Messages.jsx
 import React, { useEffect, useState, useRef } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { db, auth } from "../../assets/utils/firebaseConfig";
 import {
   ref,
@@ -61,13 +61,13 @@ export default function Messages() {
       const data = snap.val();
       const msgs = data
         ? Object.entries(data).map(([id, msg]) => ({
-            id,
-            ...msg,
-            timestamp:
-              typeof msg.timestamp === "number"
-                ? msg.timestamp
-                : msg.timestamp?.toMillis?.() || Date.now(),
-          }))
+          id,
+          ...msg,
+          timestamp:
+            typeof msg.timestamp === "number"
+              ? msg.timestamp
+              : msg.timestamp?.toMillis?.() || Date.now(),
+        }))
         : [];
       setMessages(msgs);
       setTimeout(scrollToBottom, 100);
@@ -144,11 +144,11 @@ export default function Messages() {
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     if (pcRef.current) {
-      try { pcRef.current.close(); } catch {}
+      try { pcRef.current.close(); } catch { }
       pcRef.current = null;
     }
     processedCandidatesRef.current.clear();
-    if (chatId) await remove(ref(db, `calls/${chatId}`)).catch(() => {});
+    if (chatId) await remove(ref(db, `calls/${chatId}`)).catch(() => { });
   };
 
   const createPC = (onRemoteTrack) => {
@@ -194,7 +194,7 @@ export default function Messages() {
           const key = uidKey + "|" + id;
           if (processedCandidatesRef.current.has(key)) return;
           processedCandidatesRef.current.add(key);
-          pcRef.current.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+          pcRef.current.addIceCandidate(new RTCIceCandidate(cand)).catch(() => { });
         });
       });
     });
@@ -263,13 +263,30 @@ export default function Messages() {
   return (
     <div style={{ maxWidth: 600, margin: "20px auto", display: "flex", flexDirection: "column", height: "90vh", border: "1px solid #ccc", borderRadius: 10, overflow: "hidden", fontFamily: "Arial, sans-serif", background: "#f0f0f0" }}>
       {/* Header */}
+      {/* Header */}
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 15px", background: "#075E54", color: "#fff", fontWeight: "bold" }}>
-        <div>{chatUser?.username || "User"}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <Link to={`/user-profile/${chatUser?.uid}`} style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "inherit" }}>
+            <img
+              src={chatUser?.photoURL || "icons/avatar.jpg"}
+              alt="DP"
+              style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover", border: "2px solid #fff" }}
+            />
+            <span>{chatUser?.username || "User"}</span>
+          </Link>
+        </div>
         <div>
-          <button onClick={startCall} style={{ background: "transparent", border: "none", color: "#fff" }}><IoVideocam size={24} /></button>
-          {inCall && <button onClick={endCall} style={{ marginLeft: 10, padding: "4px 8px", borderRadius: 5, background: "#d32f2f", color: "#fff", border: "none" }}>End</button>}
+          <button onClick={startCall} style={{ background: "transparent", border: "none", color: "#fff" }}>
+            <IoVideocam size={24} />
+          </button>
+          {inCall && (
+            <button onClick={endCall} style={{ marginLeft: 10, padding: "4px 8px", borderRadius: 5, background: "#d32f2f", color: "#fff", border: "none" }}>
+              End
+            </button>
+          )}
         </div>
       </header>
+
 
       {/* Messages */}
       <main style={{ flex: 1, overflowY: "auto", padding: "10px", display: "flex", flexDirection: "column" }}>
