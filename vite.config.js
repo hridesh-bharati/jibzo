@@ -1,6 +1,6 @@
 // vite.config.js
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
@@ -9,19 +9,20 @@ export default defineConfig({
     port: 5173,
   },
   define: {
-    global: "window",
+    global: "window", // fix simple-peer "global is not defined"
+  },
+  resolve: {
+    alias: {
+      crypto: "crypto-browserify",
+      stream: "stream-browserify",
+    },
   },
   build: {
-    outDir: 'dist',       // default, just to be explicit
-    assetsDir: 'assets',  // default folder for JS/CSS/images
+    outDir: "dist",
+    assetsDir: "assets",
   },
-  base: './',             // ✅ important for relative asset paths on Vercel
+  base: "./", // relative paths for deploy
   optimizeDeps: {
     include: ["react-pdf", "pdfjs-dist"],
   },
-})
-
-
-
-
-
+});
