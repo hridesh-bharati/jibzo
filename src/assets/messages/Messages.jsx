@@ -408,7 +408,6 @@ export default function Messages() {
         </button>
       </form>
 
-      {/* Face detection canvases */}
       <canvas ref={localCanvasRef} style={{ position: "absolute", top: 20, right: 20, width: 160, height: 220, pointerEvents: "none" }} />
       <canvas ref={remoteCanvasRef} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none" }} />
     </div>
