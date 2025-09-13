@@ -225,42 +225,44 @@ export default function Messages() {
     };
   }, [chatId, currentUid, inCall, callStatus]);
 
-  const startCall = async () => {
-    try {
-      // 1. Get local media
-      const localStream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 1280, height: 720 },
-        audio: true,
-      });
-      localStreamRef.current = localStream;
-      if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
+ const startCall = async () => {
+  try {
+    const localStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: true,
+    });
 
-      // 2. Create peer connection
-      const pc = createPC();
-      pcRef.current = pc;
-
-      // 3. Add tracks
-      localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
-
-      // 4. Create offer
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      // 5. Send offer to DB
-      await set(ref(db, `calls/${chatId}`), {
-        offer: { type: offer.type, sdp: offer.sdp, from: currentUid },
-        status: "calling",
-        from: currentUid,
-      });
-
-      onDisconnect(ref(db, `calls/${chatId}`)).remove();
-      setCallStatus("calling");
-      setInCall(true); // show local video immediately
-    } catch (err) {
-      alert("Error starting call: " + err.message);
-      cleanupCall();
+    if (!localStream) {
+      alert("Cannot access camera/microphone. Please allow permissions.");
+      return;
     }
-  };
+
+    localStreamRef.current = localStream;
+    if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
+
+    const pc = createPC();
+    pcRef.current = pc;
+    localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    await set(ref(db, `calls/${chatId}`), {
+      offer: { type: offer.type, sdp: offer.sdp, from: currentUid },
+      status: "calling",
+      from: currentUid,
+    });
+
+    onDisconnect(ref(db, `calls/${chatId}`)).remove();
+    setCallStatus("calling");
+
+  } catch (err) {
+    console.error("Error accessing camera/mic:", err);
+    alert("Cannot start call. Please allow camera and microphone permissions.");
+    cleanupCall();
+  }
+};
+
 
   const acceptCall = async () => {
     if (!incomingCall) return;
