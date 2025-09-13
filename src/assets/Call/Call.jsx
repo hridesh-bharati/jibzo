@@ -1,59 +1,135 @@
 import React, { useEffect, useRef, useState } from "react";
 import Peer from "simple-peer";
+import { db, auth } from "../../assets/utils/firebaseConfig";
+import { ref, onValue, push, remove } from "firebase/database";
 
 export default function Call({ chatUid, callType, onClose }) {
+  const localVideo = useRef();
+  const remoteVideo = useRef();
   const [peer, setPeer] = useState(null);
-  const localVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
-  const [stream, setStream] = useState(null);
+  const streamRef = useRef();
+  const callId = [auth.currentUser.uid, chatUid].sort().join("_");
+
+  // Send signal to Firebase
+  const sendSignal = async (data) => {
+    await push(ref(db, `calls/${callId}/signals`), {
+      from: auth.currentUser.uid,
+      data,
+    });
+  };
 
   useEffect(() => {
-    const start = async () => {
+    async function init() {
       try {
-        const userStream = await navigator.mediaDevices.getUserMedia({
+        // ✅ get user media
+        const stream = await navigator.mediaDevices.getUserMedia({
           video: callType === "video",
           audio: true,
         });
-        setStream(userStream);
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = userStream;
-        }
+        streamRef.current = stream;
+        if (localVideo.current) localVideo.current.srcObject = stream;
 
-        const p = new Peer({
-          initiator: true, // demo ke liye initiator fix, real app me signaling chahiye
+        // ✅ create peer
+        const newPeer = new Peer({
+          initiator: true,
           trickle: false,
-          stream: userStream,
+          stream,
         });
 
-        p.on("stream", (remoteStream) => {
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = remoteStream;
+        newPeer.on("signal", (data) => {
+          sendSignal(JSON.stringify(data));
+        });
+
+        newPeer.on("stream", (remoteStream) => {
+          if (remoteVideo.current) {
+            remoteVideo.current.srcObject = remoteStream;
           }
         });
 
-        setPeer(p);
+        setPeer(newPeer);
       } catch (err) {
-        alert("Media error: " + err.message);
+        console.error("Media error:", err);
         onClose();
       }
-    };
-    start();
+    }
+    init();
 
+    // cleanup
     return () => {
-      peer?.destroy();
-      stream?.getTracks().forEach((t) => t.stop());
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+      }
+      if (peer) peer.destroy();
+      remove(ref(db, `calls/${callId}`));
     };
-  }, [callType]);
+  }, []);
+
+  // ✅ listen for remote signals
+  useEffect(() => {
+    const signalsRef = ref(db, `calls/${callId}/signals`);
+    return onValue(signalsRef, (snap) => {
+      if (!snap.exists()) return;
+      const signals = Object.values(snap.val() || {});
+      signals.forEach((s) => {
+        if (s.from !== auth.currentUser.uid) {
+          peer?.signal(JSON.parse(s.data));
+        }
+      });
+    });
+  }, [peer]);
 
   return (
-    <div style={{ background: "#000", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", alignItems: "center", position: "relative" }}>
-      {/* Remote video large */}
-      <video ref={remoteVideoRef} autoPlay playsInline style={{ width: "100%", height: "60vh", background: "#333", borderRadius: 10 }} />
-      {/* Local video small */}
-      {callType === "video" && (
-        <video ref={localVideoRef} autoPlay muted playsInline style={{ width: 120, height: 150, position: "absolute", bottom: 80, right: 20, borderRadius: 10, background: "#222" }} />
-      )}
-      <button onClick={onClose} style={{ marginTop: 20, padding: "10px 20px", borderRadius: 30, background: "#f44336", color: "#fff", border: "none" }}>
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        background: "#000",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        position: "relative",
+      }}
+    >
+      {/* Remote Video (Large) */}
+      <video
+        ref={remoteVideo}
+        autoPlay
+        playsInline
+        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+      />
+      {/* Local Video (Small) */}
+      <video
+        ref={localVideo}
+        autoPlay
+        muted
+        playsInline
+        style={{
+          width: 200,
+          height: 150,
+          position: "absolute",
+          bottom: 20,
+          right: 20,
+          border: "2px solid white",
+          borderRadius: 10,
+          objectFit: "cover",
+        }}
+      />
+      {/* End Call */}
+      <button
+        onClick={onClose}
+        style={{
+          position: "absolute",
+          bottom: 20,
+          left: "50%",
+          transform: "translateX(-50%)",
+          background: "red",
+          color: "#fff",
+          padding: "10px 20px",
+          border: "none",
+          borderRadius: 50,
+          fontSize: 16,
+        }}
+      >
         End Call
       </button>
     </div>
