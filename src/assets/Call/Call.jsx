@@ -1,216 +1,200 @@
 import React, { useEffect, useRef, useState } from "react";
+import Peer from "simple-peer";
 import { db, auth } from "../../assets/utils/firebaseConfig";
-import { ref, set, onValue, remove, onDisconnect } from "firebase/database";
-import { onAuthStateChanged } from "firebase/auth";
-import SimplePeer from "simple-peer";
+import { ref, set, onValue, remove } from "firebase/database";
 
-export default function Call({ chatUid, callType = "video" }) {
-  const [currentUid, setCurrentUid] = useState(null);
+export default function Call({ callerId, receiverId }) {
+  const [incoming, setIncoming] = useState(null);
   const [inCall, setInCall] = useState(false);
-  const [incomingCall, setIncomingCall] = useState(null);
-  const localVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
+  const myVideo = useRef();
+  const userVideo = useRef();
   const peerRef = useRef(null);
+  const streamRef = useRef(null);
 
-  const chatId =
-    currentUid && chatUid ? [currentUid, chatUid].sort().join("_") : null;
+  // ✅ Start call (caller)
+  const startCall = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      alert("Your browser does not support calls!");
+      return;
+    }
 
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      if (user) setCurrentUid(user.uid);
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true,
     });
-    return () => unsub();
-  }, []);
+    myVideo.current.srcObject = stream;
+    streamRef.current = stream;
 
-  // Listen for incoming calls
+    const peer = new Peer({
+      initiator: true,
+      trickle: false,
+      stream,
+    });
+
+    peer.on("signal", (data) => {
+      set(ref(db, `calls/${receiverId}`), {
+        from: callerId,
+        signal: data,
+      });
+    });
+
+    peer.on("stream", (remoteStream) => {
+      userVideo.current.srcObject = remoteStream;
+    });
+
+    peerRef.current = peer;
+    setInCall(true);
+  };
+
+  // ✅ Listen for incoming call
   useEffect(() => {
-    if (!chatId) return;
-    const callRef = ref(db, `calls/${chatId}`);
-    const unsub = onValue(callRef, (snap) => {
-      const data = snap.val();
-      if (!data) return;
-
-      if (data.offer && data.offer.from !== currentUid && !inCall) {
-        setIncomingCall(data.offer);
+    const callRef = ref(db, `calls/${callerId}`);
+    onValue(callRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.val();
+        setIncoming(data);
       }
     });
-    return () => unsub();
-  }, [chatId, currentUid, inCall]);
 
-  const startCall = async () => {
-    if (!chatId || !currentUid) return;
-    const mediaConfig =
-      callType === "video"
-        ? { video: true, audio: true }
-        : { video: false, audio: true };
+    return () => remove(callRef);
+  }, [callerId]);
 
-    const stream = await navigator.mediaDevices.getUserMedia(mediaConfig);
-    if (callType === "video") {
-      localVideoRef.current.srcObject = stream;
-    }
+  // ✅ Accept call (receiver)
+  const acceptCall = async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true,
+    });
+    myVideo.current.srcObject = stream;
+    streamRef.current = stream;
 
-    const peer = new SimplePeer({ initiator: true, trickle: false, stream });
-    peerRef.current = peer;
+    const peer = new Peer({
+      initiator: false,
+      trickle: false,
+      stream,
+    });
 
-    peer.on("signal", async (signalData) => {
-      await set(ref(db, `calls/${chatId}/offer`), {
-        from: currentUid,
-        type: callType,
-        signal: signalData,
-      });
-      onDisconnect(ref(db, `calls/${chatId}`)).remove();
+    peer.on("signal", (data) => {
+      set(ref(db, `calls/${incoming.from}/answer`), { signal: data });
     });
 
     peer.on("stream", (remoteStream) => {
-      remoteVideoRef.current.srcObject = remoteStream;
+      userVideo.current.srcObject = remoteStream;
     });
 
-    setInCall(true);
-  };
-
-  const answerCall = async () => {
-    if (!incomingCall || !chatId || !currentUid) return;
-    const mediaConfig =
-      incomingCall.type === "video"
-        ? { video: true, audio: true }
-        : { video: false, audio: true };
-
-    const stream = await navigator.mediaDevices.getUserMedia(mediaConfig);
-    if (incomingCall.type === "video") {
-      localVideoRef.current.srcObject = stream;
-    }
-
-    const peer = new SimplePeer({ initiator: false, trickle: false, stream });
+    peer.signal(incoming.signal);
     peerRef.current = peer;
-
-    peer.on("signal", async (signalData) => {
-      await set(ref(db, `calls/${chatId}/answer`), {
-        from: currentUid,
-        signal: signalData,
-      });
-    });
-
-    peer.on("stream", (remoteStream) => {
-      remoteVideoRef.current.srcObject = remoteStream;
-    });
-
-    peer.signal(incomingCall.signal);
     setInCall(true);
-    setIncomingCall(null);
+    setIncoming(null);
   };
 
-  // Listen for answer
+  // ✅ Listen for answer (caller side)
   useEffect(() => {
-    if (!chatId || !currentUid) return;
-    const answerRef = ref(db, `calls/${chatId}/answer`);
-    const unsub = onValue(answerRef, (snap) => {
-      const data = snap.val();
-      if (!data || data.from === currentUid) return;
-      if (peerRef.current) peerRef.current.signal(data.signal);
+    const answerRef = ref(db, `calls/${callerId}/answer`);
+    onValue(answerRef, (snap) => {
+      if (snap.exists() && peerRef.current) {
+        peerRef.current.signal(snap.val().signal);
+      }
     });
-    return () => unsub();
-  }, [chatId, currentUid]);
+    return () => remove(answerRef);
+  }, [callerId]);
 
-  const endCall = async () => {
+  // ✅ End call
+  const endCall = () => {
     if (peerRef.current) peerRef.current.destroy();
-    if (localVideoRef.current?.srcObject) {
-      localVideoRef.current.srcObject.getTracks().forEach((t) => t.stop());
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
     }
-    if (remoteVideoRef.current?.srcObject) {
-      remoteVideoRef.current.srcObject.getTracks().forEach((t) => t.stop());
-    }
-    peerRef.current = null;
     setInCall(false);
-    setIncomingCall(null);
-    if (chatId) await remove(ref(db, `calls/${chatId}`));
+    setIncoming(null);
+    remove(ref(db, `calls/${callerId}`));
+    remove(ref(db, `calls/${receiverId}`));
   };
 
   return (
-    <div style={{ textAlign: "center", marginTop: 10 }}>
-      {/* Video only when video call */}
-      {callType === "video" && (
-        <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-          <video
-            ref={localVideoRef}
-            autoPlay
-            muted
-            style={{
-              width: 200,
-              borderRadius: 8,
-              background: "#000",
-            }}
-          />
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            style={{
-              width: 200,
-              borderRadius: 8,
-              background: "#000",
-            }}
-          />
-        </div>
-      )}
-
-      {!inCall && !incomingCall && (
+    <div style={{ padding: 20 }}>
+      {!inCall && !incoming && (
         <button
           onClick={startCall}
-          style={{
-            marginTop: 10,
-            padding: "8px 16px",
-            borderRadius: 6,
-            background: "#075E54",
-            color: "#fff",
-            border: "none",
-          }}
+          style={{ padding: 10, background: "#4caf50", color: "#fff" }}
         >
-          {callType === "video" ? "Start Video Call" : "Start Audio Call"}
+          📞 Start Call
         </button>
       )}
 
-      {incomingCall && !inCall && (
-        <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
+      {incoming && !inCall && (
+        <div>
+          <p>📲 Incoming call from {incoming.from}</p>
           <button
-            onClick={answerCall}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 6,
-              background: "#4caf50",
-              color: "#fff",
-              border: "none",
-            }}
+            onClick={acceptCall}
+            style={{ padding: 10, background: "blue", color: "#fff" }}
           >
-            Answer {incomingCall.type === "video" ? "Video" : "Audio"} Call
+            ✅ Accept
           </button>
           <button
-            onClick={() => setIncomingCall(null)}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 6,
-              background: "#f44336",
-              color: "#fff",
-              border: "none",
-            }}
+            onClick={endCall}
+            style={{ padding: 10, background: "red", color: "#fff" }}
           >
-            Decline
+            ❌ Reject
           </button>
         </div>
       )}
 
       {inCall && (
-        <button
-          onClick={endCall}
+        <div
           style={{
-            marginTop: 10,
-            padding: "8px 16px",
-            borderRadius: 6,
-            background: "#f44336",
-            color: "#fff",
-            border: "none",
+            position: "relative",
+            width: "100%",
+            height: "100vh",
+            background: "#000",
           }}
         >
-          End Call
-        </button>
+          {/* Remote video (large) */}
+          <video
+            ref={userVideo}
+            autoPlay
+            playsInline
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+            }}
+          />
+
+          {/* My video (small floating window) */}
+          <video
+            ref={myVideo}
+            autoPlay
+            muted
+            playsInline
+            style={{
+              position: "absolute",
+              bottom: 20,
+              right: 20,
+              width: 150,
+              height: 200,
+              borderRadius: 10,
+              border: "2px solid #fff",
+              objectFit: "cover",
+            }}
+          />
+
+          <button
+            onClick={endCall}
+            style={{
+              position: "absolute",
+              bottom: 20,
+              left: "50%",
+              transform: "translateX(-50%)",
+              background: "red",
+              color: "#fff",
+              padding: "10px 20px",
+              borderRadius: "50%",
+            }}
+          >
+            🛑 End
+          </button>
+        </div>
       )}
     </div>
   );

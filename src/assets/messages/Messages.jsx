@@ -44,13 +44,13 @@ export default function Messages() {
       const data = snap.val();
       const msgs = data
         ? Object.entries(data).map(([id, msg]) => ({
-            id,
-            ...msg,
-            timestamp:
-              typeof msg.timestamp === "number"
-                ? msg.timestamp
-                : msg.timestamp?.toMillis?.() || Date.now(),
-          }))
+          id,
+          ...msg,
+          timestamp:
+            typeof msg.timestamp === "number"
+              ? msg.timestamp
+              : msg.timestamp?.toMillis?.() || Date.now(),
+        }))
         : [];
       setMessages(msgs);
       setTimeout(scrollToBottom, 100);
@@ -267,7 +267,6 @@ export default function Messages() {
         </button>
       </form>
 
-      {/* Call Modal */}
       {showCall && (
         <div
           style={{
@@ -276,37 +275,16 @@ export default function Messages() {
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: "#0008",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
+            backgroundColor: "#000",
             zIndex: 999,
           }}
         >
-          <div
-            style={{
-              background: "#fff",
-              padding: 20,
-              borderRadius: 10,
-              width: "90%",
-              maxWidth: 500,
-            }}
-          >
-            <Call chatUid={uid} callType={showCall} />
-            <button
-              onClick={() => setShowCall(null)}
-              style={{
-                marginTop: 10,
-                padding: "8px 16px",
-                borderRadius: 6,
-                background: "#f44336",
-                color: "#fff",
-                border: "none",
-              }}
-            >
-              Close
-            </button>
-          </div>
+          <Call
+            callerId={currentUid}
+            receiverId={uid}
+            callType={showCall} // "audio" | "video"
+            onEnd={() => setShowCall(null)} // end call callback
+          />
         </div>
       )}
 
