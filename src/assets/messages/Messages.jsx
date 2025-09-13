@@ -12,12 +12,11 @@ export default function Messages() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [chatUser, setChatUser] = useState(null);
-  const [showCall, setShowCall] = useState(null); // "audio" | "video"
+  const [showCall, setShowCall] = useState(null); // audio | video
   const messagesEndRef = useRef(null);
 
   const chatId = currentUid && uid ? [currentUid, uid].sort().join("_") : null;
 
-  // Track login
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       if (user) setCurrentUid(user.uid);
@@ -25,7 +24,6 @@ export default function Messages() {
     return () => unsub();
   }, []);
 
-  // Fetch chat partner
   useEffect(() => {
     if (!uid) return;
     const userRef = ref(db, `usersData/${uid}`);
@@ -34,7 +32,6 @@ export default function Messages() {
     });
   }, [uid]);
 
-  // Fetch messages
   useEffect(() => {
     if (!chatId) return;
     const messagesRef = ref(db, `chats/${chatId}/messages`);
@@ -120,8 +117,14 @@ export default function Messages() {
           <span>{chatUser?.username || "User"}</span>
         </Link>
         <div style={{ display: "flex", gap: 15, fontSize: 18 }}>
-          <FaPhone onClick={() => setShowCall("audio")} style={{ cursor: "pointer" }} />
-          <FaVideo onClick={() => setShowCall("video")} style={{ cursor: "pointer" }} />
+          <FaPhone
+            onClick={() => setShowCall("audio")}
+            style={{ cursor: "pointer" }}
+          />
+          <FaVideo
+            onClick={() => setShowCall("video")}
+            style={{ cursor: "pointer" }}
+          />
         </div>
       </header>
 
@@ -200,13 +203,17 @@ export default function Messages() {
           style={{
             position: "absolute",
             inset: 0,
-            background: "#000",
+            background: "rgba(0,0,0,0.9)",
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
           }}
         >
-          <Call chatUid={uid} callType={showCall} onClose={() => setShowCall(null)} />
+          <Call
+            chatUid={uid}
+            callType={showCall}
+            onClose={() => setShowCall(null)}
+          />
         </div>
       )}
     </div>

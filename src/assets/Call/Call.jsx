@@ -1,82 +1,119 @@
 import React, { useEffect, useRef, useState } from "react";
-import Peer from "simple-peer";
-import { db, auth } from "../../assets/utils/firebaseConfig";
-import { ref, onValue, push, remove } from "firebase/database";
+import { db } from "../../assets/utils/firebaseConfig";
+import {
+  ref,
+  push,
+  set,
+  onChildAdded,
+  remove,
+  get,
+} from "firebase/database";
 
-export default function Call({ chatUid, callType, onClose }) {
+export default function Call({ chatUid, callType = "video", onClose }) {
   const localVideo = useRef();
   const remoteVideo = useRef();
-  const [peer, setPeer] = useState(null);
-  const streamRef = useRef();
-  const callId = [auth.currentUser.uid, chatUid].sort().join("_");
+  const pc = useRef(null);
+  const [started, setStarted] = useState(false);
+  const [roomId] = useState(chatUid); // chatId as room
 
-  // Send signal to Firebase
-  const sendSignal = async (data) => {
-    await push(ref(db, `calls/${callId}/signals`), {
-      from: auth.currentUser.uid,
-      data,
-    });
-  };
+  const servers = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
 
   useEffect(() => {
-    async function init() {
-      try {
-        // ✅ get user media
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: callType === "video",
-          audio: true,
-        });
-        streamRef.current = stream;
-        if (localVideo.current) localVideo.current.srcObject = stream;
-
-        // ✅ create peer
-        const newPeer = new Peer({
-          initiator: true,
-          trickle: false,
-          stream,
-        });
-
-        newPeer.on("signal", (data) => {
-          sendSignal(JSON.stringify(data));
-        });
-
-        newPeer.on("stream", (remoteStream) => {
-          if (remoteVideo.current) {
-            remoteVideo.current.srcObject = remoteStream;
-          }
-        });
-
-        setPeer(newPeer);
-      } catch (err) {
-        console.error("Media error:", err);
-        onClose();
-      }
-    }
-    init();
-
-    // cleanup
     return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-      }
-      if (peer) peer.destroy();
-      remove(ref(db, `calls/${callId}`));
+      endCall();
     };
   }, []);
 
-  // ✅ listen for remote signals
-  useEffect(() => {
-    const signalsRef = ref(db, `calls/${callId}/signals`);
-    return onValue(signalsRef, (snap) => {
-      if (!snap.exists()) return;
-      const signals = Object.values(snap.val() || {});
-      signals.forEach((s) => {
-        if (s.from !== auth.currentUser.uid) {
-          peer?.signal(JSON.parse(s.data));
-        }
-      });
+  const initPeer = async () => {
+    pc.current = new RTCPeerConnection(servers);
+
+    // Local Media
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: callType === "video",
+      audio: true,
     });
-  }, [peer]);
+    localVideo.current.srcObject = stream;
+    stream.getTracks().forEach((track) => pc.current.addTrack(track, stream));
+
+    // Remote stream
+    pc.current.ontrack = (event) => {
+      remoteVideo.current.srcObject = event.streams[0];
+    };
+
+    // ICE candidates
+    pc.current.onicecandidate = (event) => {
+      if (event.candidate) {
+        push(ref(db, `calls/${roomId}/candidates`), event.candidate.toJSON());
+      }
+    };
+
+    setStarted(true);
+  };
+
+  const startCall = async () => {
+    await initPeer();
+    const offer = await pc.current.createOffer();
+    await pc.current.setLocalDescription(offer);
+    await set(ref(db, `calls/${roomId}/offer`), offer);
+
+    // Listen for answer
+    onChildAdded(ref(db, `calls/${roomId}/answer`), async (snap) => {
+      if (!pc.current.remoteDescription) {
+        const answer = snap.val();
+        await pc.current.setRemoteDescription(
+          new RTCSessionDescription(answer)
+        );
+      }
+    });
+
+    // Listen ICE
+    onChildAdded(ref(db, `calls/${roomId}/candidates`), async (snap) => {
+      try {
+        const candidate = new RTCIceCandidate(snap.val());
+        await pc.current.addIceCandidate(candidate);
+      } catch (err) {
+        console.error("ICE add error", err);
+      }
+    });
+  };
+
+  const answerCall = async () => {
+    await initPeer();
+
+    // Get Offer
+    const offerSnap = await get(ref(db, `calls/${roomId}/offer`));
+    if (!offerSnap.exists()) return alert("No offer found!");
+    const offer = offerSnap.val();
+    await pc.current.setRemoteDescription(new RTCSessionDescription(offer));
+
+    // Create Answer
+    const answer = await pc.current.createAnswer();
+    await pc.current.setLocalDescription(answer);
+    await set(ref(db, `calls/${roomId}/answer/ans`), answer);
+
+    // Listen ICE
+    onChildAdded(ref(db, `calls/${roomId}/candidates`), async (snap) => {
+      try {
+        const candidate = new RTCIceCandidate(snap.val());
+        await pc.current.addIceCandidate(candidate);
+      } catch (err) {
+        console.error("ICE add error", err);
+      }
+    });
+  };
+
+  const endCall = async () => {
+    try {
+      pc.current?.close();
+      pc.current = null;
+      if (roomId) {
+        await remove(ref(db, `calls/${roomId}`));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    onClose?.();
+  };
 
   return (
     <div
@@ -85,53 +122,37 @@ export default function Call({ chatUid, callType, onClose }) {
         height: "100%",
         background: "#000",
         display: "flex",
-        justifyContent: "center",
+        flexDirection: "column",
         alignItems: "center",
-        position: "relative",
+        justifyContent: "center",
       }}
     >
-      {/* Remote Video (Large) */}
+      <video
+        ref={localVideo}
+        autoPlay
+        playsInline
+        muted
+        style={{ width: "40%", border: "2px solid #fff", borderRadius: 8 }}
+      />
       <video
         ref={remoteVideo}
         autoPlay
         playsInline
-        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        style={{ width: "40%", border: "2px solid #fff", borderRadius: 8 }}
       />
-      {/* Local Video (Small) */}
-      <video
-        ref={localVideo}
-        autoPlay
-        muted
-        playsInline
-        style={{
-          width: 200,
-          height: 150,
-          position: "absolute",
-          bottom: 20,
-          right: 20,
-          border: "2px solid white",
-          borderRadius: 10,
-          objectFit: "cover",
-        }}
-      />
-      {/* End Call */}
-      <button
-        onClick={onClose}
-        style={{
-          position: "absolute",
-          bottom: 20,
-          left: "50%",
-          transform: "translateX(-50%)",
-          background: "red",
-          color: "#fff",
-          padding: "10px 20px",
-          border: "none",
-          borderRadius: 50,
-          fontSize: 16,
-        }}
-      >
-        End Call
-      </button>
+
+      <div style={{ marginTop: 20, display: "flex", gap: 20 }}>
+        <button onClick={startCall} disabled={started}>
+          Start Call
+        </button>
+        <button onClick={answerCall}>Answer</button>
+        <button
+          onClick={endCall}
+          style={{ background: "red", color: "#fff", padding: "6px 12px" }}
+        >
+          End
+        </button>
+      </div>
     </div>
   );
 }
