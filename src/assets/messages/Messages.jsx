@@ -62,13 +62,13 @@ export default function Messages() {
       const data = snap.val();
       const msgs = data
         ? Object.entries(data).map(([id, msg]) => ({
-            id,
-            ...msg,
-            timestamp:
-              typeof msg.timestamp === "number"
-                ? msg.timestamp
-                : msg.timestamp?.toMillis?.() || Date.now(),
-          }))
+          id,
+          ...msg,
+          timestamp:
+            typeof msg.timestamp === "number"
+              ? msg.timestamp
+              : msg.timestamp?.toMillis?.() || Date.now(),
+        }))
         : [];
       setMessages(msgs);
       setTimeout(scrollToBottom, 100);
@@ -145,11 +145,11 @@ export default function Messages() {
     if (pcRef.current) {
       try {
         pcRef.current.close();
-      } catch {}
+      } catch { }
       pcRef.current = null;
     }
     processedCandidatesRef.current.clear();
-    if (chatId) await remove(ref(db, `calls/${chatId}`)).catch(() => {});
+    if (chatId) await remove(ref(db, `calls/${chatId}`)).catch(() => { });
   };
 
   const createPC = () => {
@@ -210,7 +210,7 @@ export default function Messages() {
           const key = uidKey + "|" + id;
           if (processedCandidatesRef.current.has(key)) return;
           processedCandidatesRef.current.add(key);
-          pcRef.current.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+          pcRef.current.addIceCandidate(new RTCIceCandidate(cand)).catch(() => { });
         });
       });
     });
@@ -637,26 +637,75 @@ export default function Messages() {
               objectFit: "cover",
             }}
           />
-          <button
-            onClick={endCall}
-            style={{
-              position: "absolute",
-              bottom: 30,
-              left: "50%",
-              transform: "translateX(-50%)",
-              padding: "10px 20px",
-              background: "#d32f2f",
-              color: "#fff",
-              border: "none",
-              borderRadius: 20,
-              fontWeight: "bold",
-              zIndex: 10000,
-            }}
-          >
-            End Call
-          </button>
+          {/* Show End Call for both caller & receiver */}
+          {inCall && (
+            <button
+              onClick={endCall}
+              style={{
+                position: "absolute",
+                bottom: 30,
+                left: "50%",
+                transform: "translateX(-50%)",
+                padding: "10px 20px",
+                background: "#d32f2f",
+                color: "#fff",
+                border: "none",
+                borderRadius: 20,
+                fontWeight: "bold",
+                zIndex: 10000,
+              }}
+            >
+              End Call
+            </button>
+          )}
+          {/* Incoming Call buttons */}
+          {incomingCall && callStatus === "ringing" && (
+            <div
+              style={{
+                position: "absolute",
+                top: "40%",
+                left: "50%",
+                transform: "translate(-50%, -50%)",
+                background: "#fff",
+                padding: 20,
+                borderRadius: 10,
+                textAlign: "center",
+                zIndex: 10001,
+              }}
+            >
+              <p style={{ fontWeight: "bold" }}>
+                {chatUser?.username} is calling
+              </p>
+              <button
+                onClick={acceptCall}
+                style={{
+                  marginRight: 10,
+                  padding: 6,
+                  borderRadius: 5,
+                  background: "#4caf50",
+                  color: "#fff",
+                  border: "none",
+                }}
+              >
+                Accept
+              </button>
+              <button
+                onClick={declineCall}
+                style={{
+                  padding: 6,
+                  borderRadius: 5,
+                  background: "#f44336",
+                  color: "#fff",
+                  border: "none",
+                }}
+              >
+                Decline
+              </button>
+            </div>
+          )}
         </div>
       )}
+
     </div>
   );
 }
