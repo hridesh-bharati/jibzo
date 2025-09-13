@@ -62,13 +62,13 @@ export default function Messages() {
       const data = snap.val();
       const msgs = data
         ? Object.entries(data).map(([id, msg]) => ({
-            id,
-            ...msg,
-            timestamp:
-              typeof msg.timestamp === "number"
-                ? msg.timestamp
-                : msg.timestamp?.toMillis?.() || Date.now(),
-          }))
+          id,
+          ...msg,
+          timestamp:
+            typeof msg.timestamp === "number"
+              ? msg.timestamp
+              : msg.timestamp?.toMillis?.() || Date.now(),
+        }))
         : [];
       setMessages(msgs);
       setTimeout(scrollToBottom, 100);
@@ -147,13 +147,13 @@ export default function Messages() {
     if (pcRef.current) {
       try {
         pcRef.current.close();
-      } catch {}
+      } catch { }
       pcRef.current = null;
     }
 
     processedCandidatesRef.current.clear();
 
-    if (chatId) await remove(ref(db, `calls/${chatId}`)).catch(() => {});
+    if (chatId) await remove(ref(db, `calls/${chatId}`)).catch(() => { });
   };
 
   const createPC = () => {
@@ -194,13 +194,6 @@ export default function Messages() {
       if (offer && from !== currentUid && !inCall && callStatus !== "ringing") {
         setIncomingCall({ from, offer });
         setCallStatus("ringing");
-
-        // Play ringtone + vibrate
-        const audio = new Audio("/sounds/ringtone.mp3"); // add ringtone file in public/sounds
-        audio.loop = true;
-        audio.play();
-        if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100]);
-        incomingCall.audio = audio;
       }
 
       if (answer && answer.from !== currentUid && pcRef.current) {
@@ -221,7 +214,7 @@ export default function Messages() {
           const key = uidKey + "|" + id;
           if (processedCandidatesRef.current.has(key)) return;
           processedCandidatesRef.current.add(key);
-          pcRef.current.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+          pcRef.current.addIceCandidate(new RTCIceCandidate(cand)).catch(() => { });
         });
       });
     });
@@ -234,6 +227,7 @@ export default function Messages() {
 
   const startCall = async () => {
     try {
+      // 1. Get local media
       const localStream = await navigator.mediaDevices.getUserMedia({
         video: { width: 1280, height: 720 },
         audio: true,
@@ -241,14 +235,18 @@ export default function Messages() {
       localStreamRef.current = localStream;
       if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
 
+      // 2. Create peer connection
       const pc = createPC();
       pcRef.current = pc;
 
+      // 3. Add tracks
       localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
 
+      // 4. Create offer
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
+      // 5. Send offer to DB
       await set(ref(db, `calls/${chatId}`), {
         offer: { type: offer.type, sdp: offer.sdp, from: currentUid },
         status: "calling",
@@ -257,7 +255,7 @@ export default function Messages() {
 
       onDisconnect(ref(db, `calls/${chatId}`)).remove();
       setCallStatus("calling");
-      setInCall(true);
+      setInCall(true); // show local video immediately
     } catch (err) {
       alert("Error starting call: " + err.message);
       cleanupCall();
@@ -293,9 +291,6 @@ export default function Messages() {
 
       setInCall(true);
       setCallStatus("in-call");
-
-      // Stop ringtone
-      if (incomingCall.audio) incomingCall.audio.pause();
       setIncomingCall(null);
     } catch (err) {
       alert("Accept failed: " + err.message);
@@ -306,7 +301,6 @@ export default function Messages() {
   const declineCall = async () => {
     if (!chatId) return;
     await set(ref(db, `calls/${chatId}/status`), "rejected");
-    if (incomingCall?.audio) incomingCall.audio.pause();
     setIncomingCall(null);
     setCallStatus("idle");
   };
@@ -392,7 +386,6 @@ export default function Messages() {
               }}
             >
               End
-           
             </button>
           )}
         </div>
