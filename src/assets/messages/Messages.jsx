@@ -25,7 +25,7 @@ export default function Messages() {
   const longPressTimerRef = useRef(null);
   const messagesEndRef = useRef(null);
 
-  // Video call refs
+  // Video call refs/states
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const pcRef = useRef(null);
@@ -131,28 +131,24 @@ export default function Messages() {
     return () => document.removeEventListener("click", handleClickOutside);
   }, [selectedMsg]);
 
-  // ----------------- WebRTC -----------------
+  // WebRTC helpers
   const cleanupCall = async () => {
     setInCall(false);
     setCallStatus("idle");
     setIncomingCall(null);
-
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((t) => t.stop());
       localStreamRef.current = null;
     }
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-
     if (pcRef.current) {
       try {
         pcRef.current.close();
       } catch { }
       pcRef.current = null;
     }
-
     processedCandidatesRef.current.clear();
-
     if (chatId) await remove(ref(db, `calls/${chatId}`)).catch(() => { });
   };
 
@@ -161,14 +157,13 @@ export default function Messages() {
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
 
-    // Remote stream
+    // Set remote stream directly
     pc.ontrack = (e) => {
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = e.streams[0];
       }
     };
 
-    // ICE candidates
     pc.onicecandidate = (e) => {
       if (e.candidate && chatId && currentUid) {
         push(
@@ -181,14 +176,13 @@ export default function Messages() {
     return pc;
   };
 
-  // Listen for incoming calls & ICE candidates
+  // Signaling
   useEffect(() => {
     if (!chatId) return;
 
     const unsubCall = onValue(ref(db, `calls/${chatId}`), async (snap) => {
       const data = snap.val();
       if (!data) return;
-
       const { offer, answer, status, from } = data;
 
       if (offer && from !== currentUid && !inCall && callStatus !== "ringing") {
@@ -197,7 +191,9 @@ export default function Messages() {
       }
 
       if (answer && answer.from !== currentUid && pcRef.current) {
-        await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
+        await pcRef.current.setRemoteDescription(
+          new RTCSessionDescription(answer)
+        );
         setCallStatus("in-call");
         setInCall(true);
       }
@@ -227,26 +223,21 @@ export default function Messages() {
 
   const startCall = async () => {
     try {
-      // 1. Get local media
       const localStream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 1280, height: 720 },
+        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: true,
       });
       localStreamRef.current = localStream;
       if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
 
-      // 2. Create peer connection
       const pc = createPC();
       pcRef.current = pc;
 
-      // 3. Add tracks
       localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
 
-      // 4. Create offer
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
-      // 5. Send offer to DB
       await set(ref(db, `calls/${chatId}`), {
         offer: { type: offer.type, sdp: offer.sdp, from: currentUid },
         status: "calling",
@@ -255,7 +246,6 @@ export default function Messages() {
 
       onDisconnect(ref(db, `calls/${chatId}`)).remove();
       setCallStatus("calling");
-      setInCall(true); // show local video immediately
     } catch (err) {
       alert("Error starting call: " + err.message);
       cleanupCall();
@@ -266,7 +256,7 @@ export default function Messages() {
     if (!incomingCall) return;
     try {
       const localStream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 1280, height: 720 },
+        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: true,
       });
       localStreamRef.current = localStream;
@@ -274,7 +264,6 @@ export default function Messages() {
 
       const pc = createPC();
       pcRef.current = pc;
-
       localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
 
       await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
@@ -549,7 +538,7 @@ export default function Messages() {
         </div>
       )}
 
-      {/* Incoming call overlay */}
+      {/* Incoming call */}
       {incomingCall && callStatus === "ringing" && (
         <div
           style={{
@@ -562,7 +551,7 @@ export default function Messages() {
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
-            zIndex: 10000,
+            zIndex: 9999,
           }}
         >
           <div
@@ -648,6 +637,7 @@ export default function Messages() {
               objectFit: "cover",
             }}
           />
+          {/* Show End Call for both caller & receiver */}
           {inCall && (
             <button
               onClick={endCall}
@@ -662,14 +652,60 @@ export default function Messages() {
                 border: "none",
                 borderRadius: 20,
                 fontWeight: "bold",
-                zIndex: 10001,
+                zIndex: 10000,
               }}
             >
               End Call
             </button>
           )}
+          {/* Incoming Call buttons */}
+          {incomingCall && callStatus === "ringing" && (
+            <div
+              style={{
+                position: "absolute",
+                top: "40%",
+                left: "50%",
+                transform: "translate(-50%, -50%)",
+                background: "#fff",
+                padding: 20,
+                borderRadius: 10,
+                textAlign: "center",
+                zIndex: 10001,
+              }}
+            >
+              <p style={{ fontWeight: "bold" }}>
+                {chatUser?.username} is calling
+              </p>
+              <button
+                onClick={acceptCall}
+                style={{
+                  marginRight: 10,
+                  padding: 6,
+                  borderRadius: 5,
+                  background: "#4caf50",
+                  color: "#fff",
+                  border: "none",
+                }}
+              >
+                Accept
+              </button>
+              <button
+                onClick={declineCall}
+                style={{
+                  padding: 6,
+                  borderRadius: 5,
+                  background: "#f44336",
+                  color: "#fff",
+                  border: "none",
+                }}
+              >
+                Decline
+              </button>
+            </div>
+          )}
         </div>
       )}
+
     </div>
   );
 }
