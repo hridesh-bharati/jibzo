@@ -1,201 +1,201 @@
 import React, { useEffect, useRef, useState } from "react";
 import Peer from "simple-peer";
 import { db, auth } from "../../assets/utils/firebaseConfig";
-import { ref, set, onValue, remove } from "firebase/database";
+import {
+  ref,
+  set,
+  remove,
+  onValue,
+  serverTimestamp,
+} from "firebase/database";
+import { FaPhoneSlash } from "react-icons/fa";
 
-export default function Call({ callerId, receiverId }) {
-  const [incoming, setIncoming] = useState(null);
-  const [inCall, setInCall] = useState(false);
-  const myVideo = useRef();
-  const userVideo = useRef();
+export default function Call({ callerId, receiverId, callType, onEnd }) {
+  const myVideo = useRef(null);
+  const userVideo = useRef(null);
   const peerRef = useRef(null);
-  const streamRef = useRef(null);
+  const [stream, setStream] = useState(null);
+  const [isCaller, setIsCaller] = useState(false);
+  const callRef = ref(db, `calls/${receiverId}`);
+  const myCallRef = ref(db, `calls/${callerId}`);
 
-  // ✅ Start call (caller)
-  const startCall = async () => {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      alert("Your browser does not support calls!");
-      return;
-    }
+  // 🔹 Start call (caller side)
+  useEffect(() => {
+    const start = async () => {
+      try {
+        const mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: callType === "video",
+          audio: true,
+        });
+        setStream(mediaStream);
+        if (myVideo.current) {
+          myVideo.current.srcObject = mediaStream;
+        }
 
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: true,
+        // caller
+        setIsCaller(true);
+        const peer = new Peer({
+          initiator: true,
+          trickle: false,
+          stream: mediaStream,
+        });
+
+        peer.on("signal", (data) => {
+          set(callRef, {
+            from: callerId,
+            type: callType,
+            signal: data,
+            createdAt: serverTimestamp(),
+          });
+        });
+
+        peer.on("stream", (remoteStream) => {
+          if (userVideo.current) {
+            userVideo.current.srcObject = remoteStream;
+          }
+        });
+
+        peerRef.current = peer;
+      } catch (err) {
+        console.error("Media error", err);
+        endCall();
+      }
+    };
+
+    start();
+
+    return () => {
+      cleanup();
+    };
+    // eslint-disable-next-line
+  }, []);
+
+  // 🔹 Listen for incoming signal (receiver side)
+  useEffect(() => {
+    const unsub = onValue(callRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data && data.from !== callerId) {
+        // Receiver accepts
+        handleAnswer(data.signal);
+      }
     });
-    myVideo.current.srcObject = stream;
-    streamRef.current = stream;
 
-    const peer = new Peer({
-      initiator: true,
-      trickle: false,
-      stream,
-    });
+    return () => unsub();
+    // eslint-disable-next-line
+  }, []);
 
-    peer.on("signal", (data) => {
-      set(ref(db, `calls/${receiverId}`), {
-        from: callerId,
-        signal: data,
+  // 🔹 Receiver accepts the call
+  const handleAnswer = async (callerSignal) => {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: callType === "video",
+        audio: true,
       });
-    });
-
-    peer.on("stream", (remoteStream) => {
-      userVideo.current.srcObject = remoteStream;
-    });
-
-    peerRef.current = peer;
-    setInCall(true);
-  };
-
-  // ✅ Listen for incoming call
-  useEffect(() => {
-    const callRef = ref(db, `calls/${callerId}`);
-    onValue(callRef, (snap) => {
-      if (snap.exists()) {
-        const data = snap.val();
-        setIncoming(data);
+      setStream(mediaStream);
+      if (myVideo.current) {
+        myVideo.current.srcObject = mediaStream;
       }
-    });
 
-    return () => remove(callRef);
-  }, [callerId]);
+      const peer = new Peer({
+        initiator: false,
+        trickle: false,
+        stream: mediaStream,
+      });
 
-  // ✅ Accept call (receiver)
-  const acceptCall = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: true,
-    });
-    myVideo.current.srcObject = stream;
-    streamRef.current = stream;
+      peer.on("signal", (data) => {
+        set(myCallRef, {
+          from: callerId,
+          type: callType,
+          signal: data,
+          createdAt: serverTimestamp(),
+        });
+      });
 
-    const peer = new Peer({
-      initiator: false,
-      trickle: false,
-      stream,
-    });
+      peer.on("stream", (remoteStream) => {
+        if (userVideo.current) {
+          userVideo.current.srcObject = remoteStream;
+        }
+      });
 
-    peer.on("signal", (data) => {
-      set(ref(db, `calls/${incoming.from}/answer`), { signal: data });
-    });
+      peer.signal(callerSignal);
 
-    peer.on("stream", (remoteStream) => {
-      userVideo.current.srcObject = remoteStream;
-    });
-
-    peer.signal(incoming.signal);
-    peerRef.current = peer;
-    setInCall(true);
-    setIncoming(null);
-  };
-
-  // ✅ Listen for answer (caller side)
-  useEffect(() => {
-    const answerRef = ref(db, `calls/${callerId}/answer`);
-    onValue(answerRef, (snap) => {
-      if (snap.exists() && peerRef.current) {
-        peerRef.current.signal(snap.val().signal);
-      }
-    });
-    return () => remove(answerRef);
-  }, [callerId]);
-
-  // ✅ End call
-  const endCall = () => {
-    if (peerRef.current) peerRef.current.destroy();
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
+      peerRef.current = peer;
+    } catch (err) {
+      console.error("Answer error", err);
+      endCall();
     }
-    setInCall(false);
-    setIncoming(null);
-    remove(ref(db, `calls/${callerId}`));
-    remove(ref(db, `calls/${receiverId}`));
+  };
+
+  // 🔴 End Call
+  const endCall = () => {
+    cleanup();
+    if (onEnd) onEnd();
+  };
+
+  // Cleanup streams + firebase
+  const cleanup = () => {
+    if (peerRef.current) {
+      peerRef.current.destroy();
+      peerRef.current = null;
+    }
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+    }
+    remove(callRef);
+    remove(myCallRef);
   };
 
   return (
-    <div style={{ padding: 20 }}>
-      {!inCall && !incoming && (
-        <button
-          onClick={startCall}
-          style={{ padding: 10, background: "#4caf50", color: "#fff" }}
-        >
-          📞 Start Call
-        </button>
-      )}
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        backgroundColor: "#000",
+        position: "relative",
+      }}
+    >
+      {/* Remote video */}
+      <video
+        ref={userVideo}
+        autoPlay
+        playsInline
+        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+      />
 
-      {incoming && !inCall && (
-        <div>
-          <p>📲 Incoming call from {incoming.from}</p>
-          <button
-            onClick={acceptCall}
-            style={{ padding: 10, background: "blue", color: "#fff" }}
-          >
-            ✅ Accept
-          </button>
-          <button
-            onClick={endCall}
-            style={{ padding: 10, background: "red", color: "#fff" }}
-          >
-            ❌ Reject
-          </button>
-        </div>
-      )}
+      {/* My video (small corner window) */}
+      <video
+        ref={myVideo}
+        autoPlay
+        muted
+        playsInline
+        style={{
+          width: "150px",
+          height: "200px",
+          position: "absolute",
+          bottom: 20,
+          right: 20,
+          borderRadius: "10px",
+          background: "#000",
+        }}
+      />
 
-      {inCall && (
-        <div
-          style={{
-            position: "relative",
-            width: "100%",
-            height: "100vh",
-            background: "#000",
-          }}
-        >
-          {/* Remote video (large) */}
-          <video
-            ref={userVideo}
-            autoPlay
-            playsInline
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-            }}
-          />
-
-          {/* My video (small floating window) */}
-          <video
-            ref={myVideo}
-            autoPlay
-            muted
-            playsInline
-            style={{
-              position: "absolute",
-              bottom: 20,
-              right: 20,
-              width: 150,
-              height: 200,
-              borderRadius: 10,
-              border: "2px solid #fff",
-              objectFit: "cover",
-            }}
-          />
-
-          <button
-            onClick={endCall}
-            style={{
-              position: "absolute",
-              bottom: 20,
-              left: "50%",
-              transform: "translateX(-50%)",
-              background: "red",
-              color: "#fff",
-              padding: "10px 20px",
-              borderRadius: "50%",
-            }}
-          >
-            🛑 End
-          </button>
-        </div>
-      )}
+      {/* End call button */}
+      <button
+        onClick={endCall}
+        style={{
+          position: "absolute",
+          bottom: 20,
+          left: "50%",
+          transform: "translateX(-50%)",
+          background: "red",
+          borderRadius: "50%",
+          padding: "15px",
+          border: "none",
+          cursor: "pointer",
+        }}
+      >
+        <FaPhoneSlash color="#fff" size={24} />
+      </button>
     </div>
   );
 }

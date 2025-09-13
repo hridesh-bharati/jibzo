@@ -283,10 +283,11 @@ export default function Messages() {
             callerId={currentUid}
             receiverId={uid}
             callType={showCall} // "audio" | "video"
-            onEnd={() => setShowCall(null)} // end call callback
+            onEnd={() => setShowCall(null)}
           />
         </div>
       )}
+
 
       {/* Long-press modal */}
       {selectedMsg && (
