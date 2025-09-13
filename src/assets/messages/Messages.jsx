@@ -14,10 +14,6 @@ import {
 import { onAuthStateChanged } from "firebase/auth";
 import { IoVideocam } from "react-icons/io5";
 
-// Face detection imports
-import * as faceLandmarksDetection from "@tensorflow-models/face-landmarks-detection";
-import "@tensorflow/tfjs-backend-webgl";
-
 export default function Messages() {
   const { uid } = useParams();
   const [currentUid, setCurrentUid] = useState(null);
@@ -41,12 +37,7 @@ export default function Messages() {
 
   const chatId = currentUid && uid ? [currentUid, uid].sort().join("_") : null;
 
-  // Face detection refs
-  const localCanvasRef = useRef(null);
-  const remoteCanvasRef = useRef(null);
-  const [faceModel, setFaceModel] = useState(null);
-
-  // ------------------- Auth -------------------
+  // Track login
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) setCurrentUid(user.uid);
@@ -54,7 +45,7 @@ export default function Messages() {
     return () => unsubscribe();
   }, []);
 
-  // ------------------- Fetch chat user -------------------
+  // Fetch chat partner
   useEffect(() => {
     if (!uid) return;
     const userRef = ref(db, `usersData/${uid}`);
@@ -63,7 +54,7 @@ export default function Messages() {
     });
   }, [uid]);
 
-  // ------------------- Fetch messages -------------------
+  // Fetch messages
   useEffect(() => {
     if (!chatId) return;
     const messagesRef = ref(db, `chats/${chatId}/messages`);
@@ -71,13 +62,13 @@ export default function Messages() {
       const data = snap.val();
       const msgs = data
         ? Object.entries(data).map(([id, msg]) => ({
-            id,
-            ...msg,
-            timestamp:
-              typeof msg.timestamp === "number"
-                ? msg.timestamp
-                : msg.timestamp?.toMillis?.() || Date.now(),
-          }))
+          id,
+          ...msg,
+          timestamp:
+            typeof msg.timestamp === "number"
+              ? msg.timestamp
+              : msg.timestamp?.toMillis?.() || Date.now(),
+        }))
         : [];
       setMessages(msgs);
       setTimeout(scrollToBottom, 100);
@@ -89,7 +80,6 @@ export default function Messages() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // ------------------- Messaging -------------------
   const sendMessage = async () => {
     if (!input.trim() || !currentUid) return;
     const messagesRef = ref(db, `chats/${chatId}/messages`);
@@ -102,7 +92,7 @@ export default function Messages() {
     setInput("");
   };
 
-  // ------------------- Long press -------------------
+  // Long press
   const startLongPress = (msg) => {
     longPressTimerRef.current = setTimeout(() => setSelectedMsg(msg), 700);
   };
@@ -141,7 +131,7 @@ export default function Messages() {
     return () => document.removeEventListener("click", handleClickOutside);
   }, [selectedMsg]);
 
-  // ------------------- WebRTC -------------------
+  // WebRTC helpers
   const cleanupCall = async () => {
     setInCall(false);
     setCallStatus("idle");
@@ -155,11 +145,11 @@ export default function Messages() {
     if (pcRef.current) {
       try {
         pcRef.current.close();
-      } catch {}
+      } catch { }
       pcRef.current = null;
     }
     processedCandidatesRef.current.clear();
-    if (chatId) await remove(ref(db, `calls/${chatId}`)).catch(() => {});
+    if (chatId) await remove(ref(db, `calls/${chatId}`)).catch(() => { });
   };
 
   const createPC = () => {
@@ -167,8 +157,11 @@ export default function Messages() {
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
 
+    // Set remote stream directly
     pc.ontrack = (e) => {
-      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = e.streams[0];
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = e.streams[0];
+      }
     };
 
     pc.onicecandidate = (e) => {
@@ -183,7 +176,7 @@ export default function Messages() {
     return pc;
   };
 
-  // ------------------- Signaling -------------------
+  // Signaling
   useEffect(() => {
     if (!chatId) return;
 
@@ -217,7 +210,7 @@ export default function Messages() {
           const key = uidKey + "|" + id;
           if (processedCandidatesRef.current.has(key)) return;
           processedCandidatesRef.current.add(key);
-          pcRef.current.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+          pcRef.current.addIceCandidate(new RTCIceCandidate(cand)).catch(() => { });
         });
       });
     });
@@ -239,6 +232,7 @@ export default function Messages() {
 
       const pc = createPC();
       pcRef.current = pc;
+
       localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
 
       const offer = await pc.createOffer();
@@ -252,10 +246,6 @@ export default function Messages() {
 
       onDisconnect(ref(db, `calls/${chatId}`)).remove();
       setCallStatus("calling");
-
-      // Start face detection
-      runFaceDetection(localVideoRef, localCanvasRef);
-      runFaceDetection(remoteVideoRef, remoteCanvasRef);
     } catch (err) {
       alert("Error starting call: " + err.message);
       cleanupCall();
@@ -291,10 +281,6 @@ export default function Messages() {
       setInCall(true);
       setCallStatus("in-call");
       setIncomingCall(null);
-
-      // Start face detection
-      runFaceDetection(localVideoRef, localCanvasRef);
-      runFaceDetection(remoteVideoRef, remoteCanvasRef);
     } catch (err) {
       alert("Accept failed: " + err.message);
       cleanupCall();
@@ -313,71 +299,81 @@ export default function Messages() {
     cleanupCall();
   };
 
-  // ------------------- Face detection -------------------
-  const runFaceDetection = async (videoRef, canvasRef) => {
-    if (!videoRef.current) return;
-
-    if (!faceModel) {
-      const model = await faceLandmarksDetection.load(
-        faceLandmarksDetection.SupportedPackages.mediapipeFacemesh
-      );
-      setFaceModel(model);
-    }
-
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-
-    const detect = async () => {
-      if (!videoRef.current || videoRef.current.paused || videoRef.current.ended) {
-        requestAnimationFrame(detect);
-        return;
-      }
-
-      const faces = await faceModel.estimateFaces({ input: video });
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      faces.forEach((face) => {
-        ctx.strokeStyle = "#00ff00";
-        ctx.lineWidth = 2;
-        const keypoints = face.scaledMesh;
-        ctx.beginPath();
-        keypoints.forEach(([x, y], i) => {
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        });
-        ctx.closePath();
-        ctx.stroke();
-      });
-
-      requestAnimationFrame(detect);
-    };
-
-    detect();
-  };
-
-  // ------------------- UI -------------------
+  // ----------------- UI -----------------
   if (!currentUid)
     return <p style={{ textAlign: "center", marginTop: 40 }}>Please login</p>;
 
   return (
-    <div style={{ maxWidth: 600, margin: "20px auto", display: "flex", flexDirection: "column", height: "90vh", border: "1px solid #ccc", borderRadius: 10, overflow: "hidden", fontFamily: "Arial, sans-serif", background: "#f0f0f0" }}>
+    <div
+      style={{
+        maxWidth: 600,
+        margin: "20px auto",
+        display: "flex",
+        flexDirection: "column",
+        height: "90vh",
+        border: "1px solid #ccc",
+        borderRadius: 10,
+        overflow: "hidden",
+        fontFamily: "Arial, sans-serif",
+        background: "#f0f0f0",
+      }}
+    >
       {/* Header */}
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 15px", background: "#075E54", color: "#fff", fontWeight: "bold" }}>
+      <header
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "10px 15px",
+          background: "#075E54",
+          color: "#fff",
+          fontWeight: "bold",
+        }}
+      >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Link to={`/user-profile/${chatUser?.uid}`} style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "inherit" }}>
-            <img src={chatUser?.photoURL || "icons/avatar.jpg"} alt="DP" style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover", border: "2px solid #fff" }} />
+          <Link
+            to={`/user-profile/${chatUser?.uid}`}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              textDecoration: "none",
+              color: "inherit",
+            }}
+          >
+            <img
+              src={chatUser?.photoURL || "icons/avatar.jpg"}
+              alt="DP"
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: "50%",
+                objectFit: "cover",
+                border: "2px solid #fff",
+              }}
+            />
             <span>{chatUser?.username || "User"}</span>
           </Link>
         </div>
         <div>
-          <button onClick={startCall} style={{ background: "transparent", border: "none", color: "#fff" }}>
+          <button
+            onClick={startCall}
+            style={{ background: "transparent", border: "none", color: "#fff" }}
+          >
             <IoVideocam size={24} />
           </button>
           {inCall && (
-            <button onClick={endCall} style={{ marginLeft: 10, padding: "4px 8px", borderRadius: 5, background: "#d32f2f", color: "#fff", border: "none" }}>
+            <button
+              onClick={endCall}
+              style={{
+                marginLeft: 10,
+                padding: "4px 8px",
+                borderRadius: 5,
+                background: "#d32f2f",
+                color: "#fff",
+                border: "none",
+              }}
+            >
               End
             </button>
           )}
@@ -385,13 +381,43 @@ export default function Messages() {
       </header>
 
       {/* Messages */}
-      <main style={{ flex: 1, overflowY: "auto", padding: "10px", display: "flex", flexDirection: "column" }}>
+      <main
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: "10px",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
         {messages.map((msg) => {
           if (msg.deletedFor?.includes(currentUid)) return null;
           const isSentByCurrentUser = msg.sender === currentUid;
           return (
-            <div key={msg.id} onMouseDown={() => startLongPress(msg)} onMouseUp={cancelLongPress} onMouseLeave={cancelLongPress} onTouchStart={() => startLongPress(msg)} onTouchEnd={cancelLongPress} onTouchCancel={cancelLongPress} style={{ margin: "6px 0", alignSelf: isSentByCurrentUser ? "flex-end" : "flex-start", maxWidth: "70%" }}>
-              <span style={{ background: isSentByCurrentUser ? "#dcf8c6" : "#fff", color: "#000", padding: "8px 12px", borderRadius: 20, display: "inline-block", wordBreak: "break-word" }}>
+            <div
+              key={msg.id}
+              onMouseDown={() => startLongPress(msg)}
+              onMouseUp={cancelLongPress}
+              onMouseLeave={cancelLongPress}
+              onTouchStart={() => startLongPress(msg)}
+              onTouchEnd={cancelLongPress}
+              onTouchCancel={cancelLongPress}
+              style={{
+                margin: "6px 0",
+                alignSelf: isSentByCurrentUser ? "flex-end" : "flex-start",
+                maxWidth: "70%",
+              }}
+            >
+              <span
+                style={{
+                  background: isSentByCurrentUser ? "#dcf8c6" : "#fff",
+                  color: "#000",
+                  padding: "8px 12px",
+                  borderRadius: 20,
+                  display: "inline-block",
+                  wordBreak: "break-word",
+                }}
+              >
                 {msg.text}
               </span>
             </div>
@@ -401,15 +427,285 @@ export default function Messages() {
       </main>
 
       {/* Input */}
-      <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} style={{ display: "flex", padding: 10, background: "#fff", borderTop: "1px solid #ccc" }}>
-        <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Type a message" style={{ flex: 1, padding: "10px 15px", borderRadius: 20, border: "1px solid #ccc", outline: "none" }} />
-        <button type="submit" style={{ marginLeft: 10, padding: "0 16px", borderRadius: 20, background: "#075E54", color: "#fff", border: "none" }}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          sendMessage();
+        }}
+        style={{
+          display: "flex",
+          padding: 10,
+          background: "#fff",
+          borderTop: "1px solid #ccc",
+        }}
+      >
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Type a message"
+          style={{
+            flex: 1,
+            padding: "10px 15px",
+            borderRadius: 20,
+            border: "1px solid #ccc",
+            outline: "none",
+          }}
+        />
+        <button
+          type="submit"
+          style={{
+            marginLeft: 10,
+            padding: "0 16px",
+            borderRadius: 20,
+            background: "#075E54",
+            color: "#fff",
+            border: "none",
+          }}
+        >
           Send
         </button>
       </form>
 
-      <canvas ref={localCanvasRef} style={{ position: "absolute", top: 20, right: 20, width: 160, height: 220, pointerEvents: "none" }} />
-      <canvas ref={remoteCanvasRef} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none" }} />
+      {/* Long-press modal */}
+      {selectedMsg && (
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "#0008",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 999,
+          }}
+        >
+          <div
+            className="modal-content"
+            style={{
+              background: "#fff",
+              padding: 20,
+              borderRadius: 10,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+            }}
+          >
+            {selectedMsg.sender === currentUid ? (
+              <>
+                <button
+                  onClick={removeForMe}
+                  style={{
+                    background: "#f44336",
+                    color: "#fff",
+                    border: "none",
+                    padding: 10,
+                    borderRadius: 5,
+                  }}
+                >
+                  Remove for Me
+                </button>
+                <button
+                  onClick={deleteForEveryone}
+                  style={{
+                    background: "#1976d2",
+                    color: "#fff",
+                    border: "none",
+                    padding: 10,
+                    borderRadius: 5,
+                  }}
+                >
+                  Delete for Everyone
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={removeForMe}
+                style={{
+                  background: "#f44336",
+                  color: "#fff",
+                  border: "none",
+                  padding: 10,
+                  borderRadius: 5,
+                }}
+              >
+                Remove for Me
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Incoming call */}
+      {incomingCall && callStatus === "ringing" && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "#0008",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 9999,
+          }}
+        >
+          <div
+            style={{
+              background: "#fff",
+              padding: 20,
+              borderRadius: 10,
+              textAlign: "center",
+            }}
+          >
+            <p style={{ fontWeight: "bold" }}>
+              {chatUser?.username} is calling
+            </p>
+            <button
+              onClick={acceptCall}
+              style={{
+                marginRight: 10,
+                padding: 6,
+                borderRadius: 5,
+                background: "#4caf50",
+                color: "#fff",
+                border: "none",
+              }}
+            >
+              Accept
+            </button>
+            <button
+              onClick={declineCall}
+              style={{
+                padding: 6,
+                borderRadius: 5,
+                background: "#f44336",
+                color: "#fff",
+                border: "none",
+              }}
+            >
+              Decline
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Video overlay */}
+      {callStatus !== "idle" && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "#000",
+            zIndex: 9999,
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <video
+            ref={remoteVideoRef}
+            autoPlay
+            playsInline
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+            }}
+          />
+          <video
+            ref={localVideoRef}
+            autoPlay
+            playsInline
+            muted
+            style={{
+              width: 160,
+              height: 220,
+              position: "absolute",
+              top: 20,
+              right: 20,
+              borderRadius: 10,
+              background: "#000",
+              border: "2px solid #075E54",
+              objectFit: "cover",
+            }}
+          />
+          {/* Show End Call for both caller & receiver */}
+          {inCall && (
+            <button
+              onClick={endCall}
+              style={{
+                position: "absolute",
+                bottom: 30,
+                left: "50%",
+                transform: "translateX(-50%)",
+                padding: "10px 20px",
+                background: "#d32f2f",
+                color: "#fff",
+                border: "none",
+                borderRadius: 20,
+                fontWeight: "bold",
+                zIndex: 10000,
+              }}
+            >
+              End Call
+            </button>
+          )}
+          {/* Incoming Call buttons */}
+          {incomingCall && callStatus === "ringing" && (
+            <div
+              style={{
+                position: "absolute",
+                top: "40%",
+                left: "50%",
+                transform: "translate(-50%, -50%)",
+                background: "#fff",
+                padding: 20,
+                borderRadius: 10,
+                textAlign: "center",
+                zIndex: 10001,
+              }}
+            >
+              <p style={{ fontWeight: "bold" }}>
+                {chatUser?.username} is calling
+              </p>
+              <button
+                onClick={acceptCall}
+                style={{
+                  marginRight: 10,
+                  padding: 6,
+                  borderRadius: 5,
+                  background: "#4caf50",
+                  color: "#fff",
+                  border: "none",
+                }}
+              >
+                Accept
+              </button>
+              <button
+                onClick={declineCall}
+                style={{
+                  padding: 6,
+                  borderRadius: 5,
+                  background: "#f44336",
+                  color: "#fff",
+                  border: "none",
+                }}
+              >
+                Decline
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
     </div>
   );
 }
