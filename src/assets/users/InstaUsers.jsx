@@ -11,6 +11,7 @@ export default function AllUsers() {
   const [currentUser, setCurrentUser] = useState(null);
   const [sentRequests, setSentRequests] = useState([]);
   const [friends, setFriends] = useState([]);
+  const [searchTerm, setSearchTerm] = useState(""); // 🔍 search state
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -70,47 +71,83 @@ export default function AllUsers() {
 
   const openUserProfile = (userUID) => navigate(`/user-profile/${userUID}`);
 
+  // 🔍 Filter users by search term
+  const filteredUsers = users.filter(
+    (u) =>
+      u.uid !== currentUser?.uid &&
+      (u.username || "Unnamed User")
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase())
+  );
+
   return (
     <div className="container my-3" style={{ maxWidth: 600 }}>
       <h3 className="mb-3">All Users</h3>
+
+      {/* 🔍 Search Box */}
+      <input
+        type="text"
+        className="form-control mb-3"
+        placeholder="Search by name..."
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+      />
+
       <ul className="list-group mb-5">
-        {users
-          .filter((u) => u.uid !== currentUser?.uid)
-          .map((user) => (
-            <li key={user.uid} className="list-group-item d-flex align-items-center justify-content-between">
-              <div
-                className="d-flex align-items-center"
-                style={{ cursor: "pointer" }}
-                onClick={() => openUserProfile(user.uid)}
-              >
-                <img
-                  src={user.photoURL || "https://via.placeholder.com/50"}
-                  alt="avatar"
-                  className="rounded-circle me-3"
-                  style={{ width: 50, height: 50, objectFit: "cover" }}
-                />
-                <div>
-                  <h6 className="mb-0">{user.username || "Unnamed User"}</h6>
-                  {user.isPrivate && <small className="text-muted">🔒 Private</small>}
-                </div>
-              </div>
+        {filteredUsers.map((user) => (
+          <li
+            key={user.uid}
+            className="list-group-item d-flex align-items-center justify-content-between"
+          >
+            <div
+              className="d-flex align-items-center"
+              style={{ cursor: "pointer" }}
+              onClick={() => openUserProfile(user.uid)}
+            >
+              <img
+                src={user.photoURL || "https://via.placeholder.com/50"}
+                alt="avatar"
+                className="rounded-circle me-3"
+                style={{ width: 50, height: 50, objectFit: "cover" }}
+              />
               <div>
-                {friends.includes(user.uid) ? (
-                  <button className="btn btn-sm btn-success" onClick={() => unfriendUser(user.uid)}>
-                    Friends
-                  </button>
-                ) : sentRequests.includes(user.uid) ? (
-                  <button className="btn btn-sm btn-outline-warning" onClick={() => cancelFollowRequest(user.uid)}>
-                    Cancel
-                  </button>
-                ) : (
-                  <button className="btn btn-sm btn-outline-primary" onClick={() => sendFollowRequest(user.uid)}>
-                    Add
-                  </button>
-                )}
+                <h6 className="mb-0">{user.username || "Unnamed User"}</h6>
+                {user.isPrivate && <small className="text-muted">🔒 Private</small>}
               </div>
-            </li>
-          ))}
+            </div>
+            <div>
+              {friends.includes(user.uid) ? (
+                <button
+                  className="btn btn-sm btn-success"
+                  onClick={() => unfriendUser(user.uid)}
+                >
+                  Friends
+                </button>
+              ) : sentRequests.includes(user.uid) ? (
+                <button
+                  className="btn btn-sm btn-outline-warning"
+                  onClick={() => cancelFollowRequest(user.uid)}
+                >
+                  Cancel
+                </button>
+              ) : (
+                <button
+                  className="btn btn-sm btn-outline-primary"
+                  onClick={() => sendFollowRequest(user.uid)}
+                >
+                  Add
+                </button>
+              )}
+            </div>
+          </li>
+        ))}
+
+        {/* No results */}
+        {filteredUsers.length === 0 && (
+          <li className="list-group-item text-center text-muted">
+            No users found
+          </li>
+        )}
       </ul>
     </div>
   );

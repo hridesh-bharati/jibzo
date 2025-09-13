@@ -12,7 +12,7 @@ import {
 import { onAuthStateChanged } from "firebase/auth";
 import Heart from "./Heart";
 import ShareButton from "./ShareBtn";
-import "./Gallery.css"
+import "./Gallery.css";
 
 /* -----------------------
    Skeleton loader
@@ -93,6 +93,7 @@ function VideoPreview({ src, id, videoRefs, onOpen }) {
       loop
       playsInline
       autoPlay
+      muted={false}
       controls={false}
       onClick={() => onOpen(src)}
     />
@@ -132,7 +133,6 @@ function CommentsOffcanvas({
         ></button>
       </div>
       <div className="offcanvas-body d-flex flex-column">
-        {/* Comments List */}
         <div className="flex-grow-1 overflow-auto mb-2">
           {comments.length === 0 && <p className="text-muted">No comments yet</p>}
           {comments.map(([cid, c]) => (
@@ -155,7 +155,6 @@ function CommentsOffcanvas({
           ))}
         </div>
 
-        {/* Add Comment */}
         <div className="input-group">
           <input
             type="text"
@@ -200,9 +199,11 @@ function ReelsPlayer({
           const v = videoRefs.current[entry.target.dataset.id];
           if (!v) return;
           if (entry.isIntersecting && entry.intersectionRatio > 0.75) {
+            v.muted = false;
             v.play().catch(() => { });
           } else {
             v.pause();
+            v.muted = true;
           }
         });
       },
@@ -265,7 +266,7 @@ function ReelsPlayer({
               src={post.src}
               loop
               playsInline
-              muted={false}
+              autoPlay
               className="p-0"
               style={{ width: "100%", height: "100%" }}
             />
@@ -326,10 +327,14 @@ function ReelsPlayer({
               }}
             >
               <div className="bg-white rounded-circle m-0 p-0">
-                <button className="btn m-0" onClick={() => toggleLike(post.id)}>
+                <button className="btn m-0"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleLike(post.id);
+                  }}
+                >
                   <i
-                    className={`bi bi-heart-fill fs-4 ${liked ? "text-danger" : "text-secondary"
-                      }`}
+                    className={`bi bi-heart-fill fs-4 ${liked ? "text-danger" : "text-secondary"}`}
                   ></i>
                 </button>
               </div>
@@ -351,7 +356,7 @@ function ReelsPlayer({
               </div>
             </div>
 
-            {/* Offcanvas Comments for this post */}
+            {/* Offcanvas Comments */}
             <CommentsOffcanvas
               post={post}
               currentUser={currentUser}
@@ -369,9 +374,9 @@ function ReelsPlayer({
   );
 }
 
-// -----------------------
-// PdfPreview
-// -----------------------
+/* -----------------------
+   PdfPreview
+----------------------- */
 function PdfPreview({ url, name }) {
   return (
     <div
@@ -393,6 +398,7 @@ function PdfPreview({ url, name }) {
     </div>
   );
 }
+
 /* -----------------------
    Main GetPost component
 ----------------------- */
@@ -485,6 +491,7 @@ export default function GetPost({ showFilter = true }) {
             v.play().catch(() => { });
           } else {
             v.pause();
+            v.muted = true;
           }
         });
       },
@@ -551,7 +558,6 @@ export default function GetPost({ showFilter = true }) {
 
   return (
     <div className="container-fluid p-0">
-      {/* Tabs */}
       {showFilter && (
         <div
           className="joi-tabs d-flex justify-content-around align-items-center p-1 m-0 border-bottom"
@@ -575,7 +581,6 @@ export default function GetPost({ showFilter = true }) {
         </div>
       )}
 
-      {/* Content */}
       {filter === "video" ? (
         <ReelsPlayer
           posts={visiblePosts}
@@ -603,7 +608,6 @@ export default function GetPost({ showFilter = true }) {
 
               return (
                 <div key={post.id} className="card insta-card mb-4">
-                  {/* Header */}
                   <div className="card-header d-flex align-items-center bg-white border-0">
                     <img
                       src={post.userPic || "icons/avatar.jpg"}
@@ -623,9 +627,7 @@ export default function GetPost({ showFilter = true }) {
                     </button>
                   </div>
 
-                  {/* Post Content */}
                   <div className="p-2 text-center">{renderPreview(post)}</div>
-                  {/* Body */}
                   <div className="card-body p-2">
                     <div className="d-flex align-items-center justify-content-between mb-2">
                       <div className="d-flex align-items-center">
@@ -722,7 +724,6 @@ export default function GetPost({ showFilter = true }) {
         </div>
       )}
 
-      {/* Offcanvas */}
       <div
         className="offcanvas offcanvas-bottom"
         id="imageOffcanvas"
@@ -752,7 +753,7 @@ export default function GetPost({ showFilter = true }) {
                   }
                   data-bs-dismiss="offcanvas"
                 >
-                  <i class="bi bi-trash3-fill"></i>
+                  <i className="bi bi-trash3-fill"></i>
                 </button>
               )}
             </>
