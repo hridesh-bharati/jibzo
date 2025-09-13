@@ -25,7 +25,7 @@ export default function Messages() {
   const longPressTimerRef = useRef(null);
   const messagesEndRef = useRef(null);
 
-  // Video call refs/states
+  // Video call refs
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const pcRef = useRef(null);
@@ -37,7 +37,7 @@ export default function Messages() {
 
   const chatId = currentUid && uid ? [currentUid, uid].sort().join("_") : null;
 
-  // ------------------ Auth ------------------
+  // Track login
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) setCurrentUid(user.uid);
@@ -45,7 +45,7 @@ export default function Messages() {
     return () => unsubscribe();
   }, []);
 
-  // ------------------ Fetch chat partner ------------------
+  // Fetch chat partner
   useEffect(() => {
     if (!uid) return;
     const userRef = ref(db, `usersData/${uid}`);
@@ -54,7 +54,7 @@ export default function Messages() {
     });
   }, [uid]);
 
-  // ------------------ Fetch messages ------------------
+  // Fetch messages
   useEffect(() => {
     if (!chatId) return;
     const messagesRef = ref(db, `chats/${chatId}/messages`);
@@ -92,7 +92,7 @@ export default function Messages() {
     setInput("");
   };
 
-  // ------------------ Long press ------------------
+  // Long press
   const startLongPress = (msg) => {
     longPressTimerRef.current = setTimeout(() => setSelectedMsg(msg), 700);
   };
@@ -116,7 +116,9 @@ export default function Messages() {
   const deleteForEveryone = async () => {
     if (!selectedMsg) return;
     const msgRef = ref(db, `chats/${chatId}/messages/${selectedMsg.id}`);
-    await remove(msgRef).catch((err) => alert("Error deleting message: " + err.message));
+    await remove(msgRef).catch((err) =>
+      alert("Error deleting message: " + err.message)
+    );
     setSelectedMsg(null);
   };
 
@@ -129,24 +131,28 @@ export default function Messages() {
     return () => document.removeEventListener("click", handleClickOutside);
   }, [selectedMsg]);
 
-  // ------------------ WebRTC helpers ------------------
+  // ----------------- WebRTC -----------------
   const cleanupCall = async () => {
     setInCall(false);
     setCallStatus("idle");
     setIncomingCall(null);
+
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((t) => t.stop());
       localStreamRef.current = null;
     }
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+
     if (pcRef.current) {
       try {
         pcRef.current.close();
       } catch {}
       pcRef.current = null;
     }
+
     processedCandidatesRef.current.clear();
+
     if (chatId) await remove(ref(db, `calls/${chatId}`)).catch(() => {});
   };
 
@@ -155,31 +161,46 @@ export default function Messages() {
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
 
+    // Remote stream
     pc.ontrack = (e) => {
-      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = e.streams[0];
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = e.streams[0];
+      }
     };
 
+    // ICE candidates
     pc.onicecandidate = (e) => {
       if (e.candidate && chatId && currentUid) {
-        push(ref(db, `calls/${chatId}/candidates/${currentUid}`), e.candidate.toJSON());
+        push(
+          ref(db, `calls/${chatId}/candidates/${currentUid}`),
+          e.candidate.toJSON()
+        );
       }
     };
 
     return pc;
   };
 
-  // ------------------ Signaling ------------------
+  // Listen for incoming calls & ICE candidates
   useEffect(() => {
     if (!chatId) return;
 
     const unsubCall = onValue(ref(db, `calls/${chatId}`), async (snap) => {
       const data = snap.val();
       if (!data) return;
+
       const { offer, answer, status, from } = data;
 
       if (offer && from !== currentUid && !inCall && callStatus !== "ringing") {
         setIncomingCall({ from, offer });
         setCallStatus("ringing");
+
+        // Play ringtone + vibrate
+        const audio = new Audio("/sounds/ringtone.mp3"); // add ringtone file in public/sounds
+        audio.loop = true;
+        audio.play();
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100]);
+        incomingCall.audio = audio;
       }
 
       if (answer && answer.from !== currentUid && pcRef.current) {
@@ -211,19 +232,18 @@ export default function Messages() {
     };
   }, [chatId, currentUid, inCall, callStatus]);
 
-  // ------------------ Start call ------------------
   const startCall = async () => {
     try {
       const localStream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { width: 1280, height: 720 },
         audio: true,
       });
-
       localStreamRef.current = localStream;
       if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
 
       const pc = createPC();
       pcRef.current = pc;
+
       localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
 
       const offer = await pc.createOffer();
@@ -237,27 +257,26 @@ export default function Messages() {
 
       onDisconnect(ref(db, `calls/${chatId}`)).remove();
       setCallStatus("calling");
-      setInCall(true); // Local video shows even to caller
+      setInCall(true);
     } catch (err) {
       alert("Error starting call: " + err.message);
       cleanupCall();
     }
   };
 
-  // ------------------ Accept call ------------------
   const acceptCall = async () => {
     if (!incomingCall) return;
     try {
       const localStream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { width: 1280, height: 720 },
         audio: true,
       });
-
       localStreamRef.current = localStream;
       if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
 
       const pc = createPC();
       pcRef.current = pc;
+
       localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
 
       await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
@@ -274,6 +293,9 @@ export default function Messages() {
 
       setInCall(true);
       setCallStatus("in-call");
+
+      // Stop ringtone
+      if (incomingCall.audio) incomingCall.audio.pause();
       setIncomingCall(null);
     } catch (err) {
       alert("Accept failed: " + err.message);
@@ -284,6 +306,7 @@ export default function Messages() {
   const declineCall = async () => {
     if (!chatId) return;
     await set(ref(db, `calls/${chatId}/status`), "rejected");
+    if (incomingCall?.audio) incomingCall.audio.pause();
     setIncomingCall(null);
     setCallStatus("idle");
   };
@@ -293,7 +316,7 @@ export default function Messages() {
     cleanupCall();
   };
 
-  // ------------------ UI ------------------
+  // ----------------- UI -----------------
   if (!currentUid)
     return <p style={{ textAlign: "center", marginTop: 40 }}>Please login</p>;
 
@@ -369,6 +392,7 @@ export default function Messages() {
               }}
             >
               End
+           
             </button>
           )}
         </div>
@@ -460,7 +484,7 @@ export default function Messages() {
         </button>
       </form>
 
-      {/* Long press modal */}
+      {/* Long-press modal */}
       {selectedMsg && (
         <div
           style={{
@@ -532,6 +556,62 @@ export default function Messages() {
         </div>
       )}
 
+      {/* Incoming call overlay */}
+      {incomingCall && callStatus === "ringing" && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "#0008",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 10000,
+          }}
+        >
+          <div
+            style={{
+              background: "#fff",
+              padding: 20,
+              borderRadius: 10,
+              textAlign: "center",
+            }}
+          >
+            <p style={{ fontWeight: "bold" }}>
+              {chatUser?.username} is calling
+            </p>
+            <button
+              onClick={acceptCall}
+              style={{
+                marginRight: 10,
+                padding: 6,
+                borderRadius: 5,
+                background: "#4caf50",
+                color: "#fff",
+                border: "none",
+              }}
+            >
+              Accept
+            </button>
+            <button
+              onClick={declineCall}
+              style={{
+                padding: 6,
+                borderRadius: 5,
+                background: "#f44336",
+                color: "#fff",
+                border: "none",
+              }}
+            >
+              Decline
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Video overlay */}
       {callStatus !== "idle" && (
         <div
@@ -589,7 +669,7 @@ export default function Messages() {
                 border: "none",
                 borderRadius: 20,
                 fontWeight: "bold",
-                zIndex: 10000,
+                zIndex: 10001,
               }}
             >
               End Call
