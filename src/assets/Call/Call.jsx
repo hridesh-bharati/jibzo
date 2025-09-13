@@ -1,157 +1,178 @@
-import React, { useEffect, useRef, useState } from "react";
+// src/assets/Call/Call.jsx
+import React, { useRef, useState } from "react";
 import { db } from "../../assets/utils/firebaseConfig";
-import {
-  ref,
-  push,
-  set,
-  onChildAdded,
-  remove,
-  get,
-} from "firebase/database";
+import { ref, push, onChildAdded, set, remove } from "firebase/database";
 
-export default function Call({ chatUid, callType = "video", onClose }) {
+export default function Call({ chatUid, callType, onClose }) {
   const localVideo = useRef();
   const remoteVideo = useRef();
   const pc = useRef(null);
   const [started, setStarted] = useState(false);
-  const [roomId] = useState(chatUid); // chatId as room
 
+  // STUN server
   const servers = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
 
-  useEffect(() => {
-    return () => {
-      endCall();
-    };
-  }, []);
+  // pending ICE candidates queue
+  const pendingCandidates = [];
 
-  const initPeer = async () => {
+  // Start a new call (offerer)
+  const startCall = async () => {
     pc.current = new RTCPeerConnection(servers);
 
-    // Local Media
+    // Local media
     const stream = await navigator.mediaDevices.getUserMedia({
       video: callType === "video",
       audio: true,
     });
     localVideo.current.srcObject = stream;
-    stream.getTracks().forEach((track) => pc.current.addTrack(track, stream));
+    stream.getTracks().forEach((t) => pc.current.addTrack(t, stream));
 
-    // Remote stream
-    pc.current.ontrack = (event) => {
-      remoteVideo.current.srcObject = event.streams[0];
+    // Remote media
+    pc.current.ontrack = (e) => {
+      remoteVideo.current.srcObject = e.streams[0];
     };
 
-    // ICE candidates
-    pc.current.onicecandidate = (event) => {
-      if (event.candidate) {
-        push(ref(db, `calls/${roomId}/candidates`), event.candidate.toJSON());
+    // Send ICE candidates
+    pc.current.onicecandidate = (e) => {
+      if (e.candidate) {
+        push(ref(db, `calls/${chatUid}/candidates`), e.candidate.toJSON());
       }
     };
 
-    setStarted(true);
-  };
-
-  const startCall = async () => {
-    await initPeer();
+    // Create offer
     const offer = await pc.current.createOffer();
     await pc.current.setLocalDescription(offer);
-    await set(ref(db, `calls/${roomId}/offer`), offer);
+    await set(ref(db, `calls/${chatUid}/offer`), offer);
 
     // Listen for answer
-    onChildAdded(ref(db, `calls/${roomId}/answer`), async (snap) => {
-      if (!pc.current.remoteDescription) {
+    onChildAdded(ref(db, `calls/${chatUid}/answer`), async (snap) => {
+      if (!pc.current.currentRemoteDescription) {
         const answer = snap.val();
         await pc.current.setRemoteDescription(
           new RTCSessionDescription(answer)
         );
+
+        // flush queued ICE candidates
+        while (pendingCandidates.length) {
+          const cand = pendingCandidates.shift();
+          try {
+            await pc.current.addIceCandidate(cand);
+          } catch (err) {
+            console.error("ICE add error (flushed)", err);
+          }
+        }
       }
     });
 
-    // Listen ICE
-    onChildAdded(ref(db, `calls/${roomId}/candidates`), async (snap) => {
-      try {
-        const candidate = new RTCIceCandidate(snap.val());
-        await pc.current.addIceCandidate(candidate);
-      } catch (err) {
-        console.error("ICE add error", err);
-      }
-    });
+    setStarted(true);
   };
 
+  // Answer an incoming call
   const answerCall = async () => {
-    await initPeer();
+    pc.current = new RTCPeerConnection(servers);
 
-    // Get Offer
-    const offerSnap = await get(ref(db, `calls/${roomId}/offer`));
-    if (!offerSnap.exists()) return alert("No offer found!");
-    const offer = offerSnap.val();
-    await pc.current.setRemoteDescription(new RTCSessionDescription(offer));
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: callType === "video",
+      audio: true,
+    });
+    localVideo.current.srcObject = stream;
+    stream.getTracks().forEach((t) => pc.current.addTrack(t, stream));
 
-    // Create Answer
-    const answer = await pc.current.createAnswer();
-    await pc.current.setLocalDescription(answer);
-    await set(ref(db, `calls/${roomId}/answer/ans`), answer);
+    pc.current.ontrack = (e) => {
+      remoteVideo.current.srcObject = e.streams[0];
+    };
 
-    // Listen ICE
-    onChildAdded(ref(db, `calls/${roomId}/candidates`), async (snap) => {
+    pc.current.onicecandidate = (e) => {
+      if (e.candidate) {
+        push(ref(db, `calls/${chatUid}/candidates`), e.candidate.toJSON());
+      }
+    };
+
+    // Listen for offer
+    onChildAdded(ref(db, `calls/${chatUid}/offer`), async (snap) => {
+      const offer = snap.val();
+      await pc.current.setRemoteDescription(new RTCSessionDescription(offer));
+
+      // flush queued ICE
+      while (pendingCandidates.length) {
+        const cand = pendingCandidates.shift();
+        try {
+          await pc.current.addIceCandidate(cand);
+        } catch (err) {
+          console.error("ICE add error (flushed)", err);
+        }
+      }
+
+      // Create answer
+      const answer = await pc.current.createAnswer();
+      await pc.current.setLocalDescription(answer);
+      await set(ref(db, `calls/${chatUid}/answer`), answer);
+    });
+
+    setStarted(true);
+  };
+
+  // Listen for ICE candidates
+  onChildAdded(ref(db, `calls/${chatUid}/candidates`), async (snap) => {
+    const candidate = new RTCIceCandidate(snap.val());
+    if (pc.current && pc.current.remoteDescription) {
       try {
-        const candidate = new RTCIceCandidate(snap.val());
         await pc.current.addIceCandidate(candidate);
       } catch (err) {
         console.error("ICE add error", err);
       }
-    });
-  };
-
-  const endCall = async () => {
-    try {
-      pc.current?.close();
-      pc.current = null;
-      if (roomId) {
-        await remove(ref(db, `calls/${roomId}`));
-      }
-    } catch (err) {
-      console.error(err);
+    } else {
+      pendingCandidates.push(candidate);
     }
-    onClose?.();
+  });
+
+  // End call
+  const endCall = async () => {
+    pc.current?.close();
+    pc.current = null;
+
+    // cleanup firebase room
+    await remove(ref(db, `calls/${chatUid}`));
+
+    if (onClose) onClose();
   };
 
   return (
     <div
       style={{
-        width: "100%",
-        height: "100%",
-        background: "#000",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        justifyContent: "center",
+        color: "#fff",
       }}
     >
-      <video
-        ref={localVideo}
-        autoPlay
-        playsInline
-        muted
-        style={{ width: "40%", border: "2px solid #fff", borderRadius: 8 }}
-      />
-      <video
-        ref={remoteVideo}
-        autoPlay
-        playsInline
-        style={{ width: "40%", border: "2px solid #fff", borderRadius: 8 }}
-      />
+      <div style={{ display: "flex", gap: "10px" }}>
+        <video
+          ref={localVideo}
+          autoPlay
+          playsInline
+          muted
+          style={{ width: "40%", background: "#000" }}
+        />
+        <video
+          ref={remoteVideo}
+          autoPlay
+          playsInline
+          style={{ width: "40%", background: "#000" }}
+        />
+      </div>
 
-      <div style={{ marginTop: 20, display: "flex", gap: 20 }}>
-        <button onClick={startCall} disabled={started}>
-          Start Call
-        </button>
-        <button onClick={answerCall}>Answer</button>
-        <button
-          onClick={endCall}
-          style={{ background: "red", color: "#fff", padding: "6px 12px" }}
-        >
-          End
-        </button>
+      <div style={{ marginTop: 20, display: "flex", gap: 10 }}>
+        {!started ? (
+          <>
+            <button onClick={startCall}>Start Call</button>
+            <button onClick={answerCall}>Answer Call</button>
+          </>
+        ) : (
+          <button onClick={endCall} style={{ background: "red", color: "#fff" }}>
+            End Call
+          </button>
+        )}
       </div>
     </div>
   );
