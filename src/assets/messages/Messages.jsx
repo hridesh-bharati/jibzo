@@ -14,6 +14,10 @@ import {
 import { onAuthStateChanged } from "firebase/auth";
 import { IoVideocam } from "react-icons/io5";
 
+// Face detection imports
+import * as faceLandmarksDetection from "@tensorflow-models/face-landmarks-detection";
+import "@tensorflow/tfjs-backend-webgl";
+
 export default function Messages() {
   const { uid } = useParams();
   const [currentUid, setCurrentUid] = useState(null);
@@ -33,11 +37,16 @@ export default function Messages() {
   const processedCandidatesRef = useRef(new Set());
   const [inCall, setInCall] = useState(false);
   const [incomingCall, setIncomingCall] = useState(null);
-  const [callStatus, setCallStatus] = useState("idle"); // idle, calling, ringing, in-call
+  const [callStatus, setCallStatus] = useState("idle");
 
   const chatId = currentUid && uid ? [currentUid, uid].sort().join("_") : null;
 
-  // ----------------- Auth & Chat -----------------
+  // Face detection refs
+  const localCanvasRef = useRef(null);
+  const remoteCanvasRef = useRef(null);
+  const [faceModel, setFaceModel] = useState(null);
+
+  // ------------------- Auth -------------------
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) setCurrentUid(user.uid);
@@ -45,6 +54,7 @@ export default function Messages() {
     return () => unsubscribe();
   }, []);
 
+  // ------------------- Fetch chat user -------------------
   useEffect(() => {
     if (!uid) return;
     const userRef = ref(db, `usersData/${uid}`);
@@ -53,6 +63,7 @@ export default function Messages() {
     });
   }, [uid]);
 
+  // ------------------- Fetch messages -------------------
   useEffect(() => {
     if (!chatId) return;
     const messagesRef = ref(db, `chats/${chatId}/messages`);
@@ -78,6 +89,7 @@ export default function Messages() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  // ------------------- Messaging -------------------
   const sendMessage = async () => {
     if (!input.trim() || !currentUid) return;
     const messagesRef = ref(db, `chats/${chatId}/messages`);
@@ -90,7 +102,7 @@ export default function Messages() {
     setInput("");
   };
 
-  // Long press
+  // ------------------- Long press -------------------
   const startLongPress = (msg) => {
     longPressTimerRef.current = setTimeout(() => setSelectedMsg(msg), 700);
   };
@@ -103,10 +115,7 @@ export default function Messages() {
 
   const removeForMe = async () => {
     if (!selectedMsg || !currentUid) return;
-    const msgRef = ref(
-      db,
-      `chats/${chatId}/messages/${selectedMsg.id}/deletedFor`
-    );
+    const msgRef = ref(db, `chats/${chatId}/messages/${selectedMsg.id}/deletedFor`);
     const updatedDeletedFor = selectedMsg.deletedFor
       ? [...selectedMsg.deletedFor, currentUid]
       : [currentUid];
@@ -132,7 +141,7 @@ export default function Messages() {
     return () => document.removeEventListener("click", handleClickOutside);
   }, [selectedMsg]);
 
-  // ----------------- WebRTC helpers -----------------
+  // ------------------- WebRTC -------------------
   const cleanupCall = async () => {
     setInCall(false);
     setCallStatus("idle");
@@ -174,7 +183,7 @@ export default function Messages() {
     return pc;
   };
 
-  // ----------------- Signaling -----------------
+  // ------------------- Signaling -------------------
   useEffect(() => {
     if (!chatId) return;
 
@@ -219,7 +228,6 @@ export default function Messages() {
     };
   }, [chatId, currentUid, inCall, callStatus]);
 
-  // ----------------- Call Actions -----------------
   const startCall = async () => {
     try {
       const localStream = await navigator.mediaDevices.getUserMedia({
@@ -244,6 +252,10 @@ export default function Messages() {
 
       onDisconnect(ref(db, `calls/${chatId}`)).remove();
       setCallStatus("calling");
+
+      // Start face detection
+      runFaceDetection(localVideoRef, localCanvasRef);
+      runFaceDetection(remoteVideoRef, remoteCanvasRef);
     } catch (err) {
       alert("Error starting call: " + err.message);
       cleanupCall();
@@ -265,15 +277,26 @@ export default function Messages() {
       localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
 
       await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
+
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
-      await set(ref(db, `calls/${chatId}/answer`), { ...answer, from: currentUid });
-      setCallStatus("in-call");
+      await set(ref(db, `calls/${chatId}/answer`), {
+        type: answer.type,
+        sdp: answer.sdp,
+        from: currentUid,
+      });
+      await set(ref(db, `calls/${chatId}/status`), "accepted");
+
       setInCall(true);
+      setCallStatus("in-call");
       setIncomingCall(null);
+
+      // Start face detection
+      runFaceDetection(localVideoRef, localCanvasRef);
+      runFaceDetection(remoteVideoRef, remoteCanvasRef);
     } catch (err) {
-      alert("Error accepting call: " + err.message);
+      alert("Accept failed: " + err.message);
       cleanupCall();
     }
   };
@@ -281,79 +304,113 @@ export default function Messages() {
   const declineCall = async () => {
     if (!chatId) return;
     await set(ref(db, `calls/${chatId}/status`), "rejected");
-    cleanupCall();
+    setIncomingCall(null);
+    setCallStatus("idle");
   };
 
   const endCall = async () => {
-    if (!chatId) return;
-    await set(ref(db, `calls/${chatId}/status`), "ended");
+    if (chatId) await set(ref(db, `calls/${chatId}/status`), "ended");
     cleanupCall();
   };
 
-  // ----------------- Render -----------------
+  // ------------------- Face detection -------------------
+  const runFaceDetection = async (videoRef, canvasRef) => {
+    if (!videoRef.current) return;
+
+    if (!faceModel) {
+      const model = await faceLandmarksDetection.load(
+        faceLandmarksDetection.SupportedPackages.mediapipeFacemesh
+      );
+      setFaceModel(model);
+    }
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    const detect = async () => {
+      if (!videoRef.current || videoRef.current.paused || videoRef.current.ended) {
+        requestAnimationFrame(detect);
+        return;
+      }
+
+      const faces = await faceModel.estimateFaces({ input: video });
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      faces.forEach((face) => {
+        ctx.strokeStyle = "#00ff00";
+        ctx.lineWidth = 2;
+        const keypoints = face.scaledMesh;
+        ctx.beginPath();
+        keypoints.forEach(([x, y], i) => {
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.closePath();
+        ctx.stroke();
+      });
+
+      requestAnimationFrame(detect);
+    };
+
+    detect();
+  };
+
+  // ------------------- UI -------------------
+  if (!currentUid)
+    return <p style={{ textAlign: "center", marginTop: 40 }}>Please login</p>;
+
   return (
-    <div className="messages-container">
-      {/* Chat messages */}
-      <div className="messages-list">
+    <div style={{ maxWidth: 600, margin: "20px auto", display: "flex", flexDirection: "column", height: "90vh", border: "1px solid #ccc", borderRadius: 10, overflow: "hidden", fontFamily: "Arial, sans-serif", background: "#f0f0f0" }}>
+      {/* Header */}
+      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 15px", background: "#075E54", color: "#fff", fontWeight: "bold" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <Link to={`/user-profile/${chatUser?.uid}`} style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "inherit" }}>
+            <img src={chatUser?.photoURL || "icons/avatar.jpg"} alt="DP" style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover", border: "2px solid #fff" }} />
+            <span>{chatUser?.username || "User"}</span>
+          </Link>
+        </div>
+        <div>
+          <button onClick={startCall} style={{ background: "transparent", border: "none", color: "#fff" }}>
+            <IoVideocam size={24} />
+          </button>
+          {inCall && (
+            <button onClick={endCall} style={{ marginLeft: 10, padding: "4px 8px", borderRadius: 5, background: "#d32f2f", color: "#fff", border: "none" }}>
+              End
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* Messages */}
+      <main style={{ flex: 1, overflowY: "auto", padding: "10px", display: "flex", flexDirection: "column" }}>
         {messages.map((msg) => {
           if (msg.deletedFor?.includes(currentUid)) return null;
+          const isSentByCurrentUser = msg.sender === currentUid;
           return (
-            <div
-              key={msg.id}
-              className={`message ${msg.sender === currentUid ? "sent" : "received"}`}
-              onMouseDown={() => startLongPress(msg)}
-              onMouseUp={cancelLongPress}
-              onMouseLeave={cancelLongPress}
-            >
-              {msg.text}
+            <div key={msg.id} onMouseDown={() => startLongPress(msg)} onMouseUp={cancelLongPress} onMouseLeave={cancelLongPress} onTouchStart={() => startLongPress(msg)} onTouchEnd={cancelLongPress} onTouchCancel={cancelLongPress} style={{ margin: "6px 0", alignSelf: isSentByCurrentUser ? "flex-end" : "flex-start", maxWidth: "70%" }}>
+              <span style={{ background: isSentByCurrentUser ? "#dcf8c6" : "#fff", color: "#000", padding: "8px 12px", borderRadius: 20, display: "inline-block", wordBreak: "break-word" }}>
+                {msg.text}
+              </span>
             </div>
           );
         })}
         <div ref={messagesEndRef}></div>
-      </div>
+      </main>
 
-      {/* Message input */}
-      <div className="input-container">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message..."
-        />
-        <button onClick={sendMessage}>Send</button>
-        <button onClick={startCall}>
-          <IoVideocam size={20} />
+      {/* Input */}
+      <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} style={{ display: "flex", padding: 10, background: "#fff", borderTop: "1px solid #ccc" }}>
+        <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Type a message" style={{ flex: 1, padding: "10px 15px", borderRadius: 20, border: "1px solid #ccc", outline: "none" }} />
+        <button type="submit" style={{ marginLeft: 10, padding: "0 16px", borderRadius: 20, background: "#075E54", color: "#fff", border: "none" }}>
+          Send
         </button>
-      </div>
+      </form>
 
-      {/* Long press modal */}
-      {selectedMsg && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <button onClick={removeForMe}>Remove for me</button>
-            <button onClick={deleteForEveryone}>Delete for everyone</button>
-          </div>
-        </div>
-      )}
-
-      {/* Incoming call overlay */}
-      {incomingCall && callStatus === "ringing" && (
-        <div className="call-overlay">
-          <div className="call-modal">
-            <p>{chatUser?.username || "User"} is calling...</p>
-            <button onClick={acceptCall}>Accept</button>
-            <button onClick={declineCall}>Decline</button>
-          </div>
-        </div>
-      )}
-
-      {/* Video call overlay */}
-      {callStatus === "in-call" && (
-        <div className="video-call-overlay">
-          <video ref={remoteVideoRef} autoPlay playsInline style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-          <video ref={localVideoRef} autoPlay playsInline muted style={{ position: "absolute", top: 20, right: 20, width: 160, height: 220, borderRadius: 10, border: "2px solid #075E54", objectFit: "cover" }} />
-          <button onClick={endCall} style={{ position: "absolute", bottom: 30, left: "50%", transform: "translateX(-50%)", padding: "10px 20px", borderRadius: 8, background: "#ff4d4f", color: "#fff", border: "none" }}>End Call</button>
-        </div>
-      )}
+      {/* Face detection canvases */}
+      <canvas ref={localCanvasRef} style={{ position: "absolute", top: 20, right: 20, width: 160, height: 220, pointerEvents: "none" }} />
+      <canvas ref={remoteCanvasRef} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none" }} />
     </div>
   );
 }
