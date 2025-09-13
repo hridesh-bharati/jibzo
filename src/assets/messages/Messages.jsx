@@ -33,11 +33,11 @@ export default function Messages() {
   const processedCandidatesRef = useRef(new Set());
   const [inCall, setInCall] = useState(false);
   const [incomingCall, setIncomingCall] = useState(null);
-  const [callStatus, setCallStatus] = useState("idle");
+  const [callStatus, setCallStatus] = useState("idle"); // idle, calling, ringing, in-call
 
   const chatId = currentUid && uid ? [currentUid, uid].sort().join("_") : null;
 
-  // Track login
+  // ----------------- Auth & Chat -----------------
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) setCurrentUid(user.uid);
@@ -45,7 +45,6 @@ export default function Messages() {
     return () => unsubscribe();
   }, []);
 
-  // Fetch chat partner
   useEffect(() => {
     if (!uid) return;
     const userRef = ref(db, `usersData/${uid}`);
@@ -54,7 +53,6 @@ export default function Messages() {
     });
   }, [uid]);
 
-  // Fetch messages
   useEffect(() => {
     if (!chatId) return;
     const messagesRef = ref(db, `chats/${chatId}/messages`);
@@ -62,13 +60,13 @@ export default function Messages() {
       const data = snap.val();
       const msgs = data
         ? Object.entries(data).map(([id, msg]) => ({
-          id,
-          ...msg,
-          timestamp:
-            typeof msg.timestamp === "number"
-              ? msg.timestamp
-              : msg.timestamp?.toMillis?.() || Date.now(),
-        }))
+            id,
+            ...msg,
+            timestamp:
+              typeof msg.timestamp === "number"
+                ? msg.timestamp
+                : msg.timestamp?.toMillis?.() || Date.now(),
+          }))
         : [];
       setMessages(msgs);
       setTimeout(scrollToBottom, 100);
@@ -105,7 +103,10 @@ export default function Messages() {
 
   const removeForMe = async () => {
     if (!selectedMsg || !currentUid) return;
-    const msgRef = ref(db, `chats/${chatId}/messages/${selectedMsg.id}/deletedFor`);
+    const msgRef = ref(
+      db,
+      `chats/${chatId}/messages/${selectedMsg.id}/deletedFor`
+    );
     const updatedDeletedFor = selectedMsg.deletedFor
       ? [...selectedMsg.deletedFor, currentUid]
       : [currentUid];
@@ -131,7 +132,7 @@ export default function Messages() {
     return () => document.removeEventListener("click", handleClickOutside);
   }, [selectedMsg]);
 
-  // WebRTC helpers
+  // ----------------- WebRTC helpers -----------------
   const cleanupCall = async () => {
     setInCall(false);
     setCallStatus("idle");
@@ -145,11 +146,11 @@ export default function Messages() {
     if (pcRef.current) {
       try {
         pcRef.current.close();
-      } catch { }
+      } catch {}
       pcRef.current = null;
     }
     processedCandidatesRef.current.clear();
-    if (chatId) await remove(ref(db, `calls/${chatId}`)).catch(() => { });
+    if (chatId) await remove(ref(db, `calls/${chatId}`)).catch(() => {});
   };
 
   const createPC = () => {
@@ -157,11 +158,8 @@ export default function Messages() {
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
 
-    // Set remote stream directly
     pc.ontrack = (e) => {
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = e.streams[0];
-      }
+      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = e.streams[0];
     };
 
     pc.onicecandidate = (e) => {
@@ -176,7 +174,7 @@ export default function Messages() {
     return pc;
   };
 
-  // Signaling
+  // ----------------- Signaling -----------------
   useEffect(() => {
     if (!chatId) return;
 
@@ -210,7 +208,7 @@ export default function Messages() {
           const key = uidKey + "|" + id;
           if (processedCandidatesRef.current.has(key)) return;
           processedCandidatesRef.current.add(key);
-          pcRef.current.addIceCandidate(new RTCIceCandidate(cand)).catch(() => { });
+          pcRef.current.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
         });
       });
     });
@@ -221,6 +219,7 @@ export default function Messages() {
     };
   }, [chatId, currentUid, inCall, callStatus]);
 
+  // ----------------- Call Actions -----------------
   const startCall = async () => {
     try {
       const localStream = await navigator.mediaDevices.getUserMedia({
@@ -232,7 +231,6 @@ export default function Messages() {
 
       const pc = createPC();
       pcRef.current = pc;
-
       localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
 
       const offer = await pc.createOffer();
@@ -267,22 +265,15 @@ export default function Messages() {
       localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
 
       await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
-
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
-      await set(ref(db, `calls/${chatId}/answer`), {
-        type: answer.type,
-        sdp: answer.sdp,
-        from: currentUid,
-      });
-      await set(ref(db, `calls/${chatId}/status`), "accepted");
-
-      setInCall(true);
+      await set(ref(db, `calls/${chatId}/answer`), { ...answer, from: currentUid });
       setCallStatus("in-call");
+      setInCall(true);
       setIncomingCall(null);
     } catch (err) {
-      alert("Accept failed: " + err.message);
+      alert("Error accepting call: " + err.message);
       cleanupCall();
     }
   };
@@ -290,422 +281,79 @@ export default function Messages() {
   const declineCall = async () => {
     if (!chatId) return;
     await set(ref(db, `calls/${chatId}/status`), "rejected");
-    setIncomingCall(null);
-    setCallStatus("idle");
-  };
-
-  const endCall = async () => {
-    if (chatId) await set(ref(db, `calls/${chatId}/status`), "ended");
     cleanupCall();
   };
 
-  // ----------------- UI -----------------
-  if (!currentUid)
-    return <p style={{ textAlign: "center", marginTop: 40 }}>Please login</p>;
+  const endCall = async () => {
+    if (!chatId) return;
+    await set(ref(db, `calls/${chatId}/status`), "ended");
+    cleanupCall();
+  };
 
+  // ----------------- Render -----------------
   return (
-    <div
-      style={{
-        maxWidth: 600,
-        margin: "20px auto",
-        display: "flex",
-        flexDirection: "column",
-        height: "90vh",
-        border: "1px solid #ccc",
-        borderRadius: 10,
-        overflow: "hidden",
-        fontFamily: "Arial, sans-serif",
-        background: "#f0f0f0",
-      }}
-    >
-      {/* Header */}
-      <header
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "10px 15px",
-          background: "#075E54",
-          color: "#fff",
-          fontWeight: "bold",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Link
-            to={`/user-profile/${chatUser?.uid}`}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              textDecoration: "none",
-              color: "inherit",
-            }}
-          >
-            <img
-              src={chatUser?.photoURL || "icons/avatar.jpg"}
-              alt="DP"
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: "50%",
-                objectFit: "cover",
-                border: "2px solid #fff",
-              }}
-            />
-            <span>{chatUser?.username || "User"}</span>
-          </Link>
-        </div>
-        <div>
-          <button
-            onClick={startCall}
-            style={{ background: "transparent", border: "none", color: "#fff" }}
-          >
-            <IoVideocam size={24} />
-          </button>
-          {inCall && (
-            <button
-              onClick={endCall}
-              style={{
-                marginLeft: 10,
-                padding: "4px 8px",
-                borderRadius: 5,
-                background: "#d32f2f",
-                color: "#fff",
-                border: "none",
-              }}
-            >
-              End
-            </button>
-          )}
-        </div>
-      </header>
-
-      {/* Messages */}
-      <main
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: "10px",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
+    <div className="messages-container">
+      {/* Chat messages */}
+      <div className="messages-list">
         {messages.map((msg) => {
           if (msg.deletedFor?.includes(currentUid)) return null;
-          const isSentByCurrentUser = msg.sender === currentUid;
           return (
             <div
               key={msg.id}
+              className={`message ${msg.sender === currentUid ? "sent" : "received"}`}
               onMouseDown={() => startLongPress(msg)}
               onMouseUp={cancelLongPress}
               onMouseLeave={cancelLongPress}
-              onTouchStart={() => startLongPress(msg)}
-              onTouchEnd={cancelLongPress}
-              onTouchCancel={cancelLongPress}
-              style={{
-                margin: "6px 0",
-                alignSelf: isSentByCurrentUser ? "flex-end" : "flex-start",
-                maxWidth: "70%",
-              }}
             >
-              <span
-                style={{
-                  background: isSentByCurrentUser ? "#dcf8c6" : "#fff",
-                  color: "#000",
-                  padding: "8px 12px",
-                  borderRadius: 20,
-                  display: "inline-block",
-                  wordBreak: "break-word",
-                }}
-              >
-                {msg.text}
-              </span>
+              {msg.text}
             </div>
           );
         })}
         <div ref={messagesEndRef}></div>
-      </main>
+      </div>
 
-      {/* Input */}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          sendMessage();
-        }}
-        style={{
-          display: "flex",
-          padding: 10,
-          background: "#fff",
-          borderTop: "1px solid #ccc",
-        }}
-      >
+      {/* Message input */}
+      <div className="input-container">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message"
-          style={{
-            flex: 1,
-            padding: "10px 15px",
-            borderRadius: 20,
-            border: "1px solid #ccc",
-            outline: "none",
-          }}
+          placeholder="Type a message..."
         />
-        <button
-          type="submit"
-          style={{
-            marginLeft: 10,
-            padding: "0 16px",
-            borderRadius: 20,
-            background: "#075E54",
-            color: "#fff",
-            border: "none",
-          }}
-        >
-          Send
+        <button onClick={sendMessage}>Send</button>
+        <button onClick={startCall}>
+          <IoVideocam size={20} />
         </button>
-      </form>
+      </div>
 
-      {/* Long-press modal */}
+      {/* Long press modal */}
       {selectedMsg && (
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "#0008",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            zIndex: 999,
-          }}
-        >
-          <div
-            className="modal-content"
-            style={{
-              background: "#fff",
-              padding: 20,
-              borderRadius: 10,
-              display: "flex",
-              flexDirection: "column",
-              gap: 10,
-            }}
-          >
-            {selectedMsg.sender === currentUid ? (
-              <>
-                <button
-                  onClick={removeForMe}
-                  style={{
-                    background: "#f44336",
-                    color: "#fff",
-                    border: "none",
-                    padding: 10,
-                    borderRadius: 5,
-                  }}
-                >
-                  Remove for Me
-                </button>
-                <button
-                  onClick={deleteForEveryone}
-                  style={{
-                    background: "#1976d2",
-                    color: "#fff",
-                    border: "none",
-                    padding: 10,
-                    borderRadius: 5,
-                  }}
-                >
-                  Delete for Everyone
-                </button>
-              </>
-            ) : (
-              <button
-                onClick={removeForMe}
-                style={{
-                  background: "#f44336",
-                  color: "#fff",
-                  border: "none",
-                  padding: 10,
-                  borderRadius: 5,
-                }}
-              >
-                Remove for Me
-              </button>
-            )}
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <button onClick={removeForMe}>Remove for me</button>
+            <button onClick={deleteForEveryone}>Delete for everyone</button>
           </div>
         </div>
       )}
 
-      {/* Incoming call */}
+      {/* Incoming call overlay */}
       {incomingCall && callStatus === "ringing" && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "#0008",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            zIndex: 9999,
-          }}
-        >
-          <div
-            style={{
-              background: "#fff",
-              padding: 20,
-              borderRadius: 10,
-              textAlign: "center",
-            }}
-          >
-            <p style={{ fontWeight: "bold" }}>
-              {chatUser?.username} is calling
-            </p>
-            <button
-              onClick={acceptCall}
-              style={{
-                marginRight: 10,
-                padding: 6,
-                borderRadius: 5,
-                background: "#4caf50",
-                color: "#fff",
-                border: "none",
-              }}
-            >
-              Accept
-            </button>
-            <button
-              onClick={declineCall}
-              style={{
-                padding: 6,
-                borderRadius: 5,
-                background: "#f44336",
-                color: "#fff",
-                border: "none",
-              }}
-            >
-              Decline
-            </button>
+        <div className="call-overlay">
+          <div className="call-modal">
+            <p>{chatUser?.username || "User"} is calling...</p>
+            <button onClick={acceptCall}>Accept</button>
+            <button onClick={declineCall}>Decline</button>
           </div>
         </div>
       )}
 
-      {/* Video overlay */}
-      {callStatus !== "idle" && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "#000",
-            zIndex: 9999,
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-        >
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-            }}
-          />
-          <video
-            ref={localVideoRef}
-            autoPlay
-            playsInline
-            muted
-            style={{
-              width: 160,
-              height: 220,
-              position: "absolute",
-              top: 20,
-              right: 20,
-              borderRadius: 10,
-              background: "#000",
-              border: "2px solid #075E54",
-              objectFit: "cover",
-            }}
-          />
-          {/* Show End Call for both caller & receiver */}
-          {inCall && (
-            <button
-              onClick={endCall}
-              style={{
-                position: "absolute",
-                bottom: 30,
-                left: "50%",
-                transform: "translateX(-50%)",
-                padding: "10px 20px",
-                background: "#d32f2f",
-                color: "#fff",
-                border: "none",
-                borderRadius: 20,
-                fontWeight: "bold",
-                zIndex: 10000,
-              }}
-            >
-              End Call
-            </button>
-          )}
-          {/* Incoming Call buttons */}
-          {incomingCall && callStatus === "ringing" && (
-            <div
-              style={{
-                position: "absolute",
-                top: "40%",
-                left: "50%",
-                transform: "translate(-50%, -50%)",
-                background: "#fff",
-                padding: 20,
-                borderRadius: 10,
-                textAlign: "center",
-                zIndex: 10001,
-              }}
-            >
-              <p style={{ fontWeight: "bold" }}>
-                {chatUser?.username} is calling
-              </p>
-              <button
-                onClick={acceptCall}
-                style={{
-                  marginRight: 10,
-                  padding: 6,
-                  borderRadius: 5,
-                  background: "#4caf50",
-                  color: "#fff",
-                  border: "none",
-                }}
-              >
-                Accept
-              </button>
-              <button
-                onClick={declineCall}
-                style={{
-                  padding: 6,
-                  borderRadius: 5,
-                  background: "#f44336",
-                  color: "#fff",
-                  border: "none",
-                }}
-              >
-                Decline
-              </button>
-            </div>
-          )}
+      {/* Video call overlay */}
+      {callStatus === "in-call" && (
+        <div className="video-call-overlay">
+          <video ref={remoteVideoRef} autoPlay playsInline style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          <video ref={localVideoRef} autoPlay playsInline muted style={{ position: "absolute", top: 20, right: 20, width: 160, height: 220, borderRadius: 10, border: "2px solid #075E54", objectFit: "cover" }} />
+          <button onClick={endCall} style={{ position: "absolute", bottom: 30, left: "50%", transform: "translateX(-50%)", padding: "10px 20px", borderRadius: 8, background: "#ff4d4f", color: "#fff", border: "none" }}>End Call</button>
         </div>
       )}
-
     </div>
   );
 }
