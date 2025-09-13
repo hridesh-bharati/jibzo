@@ -8,6 +8,9 @@ export default defineConfig({
     host: true,
     port: 5173,
   },
+  define: {
+    global: "window",
+  },
   build: {
     outDir: 'dist',       // default, just to be explicit
     assetsDir: 'assets',  // default folder for JS/CSS/images

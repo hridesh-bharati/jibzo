@@ -1,18 +1,10 @@
-// src/components/Messages/Messages.jsx
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import { db, auth } from "../../assets/utils/firebaseConfig";
-import {
-  ref,
-  onValue,
-  push,
-  serverTimestamp,
-  remove,
-  set,
-  onDisconnect,
-} from "firebase/database";
+import { ref, onValue, push, serverTimestamp, remove, set } from "firebase/database";
 import { onAuthStateChanged } from "firebase/auth";
-import { IoVideocam } from "react-icons/io5";
+import { FaPhone, FaVideo } from "react-icons/fa";
+import Call from "../../assets/Call/Call";
 
 export default function Messages() {
   const { uid } = useParams();
@@ -21,18 +13,9 @@ export default function Messages() {
   const [input, setInput] = useState("");
   const [chatUser, setChatUser] = useState(null);
   const [selectedMsg, setSelectedMsg] = useState(null);
+  const [showCall, setShowCall] = useState(null); // "audio" | "video"
   const longPressTimerRef = useRef(null);
   const messagesEndRef = useRef(null);
-
-  // Video call refs/states
-  const localVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
-  const pcRef = useRef(null);
-  const localStreamRef = useRef(null);
-  const processedCandidatesRef = useRef(new Set());
-  const [inCall, setInCall] = useState(false);
-  const [incomingCall, setIncomingCall] = useState(null);
-  const [callStatus, setCallStatus] = useState("idle");
 
   const chatId = currentUid && uid ? [currentUid, uid].sort().join("_") : null;
 
@@ -61,13 +44,13 @@ export default function Messages() {
       const data = snap.val();
       const msgs = data
         ? Object.entries(data).map(([id, msg]) => ({
-          id,
-          ...msg,
-          timestamp:
-            typeof msg.timestamp === "number"
-              ? msg.timestamp
-              : msg.timestamp?.toMillis?.() || Date.now(),
-        }))
+            id,
+            ...msg,
+            timestamp:
+              typeof msg.timestamp === "number"
+                ? msg.timestamp
+                : msg.timestamp?.toMillis?.() || Date.now(),
+          }))
         : [];
       setMessages(msgs);
       setTimeout(scrollToBottom, 100);
@@ -79,7 +62,6 @@ export default function Messages() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // Send message
   const sendMessage = async () => {
     if (!input.trim() || !currentUid) return;
     const messagesRef = ref(db, `chats/${chatId}/messages`);
@@ -103,7 +85,6 @@ export default function Messages() {
     }
   };
 
-  // Remove message locally (for current user)
   const removeForMe = async () => {
     if (!selectedMsg || !currentUid) return;
     const msgRef = ref(db, `chats/${chatId}/messages/${selectedMsg.id}/deletedFor`);
@@ -114,7 +95,6 @@ export default function Messages() {
     setSelectedMsg(null);
   };
 
-  // Delete message for everyone
   const deleteForEveryone = async () => {
     if (!selectedMsg) return;
     const msgRef = ref(db, `chats/${chatId}/messages/${selectedMsg.id}`);
@@ -122,7 +102,6 @@ export default function Messages() {
     setSelectedMsg(null);
   };
 
-  // Click outside modal closes it
   useEffect(() => {
     if (!selectedMsg) return;
     const handleClickOutside = (e) => {
@@ -132,170 +111,116 @@ export default function Messages() {
     return () => document.removeEventListener("click", handleClickOutside);
   }, [selectedMsg]);
 
-  // ----------- WebRTC helpers -------------
-  const cleanupCall = async () => {
-    setInCall(false);
-    setCallStatus("idle");
-    setIncomingCall(null);
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((t) => t.stop());
-      localStreamRef.current = null;
-    }
-    if (localVideoRef.current) localVideoRef.current.srcObject = null;
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-    if (pcRef.current) {
-      try { pcRef.current.close(); } catch { }
-      pcRef.current = null;
-    }
-    processedCandidatesRef.current.clear();
-    if (chatId) await remove(ref(db, `calls/${chatId}`)).catch(() => { });
-  };
-
-  const createPC = (onRemoteTrack) => {
-    const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
-    pc.ontrack = (e) => onRemoteTrack && onRemoteTrack(e.streams[0]);
-    pc.onicecandidate = (e) => {
-      if (e.candidate && chatId && currentUid) {
-        push(ref(db, `calls/${chatId}/candidates/${currentUid}`), e.candidate.toJSON());
-      }
-    };
-    return pc;
-  };
-
-  // Listen for signaling
-  useEffect(() => {
-    if (!chatId) return;
-
-    const unsubCall = onValue(ref(db, `calls/${chatId}`), async (snap) => {
-      const data = snap.val();
-      if (!data) return;
-      const { offer, answer, status, from } = data;
-
-      if (offer && from !== currentUid && !inCall && callStatus !== "ringing") {
-        setIncomingCall({ from, offer });
-        setCallStatus("ringing");
-      }
-
-      if (answer && answer.from !== currentUid && pcRef.current) {
-        await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
-        setCallStatus("in-call");
-        setInCall(true);
-      }
-
-      if (status === "rejected") { alert("Call rejected"); cleanupCall(); }
-      if (status === "ended") cleanupCall();
-    });
-
-    const unsubCand = onValue(ref(db, `calls/${chatId}/candidates`), (snap) => {
-      if (!snap.val() || !pcRef.current) return;
-      Object.entries(snap.val()).forEach(([uidKey, obj]) => {
-        if (uidKey === currentUid) return;
-        Object.entries(obj).forEach(([id, cand]) => {
-          const key = uidKey + "|" + id;
-          if (processedCandidatesRef.current.has(key)) return;
-          processedCandidatesRef.current.add(key);
-          pcRef.current.addIceCandidate(new RTCIceCandidate(cand)).catch(() => { });
-        });
-      });
-    });
-
-    return () => { unsubCall(); unsubCand(); };
-  }, [chatId, currentUid, inCall, callStatus]);
-
-  const startCall = async () => {
-    try {
-      const localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      localStreamRef.current = localStream;
-      if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
-
-      const pc = createPC((remote) => { if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remote; });
-      pcRef.current = pc;
-      localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
-
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      await set(ref(db, `calls/${chatId}`), { offer: { type: offer.type, sdp: offer.sdp, from: currentUid }, status: "calling", from: currentUid });
-      onDisconnect(ref(db, `calls/${chatId}`)).remove();
-      setCallStatus("calling");
-    } catch (err) { alert("Error starting call: " + err.message); cleanupCall(); }
-  };
-
-  const acceptCall = async () => {
-    if (!incomingCall) return;
-    try {
-      const localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      localStreamRef.current = localStream;
-      if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
-
-      const pc = createPC((remote) => { if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remote; });
-      pcRef.current = pc;
-      localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
-
-      await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
-
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-
-      await set(ref(db, `calls/${chatId}/answer`), { type: answer.type, sdp: answer.sdp, from: currentUid });
-      await set(ref(db, `calls/${chatId}/status`), "accepted");
-
-      setInCall(true);
-      setCallStatus("in-call");
-      setIncomingCall(null);
-    } catch (err) { alert("Accept failed: " + err.message); cleanupCall(); }
-  };
-
-  const declineCall = async () => {
-    if (!chatId) return;
-    await set(ref(db, `calls/${chatId}/status`), "rejected");
-    setIncomingCall(null);
-    setCallStatus("idle");
-  };
-
-  const endCall = async () => {
-    if (chatId) await set(ref(db, `calls/${chatId}/status`), "ended");
-    cleanupCall();
-  };
-
   if (!currentUid) return <p style={{ textAlign: "center", marginTop: 40 }}>Please login</p>;
 
   return (
-    <div style={{ maxWidth: 600, margin: "20px auto", display: "flex", flexDirection: "column", height: "90vh", border: "1px solid #ccc", borderRadius: 10, overflow: "hidden", fontFamily: "Arial, sans-serif", background: "#f0f0f0" }}>
+    <div
+      style={{
+        maxWidth: 600,
+        margin: "20px auto",
+        display: "flex",
+        flexDirection: "column",
+        height: "90vh",
+        border: "1px solid #ccc",
+        borderRadius: 10,
+        overflow: "hidden",
+        fontFamily: "Arial, sans-serif",
+        background: "#f0f0f0",
+      }}
+    >
       {/* Header */}
-      {/* Header */}
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 15px", background: "#075E54", color: "#fff", fontWeight: "bold" }}>
+      <header
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "10px 15px",
+          background: "#075E54",
+          color: "#fff",
+          fontWeight: "bold",
+        }}
+      >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Link to={`/user-profile/${chatUser?.uid}`} style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "inherit" }}>
+          <Link
+            to={`/user-profile/${chatUser?.uid}`}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              textDecoration: "none",
+              color: "inherit",
+            }}
+          >
             <img
               src={chatUser?.photoURL || "icons/avatar.jpg"}
               alt="DP"
-              style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover", border: "2px solid #fff" }}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: "50%",
+                objectFit: "cover",
+                border: "2px solid #fff",
+              }}
             />
             <span>{chatUser?.username || "User"}</span>
           </Link>
         </div>
-        <div>
-          <button onClick={startCall} style={{ background: "transparent", border: "none", color: "#fff" }}>
-            <IoVideocam size={24} />
-          </button>
-          {inCall && (
-            <button onClick={endCall} style={{ marginLeft: 10, padding: "4px 8px", borderRadius: 5, background: "#d32f2f", color: "#fff", border: "none" }}>
-              End
-            </button>
-          )}
+
+        {/* Call Buttons */}
+        <div style={{ display: "flex", gap: 15, fontSize: 18 }}>
+          <FaPhone
+            style={{ cursor: "pointer" }}
+            onClick={() => setShowCall("audio")}
+            title="Audio Call"
+          />
+          <FaVideo
+            style={{ cursor: "pointer" }}
+            onClick={() => setShowCall("video")}
+            title="Video Call"
+          />
         </div>
       </header>
 
-
       {/* Messages */}
-      <main style={{ flex: 1, overflowY: "auto", padding: "10px", display: "flex", flexDirection: "column" }}>
+      <main
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: "10px",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
         {messages.map((msg) => {
           if (msg.deletedFor?.includes(currentUid)) return null;
           const isSentByCurrentUser = msg.sender === currentUid;
           return (
-            <div key={msg.id} onMouseDown={() => startLongPress(msg)} onMouseUp={cancelLongPress} onMouseLeave={cancelLongPress} onTouchStart={() => startLongPress(msg)} onTouchEnd={cancelLongPress} onTouchCancel={cancelLongPress} style={{ margin: "6px 0", alignSelf: isSentByCurrentUser ? "flex-end" : "flex-start", maxWidth: "70%" }}>
-              <span style={{ background: isSentByCurrentUser ? "#dcf8c6" : "#fff", color: "#000", padding: "8px 12px", borderRadius: 20, display: "inline-block", wordBreak: "break-word" }}>{msg.text}</span>
+            <div
+              key={msg.id}
+              onMouseDown={() => startLongPress(msg)}
+              onMouseUp={cancelLongPress}
+              onMouseLeave={cancelLongPress}
+              onTouchStart={() => startLongPress(msg)}
+              onTouchEnd={cancelLongPress}
+              onTouchCancel={cancelLongPress}
+              style={{
+                margin: "6px 0",
+                alignSelf: isSentByCurrentUser ? "flex-end" : "flex-start",
+                maxWidth: "70%",
+              }}
+            >
+              <span
+                style={{
+                  background: isSentByCurrentUser ? "#dcf8c6" : "#fff",
+                  color: "#000",
+                  padding: "8px 12px",
+                  borderRadius: 20,
+                  display: "inline-block",
+                  wordBreak: "break-word",
+                }}
+              >
+                {msg.text}
+              </span>
             </div>
           );
         })}
@@ -303,41 +228,157 @@ export default function Messages() {
       </main>
 
       {/* Input */}
-      <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} style={{ display: "flex", padding: 10, background: "#fff", borderTop: "1px solid #ccc" }}>
-        <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Type a message" style={{ flex: 1, padding: "10px 15px", borderRadius: 20, border: "1px solid #ccc", outline: "none" }} />
-        <button type="submit" style={{ marginLeft: 10, padding: "0 16px", borderRadius: 20, background: "#075E54", color: "#fff", border: "none" }}>Send</button>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          sendMessage();
+        }}
+        style={{
+          display: "flex",
+          padding: 10,
+          background: "#fff",
+          borderTop: "1px solid #ccc",
+        }}
+      >
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Type a message"
+          style={{
+            flex: 1,
+            padding: "10px 15px",
+            borderRadius: 20,
+            border: "1px solid #ccc",
+            outline: "none",
+          }}
+        />
+        <button
+          type="submit"
+          style={{
+            marginLeft: 10,
+            padding: "0 16px",
+            borderRadius: 20,
+            background: "#075E54",
+            color: "#fff",
+            border: "none",
+          }}
+        >
+          Send
+        </button>
       </form>
+
+      {/* Call Modal */}
+      {showCall && (
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "#0008",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 999,
+          }}
+        >
+          <div
+            style={{
+              background: "#fff",
+              padding: 20,
+              borderRadius: 10,
+              width: "90%",
+              maxWidth: 500,
+            }}
+          >
+            <Call chatUid={uid} callType={showCall} />
+            <button
+              onClick={() => setShowCall(null)}
+              style={{
+                marginTop: 10,
+                padding: "8px 16px",
+                borderRadius: 6,
+                background: "#f44336",
+                color: "#fff",
+                border: "none",
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Long-press modal */}
       {selectedMsg && (
-        <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "#0008", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 999 }}>
-          <div className="modal-content" style={{ background: "#fff", padding: 20, borderRadius: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "#0008",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 999,
+          }}
+        >
+          <div
+            className="modal-content"
+            style={{
+              background: "#fff",
+              padding: 20,
+              borderRadius: 10,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+            }}
+          >
             {selectedMsg.sender === currentUid ? (
               <>
-                <button onClick={removeForMe} style={{ background: "#f44336", color: "#fff", border: "none", padding: 10, borderRadius: 5 }}>Remove for Me</button>
-                <button onClick={deleteForEveryone} style={{ background: "#1976d2", color: "#fff", border: "none", padding: 10, borderRadius: 5 }}>Delete for Everyone</button>
+                <button
+                  onClick={removeForMe}
+                  style={{
+                    background: "#f44336",
+                    color: "#fff",
+                    border: "none",
+                    padding: 10,
+                    borderRadius: 5,
+                  }}
+                >
+                  Remove for Me
+                </button>
+                <button
+                  onClick={deleteForEveryone}
+                  style={{
+                    background: "#1976d2",
+                    color: "#fff",
+                    border: "none",
+                    padding: 10,
+                    borderRadius: 5,
+                  }}
+                >
+                  Delete for Everyone
+                </button>
               </>
-            ) : <button onClick={removeForMe} style={{ background: "#f44336", color: "#fff", border: "none", padding: 10, borderRadius: 5 }}>Remove for Me</button>}
+            ) : (
+              <button
+                onClick={removeForMe}
+                style={{
+                  background: "#f44336",
+                  color: "#fff",
+                  border: "none",
+                  padding: 10,
+                  borderRadius: 5,
+                }}
+              >
+                Remove for Me
+              </button>
+            )}
           </div>
-        </div>
-      )}
-
-      {/* Incoming call */}
-      {incomingCall && callStatus === "ringing" && (
-        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "#0008", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 9999 }}>
-          <div style={{ background: "#fff", padding: 20, borderRadius: 10, textAlign: "center" }}>
-            <p style={{ fontWeight: "bold" }}>{chatUser?.username} is calling</p>
-            <button onClick={acceptCall} style={{ marginRight: 10, padding: 6, borderRadius: 5, background: "#4caf50", color: "#fff", border: "none" }}>Accept</button>
-            <button onClick={declineCall} style={{ padding: 6, borderRadius: 5, background: "#f44336", color: "#fff", border: "none" }}>Decline</button>
-          </div>
-        </div>
-      )}
-
-      {/* Video overlay ..*/}  
-      {callStatus !== "idle" && (
-        <div style={{ position: "fixed", bottom: 20, right: 20, zIndex: 999 }}>
-          <video ref={remoteVideoRef} autoPlay playsInline style={{ width: 300, borderRadius: 10, background: "#000" }} />
-          <video ref={localVideoRef} autoPlay playsInline muted style={{ width: 100, position: "absolute", bottom: 10, right: 10, borderRadius: 10, background: "#000", border: "2px solid #075E54" }} />
         </div>
       )}
     </div>
