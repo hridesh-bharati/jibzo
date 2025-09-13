@@ -157,7 +157,6 @@ export default function Messages() {
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
 
-    // Set remote stream directly
     pc.ontrack = (e) => {
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = e.streams[0];
@@ -626,8 +625,8 @@ export default function Messages() {
             playsInline
             muted
             style={{
-              width: 160,
-              height: 220,
+              width: 140,
+              height: 200,
               position: "absolute",
               top: 20,
               right: 20,
@@ -653,7 +652,7 @@ export default function Messages() {
               zIndex: 10000,
             }}
           >
-            End Call
+            End Calls
           </button>
         </div>
       )}
