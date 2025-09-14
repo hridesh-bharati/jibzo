@@ -584,18 +584,18 @@ export default function Messages() {
               </div>
               {selectedMsgId === msg.id && (
                 <div
-                  className="position-absolute bg-white border shadow rounded p-1"
+                  className="position-absolute bg-white border shadow rounded p-1 small d-flex flex-column"
                   style={{
-                    top: "-50px",
-                    right: msg.sender === currentUid ? "0" : "unset",
-                    left: msg.sender !== currentUid ? "0" : "unset",
+                    top: "-10px",
+                    right: msg.sender === currentUid ? "120px" : "unset",
+                    left: msg.sender !== currentUid ? "50px" : "unset",
                     zIndex: 10,
                     display: "flex",
                     gap: "4px",
                   }}
                 >
                   <button
-                    className="btn btn-sm btn-outline-primary"
+                    className="btn btn-sm btn-danger"
                     onClick={() => removeForMe(msg.id)}
                   >
                     Delete for me
@@ -605,7 +605,7 @@ export default function Messages() {
                   {msg.sender === currentUid && (
                     <>
                       <button
-                        className="btn btn-sm btn-outline-secondary"
+                        className="btn btn-sm btn-secondary"
                         onClick={() => {
                           setEditingMsgId(msg.id);
                           setInput(msg.text || "");
@@ -625,7 +625,7 @@ export default function Messages() {
                   )}
 
                   <button
-                    className="btn btn-sm btn-outline-info"
+                    className="btn btn-sm btn-success"
                     onClick={() => {
                       setReplyTo(msg);
                       setSelectedMsgId(null);
@@ -686,7 +686,7 @@ export default function Messages() {
             value={input}
             onChange={(e) => handleInputChange(e.target.value)}
             placeholder="Type a message"
-            autoFocus
+          // autoFocus
           />
 
           <button
