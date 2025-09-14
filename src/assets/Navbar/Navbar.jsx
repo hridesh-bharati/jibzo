@@ -5,21 +5,71 @@ import { auth, db } from "../../assets/utils/firebaseConfig";
 import { ref, onValue, get, update } from "firebase/database";
 import { onAuthStateChanged } from "firebase/auth";
 import { toast } from "react-toastify";
-import './Navbar.css'
+import './Navbar.css';
 import PWAInstall from "../Pwa/InstallApp";
+
 const Navbar = () => {
   const navigate = useNavigate();
   const [currentUid, setCurrentUid] = useState(null);
+
+  // Friend requests
   const [friendRequests, setFriendRequests] = useState([]);
   const [isFriendReqOpen, setIsFriendReqOpen] = useState(false);
 
+  // Messages
   const [unreadCount, setUnreadCount] = useState(0);
   const [unreadUsers, setUnreadUsers] = useState([]);
   const [isInboxOpen, setIsInboxOpen] = useState(false);
 
+  // Likes
   const [notifications, setNotifications] = useState([]);
   const [unreadLikes, setUnreadLikes] = useState(0);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+
+  //History
+  const [chatHistory, setChatHistory] = useState([]);
+  useEffect(() => {
+    if (!currentUid) return;
+    const messagesRef = ref(db, `chats`);
+    const unsub = onValue(messagesRef, async (snapshot) => {
+      const chats = [];
+      let count = 0;
+
+      snapshot.forEach((chatSnap) => {
+        const chatData = chatSnap.val();
+        if (!chatData || !chatData.messages) return;
+
+        const messages = Object.entries(chatData.messages).map(([id, msg]) => ({ id, ...msg }));
+        const unreadMsgs = messages.filter(msg => !msg.read && msg.sender !== currentUid);
+        if (unreadMsgs.length) count += unreadMsgs.length;
+
+        const chatUsers = chatSnap.key.split("_");
+        const otherUserId = chatUsers.find(uid => uid !== currentUid);
+
+        chats.push({
+          chatId: chatSnap.key,
+          otherUserId,
+          messages,
+          unreadCount: unreadMsgs.length,
+        });
+      });
+
+      // Fetch usernames for all other users
+      await Promise.all(chats.map(async (chat) => {
+        try {
+          const snap = await get(ref(db, `usersData/${chat.otherUserId}`));
+          const data = snap.val();
+          chat.username = data?.username || "Someone";
+        } catch {
+          chat.username = "Someone";
+        }
+      }));
+
+      setChatHistory(chats);
+      setUnreadCount(count);
+    });
+    return () => unsub();
+  }, [currentUid]);
 
   // ✅ Auth listener
   useEffect(() => {
@@ -45,7 +95,7 @@ const Navbar = () => {
           detailedData.push({
             uid,
             username: userData?.username || "Someone",
-            photoURL: userData?.photoURL || `https://ui-avatars.com/api/?name=${userData?.username || "U"}`,
+            photoURL: userData?.photoURL || `https://ui-avatars.com/api/?name=${userData?.username || "U"}`
           });
         } catch {
           detailedData.push({ uid, username: "Someone", photoURL: "" });
@@ -86,7 +136,7 @@ const Navbar = () => {
     }
   };
 
-  // 🔹 Messages
+  // 🔹 Messages (Unread notifications)
   useEffect(() => {
     if (!currentUid) return;
     const messagesRef = ref(db, `chats`);
@@ -108,13 +158,13 @@ const Navbar = () => {
       });
 
       // fetch usernames
-      for (const user of usersWithUnreadMessages) {
+      await Promise.all(usersWithUnreadMessages.map(async (user) => {
         try {
           const snap = await get(ref(db, `usersData/${user.uid}`));
           const data = snap.val();
           if (data?.username) user.username = data.username;
         } catch { }
-      }
+      }));
 
       setUnreadCount(count);
       setUnreadUsers(usersWithUnreadMessages);
@@ -122,29 +172,26 @@ const Navbar = () => {
     return () => unsub();
   }, [currentUid]);
 
-  const toggleInbox = () => {
+  const toggleInbox = async () => {
     setIsInboxOpen(prev => {
       const next = !prev;
-      if (next && unreadCount > 0) {
-        unreadUsers.forEach(async (user) => {
-          const chatPath = `chats/${[currentUid, user.uid].sort().join("_")}/messages`;
-          const chatRef = ref(db, chatPath);
-          const snap = await get(chatRef);
-          if (snap.exists()) {
-            const updates = {};
-            snap.forEach((msg) => {
-              if (!msg.val().read && msg.val().sender !== currentUid) updates[`${msg.key}/read`] = true;
-            });
-            if (Object.keys(updates).length) await update(chatRef, updates);
-          }
+      if (next) {
+        chatHistory.forEach(async (chat) => {
+          const chatRef = ref(db, `chats/${chat.chatId}/messages`);
+          const updates = {};
+          chat.messages.forEach(msg => {
+            if (!msg.read && msg.sender !== currentUid) updates[`${msg.id}/read`] = true;
+          });
+          if (Object.keys(updates).length) await update(chatRef, updates);
         });
-        setUnreadCount(0);
+        setUnreadCount(0); // badge goes away, but history remains
       }
       return next;
     });
   };
 
-  // 🔹 Likes
+
+  // 🔹 Likes / Notifications
   useEffect(() => {
     if (!currentUid) return;
     const notifRef = ref(db, `notifications/${currentUid}`);
@@ -207,7 +254,9 @@ const Navbar = () => {
       <Link to="/home" className="d-flex align-items-center">
         <img src="icons/logo.png" width={100} alt="logo" />
       </Link>
-      <PWAInstall /> 
+
+      <PWAInstall />
+
       <div className="d-flex align-items-center gap-3">
 
         {/* Friend Requests */}
@@ -246,21 +295,57 @@ const Navbar = () => {
             <i className="bi bi-chat-dots-fill fs-4 text-primary"></i>
             {unreadCount > 0 && <span className="badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
           </button>
+
           {isInboxOpen && (
             <div className="dropdown-card">
               <h6>Messages</h6>
-              {unreadUsers.length === 0 ? <p className="text-muted">No unread messages</p> :
-                unreadUsers.map(user => (
-                  <div key={user.uid} className="d-flex align-items-center gap-2 cursor-pointer" onClick={() => openChat(user.uid)}>
-                    <img src={`https://ui-avatars.com/api/?name=${user.username}&background=random`} className="avatar-sm" alt={user.username} />
-                    <div className="flex-grow-1">
-                      <strong>{user.username}</strong>
-                      <div className="text-muted small">{user.unreadCount} unread</div>
+              {chatHistory.length === 0 ? (
+                <p className="text-muted">No chats yet</p>
+              ) : (
+                chatHistory.map(chat => (
+                  <div
+                    key={chat.chatId}
+                    className="d-flex align-items-center gap-2 mb-2"
+                  >
+                    <img
+                      src={`https://ui-avatars.com/api/?name=${chat.username}&background=random`}
+                      className="avatar-sm"
+                      alt={chat.username}
+                    />
+                    <div
+                      className="flex-grow-1 cursor-pointer"
+                      onClick={() => openChat(chat.otherUserId)}
+                    >
+                      <strong>{chat.username}</strong>
+                      {chat.messages.length > 0 && (
+                        <div className="text-muted small">
+                          {chat.messages[chat.messages.length - 1].text || "Image/Media"} • {chat.unreadCount > 0 ? `${chat.unreadCount} unread` : "read"}
+                        </div>
+                      )}
                     </div>
-                    <span className="badge">{user.unreadCount}</span>
+                    {/* Delete button for this user's chat */}
+                    <button
+                      className="btn btn-sm btn-outline-danger p-1"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (!currentUid) return;
+
+                        // Mark as deleted by current user
+                        await update(ref(db, `userChats/${currentUid}/${chat.chatId}`), {
+                          deletedBy: currentUid,
+                          deletedAt: Date.now()
+                        });
+
+                        // Remove from local state for UI
+                        setChatHistory(prev => prev.filter(c => c.chatId !== chat.chatId));
+                      }}
+                    >
+                      🗑
+                    </button>
+
                   </div>
                 ))
-              }
+              )}
             </div>
           )}
         </div>
@@ -287,9 +372,7 @@ const Navbar = () => {
         </div>
 
       </div>
-
     </nav>
-
   );
 };
 
