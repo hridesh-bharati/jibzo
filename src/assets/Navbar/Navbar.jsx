@@ -231,7 +231,7 @@ const Navbar = () => {
 
       <PWAInstall />
 
-      <div className="d-flex align-items-center gap-3">
+      <div className="d-flex align-items-center gap-1">
 
         {/* Friend Requests */}
         <div className="position-relative">

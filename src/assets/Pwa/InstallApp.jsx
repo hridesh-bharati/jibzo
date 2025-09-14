@@ -1,35 +1,34 @@
+// src/assets/Pwa/InstallApp.jsx
 import React, { useEffect, useState } from "react";
 import { FaDownload } from "react-icons/fa";
 
 export default function PWAInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [showIcon, setShowIcon] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
 
   useEffect(() => {
-    // Listen for beforeinstallprompt event
-    const handler = (e) => {
-      e.preventDefault(); // Prevent Chrome's mini prompt
-      setDeferredPrompt(e);
-      setShowIcon(true);
-      localStorage.setItem("pwa-available", "true"); // mark PWA as installable
-    };
-    window.addEventListener("beforeinstallprompt", handler);
-
-    // Listen for appinstalled event
-    const handleAppInstalled = () => {
-      setShowIcon(false);
-      localStorage.removeItem("pwa-available");
-      console.log("🎉 App installed!");
-    };
-    window.addEventListener("appinstalled", handleAppInstalled);
-
-    // Check localStorage on mount
-    if (localStorage.getItem("pwa-available") === "true") {
-      setShowIcon(true);
+    // Check if already installed (localStorage flag)
+    if (localStorage.getItem("pwa-installed") === "true") {
+      setIsInstalled(true);
     }
 
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    const handleAppInstalled = () => {
+      console.log("🎉 App installed!");
+      setIsInstalled(true);
+      localStorage.setItem("pwa-installed", "true");
+      setDeferredPrompt(null);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleAppInstalled);
+
     return () => {
-      window.removeEventListener("beforeinstallprompt", handler);
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
       window.removeEventListener("appinstalled", handleAppInstalled);
     };
   }, []);
@@ -37,34 +36,26 @@ export default function PWAInstall() {
   const handleInstall = async () => {
     if (!deferredPrompt) return;
     deferredPrompt.prompt();
-    const choice = await deferredPrompt.userChoice;
-    if (choice.outcome === "accepted") {
-      setShowIcon(false);
-      localStorage.removeItem("pwa-available");
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === "accepted") {
+      console.log("✅ User accepted install");
+    } else {
+      console.log("❌ User dismissed install");
     }
     setDeferredPrompt(null);
   };
 
-  if (!showIcon) return null;
+  // ❌ Agar installed hai to button hi mat dikhao
+  if (isInstalled) return null;
 
   return (
-    <div
+    <button
       onClick={handleInstall}
-      style={{
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "6px",
-        borderRadius: "50%",
-        backgroundColor: "#1976d2",
-        color: "#fff",
-        fontSize: "18px",
-        marginLeft: "10px",
-      }}
-      title="Install App"
+      className="btn btn-outline-primary btn-sm d-flex align-items-center gap-1"
+      style={{ fontSize: "0.7rem" }}
     >
       <FaDownload />
-    </div>
+      <span>Install App</span>
+    </button>
   );
 }
