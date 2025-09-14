@@ -1,4 +1,3 @@
-// src\assets\users\DeleteAccount.jsx
 import React, { useState } from "react";
 import { ref, remove, onValue } from "firebase/database";
 import { auth, db } from "../utils/firebaseConfig";
@@ -11,53 +10,67 @@ const DeleteAccount = () => {
   const navigate = useNavigate();
   const user = auth.currentUser;
 
-const handleDeleteAccount = async () => {
-  if (!user) return toast.error("User not found!");
+  const handleDeleteAccount = async () => {
+    if (!user) return toast.error("User not found!");
 
-  const confirm = window.confirm(
-    "⚠️ This will permanently delete your account and all your data. This cannot be undone. Are you sure?"
-  );
-
-  if (!confirm) return;
-
-  setLoading(true);
-  try {
-    // 1. Remove user data
-    await remove(ref(db, `usersData/${user.uid}`));
-
-    // 2. Remove user's posts
-    const postsRef = ref(db, "galleryImages");
-    onValue(
-      postsRef,
-      async (snapshot) => {
-        const data = snapshot.val();
-        if (!data) return;
-
-        const deletePromises = Object.entries(data)
-          .filter(([_, post]) => post.userId === user.uid)
-          .map(([id]) => remove(ref(db, `galleryImages/${id}`)));
-
-        await Promise.all(deletePromises);
-      },
-      { onlyOnce: true }
+    const confirm = window.confirm(
+      "⚠️ This will permanently delete your account and all your data. This cannot be undone. Are you sure?"
     );
 
-    // 3. Delete user from Firebase Auth
-    await deleteUser(user);
+    if (!confirm) return;
 
-    // ✅ Force sign out
-    await auth.signOut();
+    setLoading(true);
 
-    toast.success("✅ Account deleted permanently.");
-    navigate("/login");
-  } catch (error) {
-    console.error("Delete error:", error);
-    toast.error("❌ Failed to delete account. Re-authentication may be required.");
-  } finally {
-    setLoading(false);
-  }
-};
+    try {
+      // 1. Remove user profile data including email from usersData
+      await remove(ref(db, `usersData/${user.uid}`));
 
+      // 2. If you store emails separately, delete that too:
+      // await remove(ref(db, `emails/${user.uid}`)); // Uncomment if used
+
+      // 3. Remove user's posts from galleryImages
+      const postsRef = ref(db, "galleryImages");
+      await new Promise((resolve, reject) => {
+        onValue(
+          postsRef,
+          async (snapshot) => {
+            const data = snapshot.val();
+            if (!data) {
+              resolve(); // No posts to delete
+              return;
+            }
+
+            const deletePromises = Object.entries(data)
+              .filter(([_, post]) => post.userId === user.uid)
+              .map(([id]) => remove(ref(db, `galleryImages/${id}`)));
+
+            await Promise.all(deletePromises);
+            resolve();
+          },
+          {
+            onlyOnce: true,
+            error: (err) => reject(err),
+          }
+        );
+      });
+
+      // 4. Delete user from Firebase Auth
+      await deleteUser(user);
+
+      // 5. Sign out forcibly after deletion
+      await auth.signOut();
+
+      toast.success("✅ Account deleted permanently.");
+      navigate("/login");
+    } catch (error) {
+      console.error("Delete error:", error);
+      toast.error(
+        "❌ Failed to delete account. Re-authentication may be required."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="text-center my-4">

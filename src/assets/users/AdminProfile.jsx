@@ -571,10 +571,13 @@ const AdminProfile = () => {
       {showImageViewer && <ImageViewer src={showImageViewer} onClose={() => setShowImageViewer(null)} />}
 
       {/* Logout */}
-      <button className="btn btn-outline-danger mb-5" onClick={handleLogout}>
+      <button className="btn btn-outline-danger mb-2" onClick={handleLogout}>
         Logout
       </button>
-      {isOwner && <DeleteAccount />}
+      <div className="btn btn-outline-danger mb-5">
+        {isOwner && <DeleteAccount />}
+      </div>
+
     </div>
   );
 };
