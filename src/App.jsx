@@ -1,45 +1,50 @@
 import React, { useEffect, useState } from "react";
-import { Route, Routes, useLocation, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
-
-// Toastify import
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
+// Components
+import PrivateRoute from "./assets/Navbar/PrivateRoute";
+import Loader from "./assets/Loader/Loader";
+import BottomFooter from "./assets/Navbar/BottomFotter";
+
+// Pages
 import UserRegister from "./assets/users/UserRegister";
 import Login from "./assets/users/Login";
 import Home from "./assets/Home/Home";
-import BottomFooter from "./assets/Navbar/BottomFotter";
 import Profile from "./assets/users/AdminProfile";
 import InstaUsers from "./assets/users/InstaUsers";
 import InstaUserProfile from "./assets/users/InstaUserProfile";
 import Followers from "./assets/users/Followers";
 import Following from "./assets/users/Following";
+import Requested from "./assets/users/Requested";
 import UploadPost from "./assets/uploads/UploadPost";
 import GetPost from "./assets/uploads/GetPost";
 import Messages from "./assets/messages/Messages";
-import Loader from "./assets/Loader/Loader";
-import Requested from "./assets/users/Requested";
 import UploadStatus from "./assets/Status/UploadStatus";
 import ViewStatus from "./assets/Status/ViewStatuses";
+import DeleteAccount from "./assets/users/DeleteAccount";
 
 const App = () => {
-  const [user, setUser] = useState(() => {
-    const cached = localStorage.getItem("currentUser");
-    return cached ? JSON.parse(cached) : null;
-  });
+  const [user, setUser] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const location = useLocation();
 
-  // Auth state listener
   useEffect(() => {
     const auth = getAuth();
-    return onAuthStateChanged(auth, (u) => {
-      setUser(u);
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      if (u) {
+        setUser(u);
+        localStorage.setItem("currentUser", JSON.stringify(u));
+      } else {
+        setUser(null);
+        localStorage.removeItem("currentUser");
+      }
       setLoadingAuth(false);
-      if (u) localStorage.setItem("currentUser", JSON.stringify(u));
-      else localStorage.removeItem("currentUser");
     });
+
+    return () => unsubscribe();
   }, []);
 
   if (loadingAuth) return <Loader />;
@@ -47,33 +52,43 @@ const App = () => {
   return (
     <>
       <Routes>
-        <Route path="/" element={user ? <Navigate to="/home" /> : <UserRegister />} />
-        <Route path="/register" element={user ? <Navigate to="/home" /> : <UserRegister />} />
+        {/* Redirect root to login always */}
+        <Route path="/" element={<Navigate to="/login" />} />
+
+        {/* Force /register to /login */}
+        <Route path="/register" element={<Navigate to="/login" />} />
+
+        {/* Public Login Route */}
         <Route path="/login" element={user ? <Navigate to="/home" /> : <Login />} />
-        <Route path="/home" element={user ? <Home /> : <Navigate to="/login" />} />
-        <Route path="/followers" element={user ? <Followers /> : <Navigate to="/login" />} />
-        <Route path="/following" element={user ? <Following /> : <Navigate to="/login" />} />
-        <Route path="/Requested" element={user ? <Requested /> : <Navigate to="/login" />} />
 
-        <Route path="/followers/:uid" element={<Followers />} />
-        <Route path="/following/:uid" element={<Following />} />
-        <Route path="/requested/:uid" element={<Requested />} />
-        <Route path="/all-insta-users" element={user ? <InstaUsers /> : <Navigate to="/login" />} />
-        <Route path="/admin-profile" element={user ? <Profile /> : <Navigate to="/login" />} />
-        <Route path="/user-profile/:uid" element={user ? <InstaUserProfile /> : <Navigate to="/login" />} />
-        <Route path="/user/new/post" element={user ? <UploadPost /> : <Navigate to="/login" />} />
-        <Route path="/post/:postId" element={<GetPost />} />
-        <Route path="/user/get-all-post/post" element={user ? <GetPost /> : <Navigate to="/login" />} />
-        <Route path="/messages/:uid" element={user ? <Messages /> : <Navigate to="/login" />} />
-        <Route path="/messages" element={user ? <Messages /> : <Navigate to="/login" />} />
+        {/* Protected Routes */}
+        <Route path="/home" element={<PrivateRoute user={user}><Home /></PrivateRoute>} />
+        <Route path="/admin-profile" element={<PrivateRoute user={user}><Profile /></PrivateRoute>} />
+        <Route path="/all-insta-users" element={<PrivateRoute user={user}><InstaUsers /></PrivateRoute>} />
+        <Route path="/user-profile/:uid" element={<PrivateRoute user={user}><InstaUserProfile /></PrivateRoute>} />
+        <Route path="/followers" element={<PrivateRoute user={user}><Followers /></PrivateRoute>} />
+        <Route path="/followers/:uid" element={<PrivateRoute user={user}><Followers /></PrivateRoute>} />
+        <Route path="/following" element={<PrivateRoute user={user}><Following /></PrivateRoute>} />
+        <Route path="/following/:uid" element={<PrivateRoute user={user}><Following /></PrivateRoute>} />
+        <Route path="/requested" element={<PrivateRoute user={user}><Requested /></PrivateRoute>} />
+        <Route path="/requested/:uid" element={<PrivateRoute user={user}><Requested /></PrivateRoute>} />
+        <Route path="/user/new/post" element={<PrivateRoute user={user}><UploadPost /></PrivateRoute>} />
+        <Route path="/user/get-all-post/post" element={<PrivateRoute user={user}><GetPost /></PrivateRoute>} />
+        <Route path="/post/:postId" element={<PrivateRoute user={user}><GetPost /></PrivateRoute>} />
+        <Route path="/messages" element={<PrivateRoute user={user}><Messages /></PrivateRoute>} />
+        <Route path="/messages/:uid" element={<PrivateRoute user={user}><Messages /></PrivateRoute>} />
+        <Route path="/status/upload" element={<PrivateRoute user={user}><UploadStatus /></PrivateRoute>} />
+        <Route path="/delete-account" element={<PrivateRoute user={user}><DeleteAccount /></PrivateRoute>} />
+
+        {/* Public status view */}
         <Route path="/status" element={<ViewStatus />} />
-        <Route path="/status/upload" element={<UploadStatus />} />
-
       </Routes>
 
-      {user && !["/login", "/register", "/"].includes(location.pathname) && <BottomFooter />}
+      {/* Footer only if logged in and not on login/register/root */}
+      {user && !["/login", "/register", "/"].includes(location.pathname) && (
+        <BottomFooter />
+      )}
 
-      {/* 🔹 Toast container (global notifications) */}
       <ToastContainer
         position="top-right"
         autoClose={3000}

@@ -5,11 +5,13 @@ import {
   FaFileImage,
   FaCamera,
   FaUsers,
+  FaRegImage,
   FaRegCircle, // using this as status icon
 } from "react-icons/fa";
 import { auth, db } from "../../assets/utils/firebaseConfig";
 import { ref, onValue } from "firebase/database";
-
+import { IoMdPhotos } from "react-icons/io";
+import { HiOutlineStatusOnline } from "react-icons/hi";
 const buttonStyle = (isActive) => ({
   width: 50,
   height: 50,
@@ -49,11 +51,11 @@ export default function BottomFooter() {
   }, [location]);
 
   const navItems = [
-    { path: "/home", label: "Home", icon: <FaHome size={20} /> },
-    { path: "/user/get-all-post/post", label: "Gallery", icon: <FaFileImage size={20} /> },
-    { path: "/user/new/post", label: "Upload", icon: <FaCamera size={20} /> },
-    { path: "/all-insta-users", label: "Users", icon: <FaUsers size={20} /> },
-    { path: "/status", label: "Status", icon: <FaRegCircle size={20} /> }, // ✅ new status tab
+    { path: "/home", label: "Home", icon: <FaHome size={21} /> },
+    { path: "/user/get-all-post/post", label: "Gallery", icon: <FaRegImage size={21} /> },
+    { path: "/user/new/post", label: "Upload", icon: <FaCamera size={21} /> },
+    { path: "/all-insta-users", label: "Users", icon: <FaUsers size={21} /> },
+    { path: "/status", label: "Story", icon: <HiOutlineStatusOnline size={21} /> },
     {
       path: "/admin-profile",
       label: "Profile",
@@ -85,11 +87,11 @@ export default function BottomFooter() {
     <nav
       style={{
         position: "fixed",
-        bottom: 10,
+        bottom: 0,
         left: "50%",
         transform: "translateX(-50%)",
         width: "100%",
-        height: 56,
+        height: 60,
         background: "rgba(255, 255, 255, 0.85)",
         backdropFilter: "blur(12px)",
         // borderRadius: 40,
@@ -97,10 +99,9 @@ export default function BottomFooter() {
         display: "flex",
         justifyContent: "space-around",
         alignItems: "center",
-        padding: "0 5px",
+        padding: "0 1px",
         zIndex: 1000,
-        fontFamily:
-          "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif",
+        // fontFamily:          "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif",
       }}
     >
       {navItems.map(({ path, label, icon }) => {

@@ -6,6 +6,7 @@ import { signOut, updateProfile } from "firebase/auth";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import axios from "axios";
+import DeleteAccount from "./DeleteAccount";
 
 /* =========================
    Fullscreen Video Feed
@@ -573,6 +574,7 @@ const AdminProfile = () => {
       <button className="btn btn-outline-danger mb-5" onClick={handleLogout}>
         Logout
       </button>
+      {isOwner && <DeleteAccount />}
     </div>
   );
 };
