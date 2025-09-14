@@ -1,3 +1,4 @@
+// App.jsx
 import React, { useEffect, useState } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
@@ -52,40 +53,80 @@ const App = () => {
   return (
     <>
       <Routes>
-        {/* Redirect root to login always */}
+        {/* Root redirects to login */}
         <Route path="/" element={<Navigate to="/login" />} />
 
-        {/* Force /register to /login */}
-        <Route path="/register" element={<Navigate to="/login" />} />
-
-        {/* Public Login Route */}
-        <Route path="/login" element={user ? <Navigate to="/home" /> : <Login />} />
+        {/* Public Routes */}
+        <Route
+          path="/register"
+          element={user ? <Navigate to="/home" /> : <UserRegister />}
+        />
+        <Route
+          path="/login"
+          element={user ? <Navigate to="/home" /> : <Login />}
+        />
 
         {/* Protected Routes */}
-        <Route path="/home" element={<PrivateRoute user={user}><Home /></PrivateRoute>} />
-        <Route path="/admin-profile" element={<PrivateRoute user={user}><Profile /></PrivateRoute>} />
-        <Route path="/all-insta-users" element={<PrivateRoute user={user}><InstaUsers /></PrivateRoute>} />
-        <Route path="/user-profile/:uid" element={<PrivateRoute user={user}><InstaUserProfile /></PrivateRoute>} />
-        <Route path="/followers" element={<PrivateRoute user={user}><Followers /></PrivateRoute>} />
-        <Route path="/followers/:uid" element={<PrivateRoute user={user}><Followers /></PrivateRoute>} />
-        <Route path="/following" element={<PrivateRoute user={user}><Following /></PrivateRoute>} />
-        <Route path="/following/:uid" element={<PrivateRoute user={user}><Following /></PrivateRoute>} />
-        <Route path="/requested" element={<PrivateRoute user={user}><Requested /></PrivateRoute>} />
-        <Route path="/requested/:uid" element={<PrivateRoute user={user}><Requested /></PrivateRoute>} />
-        <Route path="/user/new/post" element={<PrivateRoute user={user}><UploadPost /></PrivateRoute>} />
-        <Route path="/user/get-all-post/post" element={<PrivateRoute user={user}><GetPost /></PrivateRoute>} />
-        <Route path="/post/:postId" element={<PrivateRoute user={user}><GetPost /></PrivateRoute>} />
-        <Route path="/messages" element={<PrivateRoute user={user}><Messages /></PrivateRoute>} />
-        <Route path="/messages/:uid" element={<PrivateRoute user={user}><Messages /></PrivateRoute>} />
-        <Route path="/status/upload" element={<PrivateRoute user={user}><UploadStatus /></PrivateRoute>} />
-        <Route path="/delete-account" element={<PrivateRoute user={user}><DeleteAccount /></PrivateRoute>} />
+        <Route
+          path="/home"
+          element={<PrivateRoute user={user}><Home /></PrivateRoute>}
+        />
+        <Route
+          path="/admin-profile"
+          element={<PrivateRoute user={user}><Profile /></PrivateRoute>}
+        />
+        <Route
+          path="/all-insta-users"
+          element={<PrivateRoute user={user}><InstaUsers /></PrivateRoute>}
+        />
+        <Route
+          path="/user-profile/:uid"
+          element={<PrivateRoute user={user}><InstaUserProfile /></PrivateRoute>}
+        />
+        <Route
+          path="/followers/:uid?"
+          element={<PrivateRoute user={user}><Followers /></PrivateRoute>}
+        />
+        <Route
+          path="/following/:uid?"
+          element={<PrivateRoute user={user}><Following /></PrivateRoute>}
+        />
+        <Route
+          path="/requested/:uid?"
+          element={<PrivateRoute user={user}><Requested /></PrivateRoute>}
+        />
+        <Route
+          path="/user/new/post"
+          element={<PrivateRoute user={user}><UploadPost /></PrivateRoute>}
+        />
+        <Route
+          path="/user/get-all-post/post"
+          element={<PrivateRoute user={user}><GetPost /></PrivateRoute>}
+        />
+        <Route
+          path="/post/:postId"
+          element={<PrivateRoute user={user}><GetPost /></PrivateRoute>}
+        />
+        <Route
+          path="/messages/:uid?"
+          element={<PrivateRoute user={user}><Messages /></PrivateRoute>}
+        />
+        <Route
+          path="/status/upload"
+          element={<PrivateRoute user={user}><UploadStatus /></PrivateRoute>}
+        />
+        <Route
+          path="/delete-account"
+          element={<PrivateRoute user={user}><DeleteAccount /></PrivateRoute>}
+        />
 
         {/* Public status view */}
         <Route path="/status" element={<ViewStatus />} />
+
       </Routes>
 
       {/* Footer only if logged in and not on login/register/root */}
-      {user && !["/login", "/register", "/"].includes(location.pathname) && (
+      {user && !["/", "/login", "/register"].includes(location.pathname) && (
         <BottomFooter />
       )}
 
