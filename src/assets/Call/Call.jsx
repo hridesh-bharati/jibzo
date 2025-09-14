@@ -1,179 +1,169 @@
-// src/assets/Call/Call.jsx
-import React, { useRef, useState } from "react";
-import { db } from "../../assets/utils/firebaseConfig";
-import { ref, push, onChildAdded, set, remove } from "firebase/database";
+//src\assets\Call\Call.jsx
+import React, { useEffect, useRef, useState } from "react";
+import { db, auth } from "../../assets/utils/firebaseConfig";
+import { ref as dbRef, set, onValue, remove } from "firebase/database";
+import { onAuthStateChanged } from "firebase/auth";
 
-export default function Call({ chatUid, callType, onClose }) {
-  const localVideo = useRef();
-  const remoteVideo = useRef();
-  const pc = useRef(null);
-  const [started, setStarted] = useState(false);
+export default function Call({ partnerUid, chatId, onClose }) {
+  const localVideoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
+  const pcRef = useRef(null);
+  const [callActive, setCallActive] = useState(false);
+  const [currentUid, setCurrentUid] = useState(null);
 
-  // STUN server
-  const servers = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+  // ---------- Auth ----------
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) setCurrentUid(user.uid);
+    });
+    return () => unsubscribe();
+  }, []);
 
-  // pending ICE candidates queue
-  const pendingCandidates = [];
+const startCall = async () => {
+  if (!currentUid || !chatId) return;
 
-  // Start a new call (offerer)
-  const startCall = async () => {
-    pc.current = new RTCPeerConnection(servers);
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    alert("Your browser does not support audio/video calls.");
+    return;
+  }
 
-    // Local media
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: callType === "video",
+  const pc = new RTCPeerConnection({
+    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  });
+  pcRef.current = pc;
+
+  try {
+    // Local stream
+    const localStream = await navigator.mediaDevices.getUserMedia({
+      video: true,
       audio: true,
     });
-    localVideo.current.srcObject = stream;
-    stream.getTracks().forEach((t) => pc.current.addTrack(t, stream));
+    localVideoRef.current.srcObject = localStream;
+    localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+  } catch (err) {
+    console.error("Error accessing camera/microphone:", err);
+    alert("Cannot access camera/microphone. Please allow permission.");
+    return;
+  }
 
-    // Remote media
-    pc.current.ontrack = (e) => {
-      remoteVideo.current.srcObject = e.streams[0];
-    };
+  // Remote stream
+  const remoteStream = new MediaStream();
+  remoteVideoRef.current.srcObject = remoteStream;
+  pc.ontrack = (event) => event.streams[0].getTracks().forEach((t) => remoteStream.addTrack(t));
 
-    // Send ICE candidates
-    pc.current.onicecandidate = (e) => {
-      if (e.candidate) {
-        push(ref(db, `calls/${chatUid}/candidates`), e.candidate.toJSON());
-      }
-    };
-
-    // Create offer
-    const offer = await pc.current.createOffer();
-    await pc.current.setLocalDescription(offer);
-    await set(ref(db, `calls/${chatUid}/offer`), offer);
-
-    // Listen for answer
-    onChildAdded(ref(db, `calls/${chatUid}/answer`), async (snap) => {
-      if (!pc.current.currentRemoteDescription) {
-        const answer = snap.val();
-        await pc.current.setRemoteDescription(
-          new RTCSessionDescription(answer)
-        );
-
-        // flush queued ICE candidates
-        while (pendingCandidates.length) {
-          const cand = pendingCandidates.shift();
-          try {
-            await pc.current.addIceCandidate(cand);
-          } catch (err) {
-            console.error("ICE add error (flushed)", err);
-          }
-        }
-      }
-    });
-
-    setStarted(true);
-  };
-
-  // Answer an incoming call
-  const answerCall = async () => {
-    pc.current = new RTCPeerConnection(servers);
-
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: callType === "video",
-      audio: true,
-    });
-    localVideo.current.srcObject = stream;
-    stream.getTracks().forEach((t) => pc.current.addTrack(t, stream));
-
-    pc.current.ontrack = (e) => {
-      remoteVideo.current.srcObject = e.streams[0];
-    };
-
-    pc.current.onicecandidate = (e) => {
-      if (e.candidate) {
-        push(ref(db, `calls/${chatUid}/candidates`), e.candidate.toJSON());
-      }
-    };
-
-    // Listen for offer
-    onChildAdded(ref(db, `calls/${chatUid}/offer`), async (snap) => {
-      const offer = snap.val();
-      await pc.current.setRemoteDescription(new RTCSessionDescription(offer));
-
-      // flush queued ICE
-      while (pendingCandidates.length) {
-        const cand = pendingCandidates.shift();
-        try {
-          await pc.current.addIceCandidate(cand);
-        } catch (err) {
-          console.error("ICE add error (flushed)", err);
-        }
-      }
-
-      // Create answer
-      const answer = await pc.current.createAnswer();
-      await pc.current.setLocalDescription(answer);
-      await set(ref(db, `calls/${chatUid}/answer`), answer);
-    });
-
-    setStarted(true);
-  };
-
-  // Listen for ICE candidates
-  onChildAdded(ref(db, `calls/${chatUid}/candidates`), async (snap) => {
-    const candidate = new RTCIceCandidate(snap.val());
-    if (pc.current && pc.current.remoteDescription) {
-      try {
-        await pc.current.addIceCandidate(candidate);
-      } catch (err) {
-        console.error("ICE add error", err);
-      }
-    } else {
-      pendingCandidates.push(candidate);
+  // ICE candidates
+  pc.onicecandidate = (event) => {
+    if (event.candidate) {
+      const candidateRef = dbRef(db, `calls/${chatId}/candidates/${currentUid}`);
+      set(candidateRef, event.candidate.toJSON());
     }
+  };
+
+  // Listen for remote ICE
+  const otherCandidateRef = dbRef(db, `calls/${chatId}/candidates/${partnerUid}`);
+  onValue(otherCandidateRef, (snap) => {
+    const data = snap.val();
+    if (data) pc.addIceCandidate(new RTCIceCandidate(data));
   });
 
-  // End call
-  const endCall = async () => {
-    pc.current?.close();
-    pc.current = null;
+  // Create offer
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  const offerRef = dbRef(db, `calls/${chatId}/offer`);
+  await set(offerRef, { sdp: offer.sdp, type: offer.type, sender: currentUid });
 
-    // cleanup firebase room
-    await remove(ref(db, `calls/${chatUid}`));
+  setCallActive(true);
+};
 
-    if (onClose) onClose();
+  // ---------- Accept Call ----------
+  useEffect(() => {
+    if (!currentUid || !chatId) return;
+
+    const offerRef = dbRef(db, `calls/${chatId}/offer`);
+    const answerRef = dbRef(db, `calls/${chatId}/answer`);
+    const candidatesRef = dbRef(db, `calls/${chatId}/candidates`);
+
+    const unsubscribe = onValue(offerRef, async (snap) => {
+      const offer = snap.val();
+      if (offer && offer.sender !== currentUid && !callActive) {
+        // Accept incoming offer
+        const pc = new RTCPeerConnection({
+          iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+        });
+        pcRef.current = pc;
+
+        // Local stream
+        const localStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true,
+        });
+        localVideoRef.current.srcObject = localStream;
+        localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+
+        // Remote stream
+        const remoteStream = new MediaStream();
+        remoteVideoRef.current.srcObject = remoteStream;
+        pc.ontrack = (event) =>
+          event.streams[0].getTracks().forEach((t) => remoteStream.addTrack(t));
+
+        // ICE candidates
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+            const candidateRef = dbRef(db, `calls/${chatId}/candidates/${currentUid}`);
+            set(candidateRef, event.candidate.toJSON());
+          }
+        };
+
+        // Listen for remote ICE
+        const otherCandidateRef = dbRef(db, `calls/${chatId}/candidates/${offer.sender}`);
+        onValue(otherCandidateRef, (snap) => {
+          const data = snap.val();
+          if (data) pc.addIceCandidate(new RTCIceCandidate(data));
+        });
+
+        // Set remote description
+        await pc.setRemoteDescription({ type: "offer", sdp: offer.sdp });
+
+        // Create and send answer
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        await set(answerRef, { sdp: answer.sdp, type: answer.type, sender: currentUid });
+
+        setCallActive(true);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [currentUid, chatId, callActive, partnerUid]);
+
+  // ---------- End Call ----------
+  const endCall = () => {
+    pcRef.current?.close();
+    remove(dbRef(db, `calls/${chatId}`));
+    setCallActive(false);
+    onClose?.();
   };
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        color: "#fff",
-      }}
-    >
-      <div style={{ display: "flex", gap: "10px" }}>
-        <video
-          ref={localVideo}
-          autoPlay
-          playsInline
-          muted
-          style={{ width: "40%", background: "#000" }}
-        />
-        <video
-          ref={remoteVideo}
-          autoPlay
-          playsInline
-          style={{ width: "40%", background: "#000" }}
-        />
+    <div className="call-container" style={{ display: "flex", gap: "10px" }}>
+      <div>
+        <video ref={localVideoRef} autoPlay muted style={{ width: "300px" }} />
+        <p>Me</p>
       </div>
-
-      <div style={{ marginTop: 20, display: "flex", gap: 10 }}>
-        {!started ? (
-          <>
-            <button onClick={startCall}>Start Call</button>
-            <button onClick={answerCall}>Answer Call</button>
-          </>
-        ) : (
-          <button onClick={endCall} style={{ background: "red", color: "#fff" }}>
-            End Call
-          </button>
-        )}
+      <div>
+        <video ref={remoteVideoRef} autoPlay style={{ width: "300px" }} />
+        <p>Partner</p>
       </div>
+      {!callActive && (
+        <button className="btn btn-success " onClick={startCall}>
+          Start Call
+        </button>
+      )}
+      {callActive && (
+        <button className="btn btn-danger" onClick={endCall}>
+          End Call
+        </button>
+      )}
     </div>
   );
 }
