@@ -20,6 +20,8 @@ import GetPost from "./assets/uploads/GetPost";
 import Messages from "./assets/messages/Messages";
 import Loader from "./assets/Loader/Loader";
 import Requested from "./assets/users/Requested";
+import UploadStatus from "./assets/Status/UploadStatus";
+import ViewStatus from "./assets/Status/ViewStatuses";
 
 const App = () => {
   const [user, setUser] = useState(() => {
@@ -64,6 +66,9 @@ const App = () => {
         <Route path="/user/get-all-post/post" element={user ? <GetPost /> : <Navigate to="/login" />} />
         <Route path="/messages/:uid" element={user ? <Messages /> : <Navigate to="/login" />} />
         <Route path="/messages" element={user ? <Messages /> : <Navigate to="/login" />} />
+        <Route path="/status" element={<ViewStatus />} />
+        <Route path="/status/upload" element={<UploadStatus />} />
+
       </Routes>
 
       {user && !["/login", "/register", "/"].includes(location.pathname) && <BottomFooter />}

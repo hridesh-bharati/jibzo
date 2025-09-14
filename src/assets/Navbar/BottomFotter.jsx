@@ -5,6 +5,7 @@ import {
   FaFileImage,
   FaCamera,
   FaUsers,
+  FaRegCircle, // using this as status icon
 } from "react-icons/fa";
 import { auth, db } from "../../assets/utils/firebaseConfig";
 import { ref, onValue } from "firebase/database";
@@ -25,8 +26,8 @@ const buttonStyle = (isActive) => ({
   position: "relative",
   transition: "all 0.3s ease-in-out",
   boxShadow: isActive ? "0 4px 12px rgba(0, 122, 255, 0.4)" : "none",
-  overflow: "hidden", 
-  zIndex:1100
+  overflow: "hidden",
+  zIndex: 1100,
 });
 
 export default function BottomFooter() {
@@ -52,6 +53,7 @@ export default function BottomFooter() {
     { path: "/user/get-all-post/post", label: "Gallery", icon: <FaFileImage size={20} /> },
     { path: "/user/new/post", label: "Upload", icon: <FaCamera size={20} /> },
     { path: "/all-insta-users", label: "Users", icon: <FaUsers size={20} /> },
+    { path: "/status", label: "Status", icon: <FaRegCircle size={20} /> }, // ✅ new status tab
     {
       path: "/admin-profile",
       label: "Profile",
@@ -67,7 +69,6 @@ export default function BottomFooter() {
           }}
         />
       ) : (
-        // fallback (if no photoURL available)
         <div
           style={{
             width: 24,
@@ -87,16 +88,16 @@ export default function BottomFooter() {
         bottom: 10,
         left: "50%",
         transform: "translateX(-50%)",
-        width: "90%",
+        width: "100%",
         height: 56,
         background: "rgba(255, 255, 255, 0.85)",
         backdropFilter: "blur(12px)",
-        borderRadius: 40,
+        // borderRadius: 40,
         boxShadow: "0 12px 30px rgba(0,0,0,0.15)",
         display: "flex",
         justifyContent: "space-around",
         alignItems: "center",
-        padding: "0 16px",
+        padding: "0 5px",
         zIndex: 1000,
         fontFamily:
           "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif",

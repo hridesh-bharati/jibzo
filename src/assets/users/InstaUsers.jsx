@@ -105,7 +105,7 @@ export default function AllUsers() {
               onClick={() => openUserProfile(user.uid)}
             >
               <img
-                src={user.photoURL || "https://via.placeholder.com/50"}
+                src={user.photoURL || "icons/avatar.jpg"}
                 alt="avatar"
                 className="rounded-circle me-3"
                 style={{ width: 50, height: 50, objectFit: "cover" }}
