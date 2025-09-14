@@ -40,7 +40,7 @@ const VideoFeed = ({ videos, startIndex, onClose }) => {
   useEffect(() => {
     videoRefs.current.forEach((vid, i) => {
       if (!vid) return;
-      if (i === currentIndex) vid.play().catch(() => {});
+      if (i === currentIndex) vid.play().catch(() => { });
       else vid.pause();
     });
   }, [currentIndex]);
@@ -284,11 +284,16 @@ const AdminProfile = () => {
     try {
       await signOut(auth);
       navigate("/login");
-      toast.info("👋 Logged out!");
+      toast.info("Logged out!");
     } catch {
-      toast.error("❌ Logout failed!");
+      toast.error("Logout failed!");
     }
   };
+
+  // const handleLogout = async () => {
+  //   await signOut(auth);
+  //   navigate("/login");
+  // };
 
   if (loading) return <p>Loading profile...</p>;
   if (!profileData) return <p>No profile found.</p>;
@@ -371,6 +376,7 @@ const AdminProfile = () => {
               </button>
             )}
           </div>
+
         </div>
       </div>
 
@@ -552,6 +558,11 @@ const AdminProfile = () => {
 
       {/* Fullscreen Image Viewer */}
       {showImageViewer && <ImageViewer src={showImageViewer} onClose={() => setShowImageViewer(null)} />}
+
+      {/* Logout */}
+      <button className="btn btn-outline-danger mb-5" onClick={handleLogout}>
+        Logout
+      </button>
     </div>
   );
 };
