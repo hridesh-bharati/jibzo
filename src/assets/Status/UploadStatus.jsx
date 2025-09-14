@@ -1,3 +1,4 @@
+// src\assets\Status\UploadStatus.jsx
 import React, { useState } from "react";
 import { ref as dbRef, push, set } from "firebase/database";
 import { db, auth } from "../../assets/utils/firebaseConfig";
