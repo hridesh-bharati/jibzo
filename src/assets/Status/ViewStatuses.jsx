@@ -6,8 +6,9 @@ import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";
 import "./ViewStatuses.css";
 import { FaEye } from "react-icons/fa";
-
+import { useNavigate } from "react-router-dom";
 export default function ViewStatuses() {
+  const navigate = useNavigate()
   const [statuses, setStatuses] = useState({});
   const [users, setUsers] = useState({});
   const [viewer, setViewer] = useState(null);
@@ -135,7 +136,17 @@ export default function ViewStatuses() {
 
   return (
     <div className="status-container container py-3">
-      <h3 className="mb-3">Stories</h3>
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <h3>Stories</h3>
+        {auth.currentUser && (
+          <button
+            className="threeD-btn greenBtn"
+            onClick={() => navigate("/status/upload")}
+          >
+            <i class="bi bi-plus-circle-fill"></i> Add Story
+          </button>
+        )}
+      </div>
 
       {/* Status bubbles */}
       <div className="status-strip">
@@ -183,8 +194,8 @@ export default function ViewStatuses() {
                         i < viewer.index
                           ? "100%"
                           : i === viewer.index
-                          ? `${progress}%`
-                          : "0%",
+                            ? `${progress}%`
+                            : "0%",
                       background: "white",
                     }}
                   />
@@ -305,11 +316,11 @@ export default function ViewStatuses() {
                     <small>
                       {vdata?.seenAt
                         ? new Date(vdata.seenAt).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            second: "2-digit",
-                            hour12: true,
-                          })
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          second: "2-digit",
+                          hour12: true,
+                        })
                         : ""}
                     </small>
                   </div>

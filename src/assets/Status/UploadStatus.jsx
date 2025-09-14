@@ -99,9 +99,12 @@ export default function UploadStatusUnique() {
   return (
     <div className="unique-wrapper">
       {!file && (
-        <label htmlFor="unique-file" className="unique-circle-btn">
-          +
-        </label>
+        <div className="text-center text-white">
+          <label htmlFor="unique-file" className="unique-circle-btn mb -2">
+            <i class="bi bi-cloud-upload-fill text-danger"></i>
+          </label>
+          <span>Upload</span>
+        </div>
       )}
       <input
         type="file"

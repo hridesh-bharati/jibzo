@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { db, auth } from "../../assets/utils/firebaseConfig";
 import { ref, onValue, update, remove } from "firebase/database";
-import { signOut, updateProfile } from "firebase/auth";
+import { signOut, updateProfile, onAuthStateChanged } from "firebase/auth";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import axios from "axios";
@@ -16,7 +16,6 @@ const VideoFeed = ({ videos, startIndex, onClose }) => {
   const containerRef = useRef(null);
   const videoRefs = useRef([]);
 
-  // Scroll to initial video
   useEffect(() => {
     if (containerRef.current) {
       containerRef.current.scrollTo({
@@ -26,7 +25,6 @@ const VideoFeed = ({ videos, startIndex, onClose }) => {
     }
   }, [startIndex]);
 
-  // Handle scroll snapping
   useEffect(() => {
     const container = containerRef.current;
     const handleScroll = () => {
@@ -37,11 +35,10 @@ const VideoFeed = ({ videos, startIndex, onClose }) => {
     return () => container.removeEventListener("scroll", handleScroll);
   }, [currentIndex]);
 
-  // Play only current video
   useEffect(() => {
     videoRefs.current.forEach((vid, i) => {
       if (!vid) return;
-      if (i === currentIndex) vid.play().catch(() => { });
+      if (i === currentIndex) vid.play().catch(() => {});
       else vid.pause();
     });
   }, [currentIndex]);
@@ -49,11 +46,7 @@ const VideoFeed = ({ videos, startIndex, onClose }) => {
   return (
     <div
       className="position-fixed top-0 start-0 w-100 h-100 bg-black"
-      style={{
-        zIndex: 1050,
-        overflowY: "scroll",
-        scrollSnapType: "y mandatory",
-      }}
+      style={{ zIndex: 1050, overflowY: "scroll", scrollSnapType: "y mandatory" }}
       ref={containerRef}
     >
       {videos.map((video, i) => (
@@ -73,27 +66,10 @@ const VideoFeed = ({ videos, startIndex, onClose }) => {
           <video
             ref={(el) => (videoRefs.current[i] = el)}
             src={video.src}
-            style={{
-              width: "auto",
-              height: "auto",
-              maxWidth: "100%",
-              maxHeight: "90vh",
-            }}
+            style={{ width: "auto", height: "auto", maxWidth: "100%", maxHeight: "90vh" }}
             loop
             controls={false}
           />
-          <div
-            style={{
-              position: "absolute",
-              top: 20,
-              left: 20,
-              background: "rgba(255, 255, 255, 0.24)",
-              padding: "8px 12px",
-              borderRadius: "8px",
-            }}
-          >
-            <i className="bi bi-eye"></i> 200k
-          </div>
           <button
             onClick={onClose}
             style={{
@@ -138,39 +114,39 @@ const AdminProfile = () => {
   const [profileData, setProfileData] = useState(null);
   const [userPosts, setUserPosts] = useState([]);
   const [loading, setLoading] = useState(true);
-
   const [file, setFile] = useState(null);
   const [bio, setBio] = useState("");
   const [uploading, setUploading] = useState(false);
-
   const [activeTab, setActiveTab] = useState("all");
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [selectedPostId, setSelectedPostId] = useState(null);
-
-  // Feed & Viewer states
   const [showVideoFeed, setShowVideoFeed] = useState(false);
   const [videoStartIndex, setVideoStartIndex] = useState(0);
   const [showImageViewer, setShowImageViewer] = useState(null);
-
-  // Followers/Following/Requests state
   const [followers, setFollowers] = useState([]);
   const [following, setFollowing] = useState([]);
   const [requested, setRequested] = useState([]);
+  const [socialLinks, setSocialLinks] = useState({ list: [] });
+  const [wallpaper, setWallpaper] = useState("");
 
   const navigate = useNavigate();
   const { uid: paramUid } = useParams();
-  const currentUser = auth.currentUser;
+  const [currentUser, setCurrentUser] = useState(null);
   const uid = paramUid || currentUser?.uid;
 
-  // Cloudinary ENV
   const cloudinaryPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
   const cloudinaryCloud = import.meta.env.VITE_CLOUDINARY_NAME;
 
+  // Firebase auth listener
   useEffect(() => {
-    if (!uid) {
-      navigate("/login");
-      return;
-    }
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user && !paramUid) navigate("/login");
+      setCurrentUser(user);
+    });
+    return () => unsubscribe();
+  }, [paramUid, navigate]);
+
+  // Fetch user data
+  useEffect(() => {
+    if (!uid) return;
 
     const userRef = ref(db, `usersData/${uid}`);
     const unsubscribeUser = onValue(userRef, (snapshot) => {
@@ -178,9 +154,16 @@ const AdminProfile = () => {
       if (data) {
         setProfileData(data);
         setBio(data.bio || "");
+        setWallpaper(data.wallpaper || "");
         setFollowers(Object.keys(data.followers || {}));
         setFollowing(Object.keys(data.following || {}));
         setRequested(Object.keys(data.followRequests?.received || {}));
+        const linksList = data.socialLinks
+          ? Object.entries(data.socialLinks)
+              .filter(([_, link]) => link)
+              .map(([_, url]) => ({ url }))
+          : [];
+        setSocialLinks({ list: linksList });
       } else setProfileData(null);
       setLoading(false);
     });
@@ -200,12 +183,13 @@ const AdminProfile = () => {
       unsubscribeUser();
       unsubscribePosts();
     };
-  }, [uid, navigate]);
+  }, [uid]);
 
-  // DP Upload
-  let handleDpUpdate = async () => {
+  // Update DP
+  const handleDpUpdate = async () => {
     if (!currentUser || !file) return toast.warn("Select an image first!");
-    if (!cloudinaryPreset || !cloudinaryCloud) return toast.error("❌ Cloudinary ENV not configured!");
+    if (!cloudinaryPreset || !cloudinaryCloud)
+      return toast.error("❌ Cloudinary ENV not configured!");
     setUploading(true);
     try {
       const formData = new FormData();
@@ -216,22 +200,12 @@ const AdminProfile = () => {
         formData
       );
       const photoURL = res.data.secure_url;
+
+      // Update in DB
       await update(ref(db, `usersData/${currentUser.uid}`), { photoURL });
+      // Update Firebase Auth
       await updateProfile(currentUser, { photoURL });
       setProfileData((prev) => ({ ...prev, photoURL }));
-
-      // Update all posts of this user
-      const postsRef = ref(db, "galleryImages");
-      onValue(postsRef, (snapshot) => {
-        const data = snapshot.val();
-        if (!data) return;
-        Object.entries(data).forEach(([id, post]) => {
-          if (post.userId === currentUser.uid) {
-            update(ref(db, `galleryImages/${id}`), { userPic: photoURL });
-          }
-        });
-      });
-
       toast.success("🎉 Profile picture updated!");
     } catch (err) {
       console.error(err);
@@ -242,7 +216,40 @@ const AdminProfile = () => {
     }
   };
 
-  // Bio Update
+  // Update Wallpaper
+  const handleChangeWallpaper = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (!cloudinaryPreset || !cloudinaryCloud) return toast.error("Cloudinary ENV missing");
+
+      try {
+        setUploading(true);
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("upload_preset", cloudinaryPreset);
+        const res = await axios.post(
+          `https://api.cloudinary.com/v1_1/${cloudinaryCloud}/image/upload`,
+          formData
+        );
+        const wallpaperURL = res.data.secure_url;
+        await update(ref(db, `usersData/${currentUser.uid}`), { wallpaper: wallpaperURL });
+        setWallpaper(wallpaperURL);
+        toast.success("🖼️ Wallpaper updated!");
+      } catch (err) {
+        console.error(err);
+        toast.error("❌ Error uploading wallpaper!");
+      } finally {
+        setUploading(false);
+      }
+    };
+    input.click();
+  };
+
+  // Update bio
   const handleBioUpdate = async () => {
     if (!currentUser) return;
     try {
@@ -254,7 +261,23 @@ const AdminProfile = () => {
     }
   };
 
-  // Delete Post
+  // Update social links
+  const handleSocialLinksUpdate = async () => {
+    if (!currentUser) return;
+    try {
+      const linksObj = {};
+      socialLinks.list.forEach((item, idx) => {
+        if (item.url) linksObj[`link${idx}`] = item.url;
+      });
+      await update(ref(db, `usersData/${currentUser.uid}`), { socialLinks: linksObj });
+      setProfileData((prev) => ({ ...prev, socialLinks: linksObj }));
+      toast.success("🌐 Social links updated!");
+    } catch {
+      toast.error("❌ Failed to update social links!");
+    }
+  };
+
+  // Delete post
   const handleDeletePost = async (postId) => {
     if (!postId) return;
     try {
@@ -267,7 +290,6 @@ const AdminProfile = () => {
     }
   };
 
-  // Lock/Unlock Profile
   const toggleLockProfile = async () => {
     if (!currentUser) return;
     try {
@@ -280,7 +302,6 @@ const AdminProfile = () => {
     }
   };
 
-  // Logout
   const handleLogout = async () => {
     try {
       await signOut(auth);
@@ -291,62 +312,98 @@ const AdminProfile = () => {
     }
   };
 
-  // const handleLogout = async () => {
-  //   await signOut(auth);
-  //   navigate("/login");
-  // };
-
-  if (loading) return <p>Loading profile...</p>;
-  if (!profileData) return <p>No profile found.</p>;
+  if (loading) return <p className="m-5 p-5 text-center">Loading profile...</p>;
+  if (!profileData) return <p className="m-5 p-5 text-center">No profile found.</p>;
 
   const isOwner = currentUser?.uid === uid;
   const filteredPosts =
     activeTab === "all" ? userPosts : userPosts.filter((p) => p.type === activeTab);
 
   return (
-    <div className="container my-5" style={{ maxWidth: 900 }}>
+    <div className="container" style={{ maxWidth: 900 }}>
       {/* Profile Info */}
-      <div className="row d-flex align-items-start justify-content-center mb-5 gap-3">
-        <div className="col-auto text-center">
-          <div className="position-relative">
+      <div className="row d-flex align-items-start justify-content-center mb-4 gap-3">
+        <div className="col-md-6 d-flex flex-column align-items-center">
+          <div
+            className="position-relative d-flex justify-content-center align-items-center w-100"
+            style={{ height: 200 }}
+          >
+            {/* Wallpaper behind DP */}
+            <div
+              className="position-relative top-0 start-0 w-100 h-100 overflow-hidden"
+              style={{
+                backgroundImage: `url(${wallpaper || "https://via.placeholder.com/900x200"})`,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+                width: "100%",
+                height: "200px",
+              }}
+            ></div>
+
+            {/* DP on top */}
             <img
-              src={profileData.photoURL || "https://via.placeholder.com/150?text=Profile"}
+              src={profileData.photoURL || "icons/avatar.jpg"}
               alt="Profile"
-              className="rounded-circle mb-2 shadow"
+              className="rounded-circle shadow-sm border border-3"
               width={120}
               height={120}
-              style={{ objectFit: "cover", border: "3px solid #007bff" }}
+              style={{
+                objectFit: "cover",
+                position: "absolute",
+                zIndex: 10,
+                top: "50%",
+                left: "20px",
+                transform: "translateY(-50%)",
+              }}
             />
+
+            {/* Change wallpaper button */}
             {isOwner && (
-              <input
-                type="file"
-                className="position-absolute bottom-0 end-0 form-control p-0"
-                style={{ width: 35, height: 35, borderRadius: "50%", cursor: "pointer" }}
-                accept="image/*"
-                onChange={(e) => setFile(e.target.files[0])}
-              />
+              <button
+                onClick={handleChangeWallpaper}
+                className="btn position-absolute bottom-0 end-0 bg-white p-2 me-3 rounded-1 shadow"
+                style={{ zIndex: 20, cursor: "pointer" }}
+                title="Change wallpaper"
+              >
+                <i className="bi bi-pencil-square"></i>
+              </button>
             )}
           </div>
-          {isOwner && (
-            <button
-              className="threeD-btn blueBtn mt-2"
-              onClick={handleDpUpdate}
-              disabled={uploading}
-            >
-              {uploading ? "Uploading..." : "Upload DP"}
-            </button>
-          )}
         </div>
 
-        <div className="col text-start d-flex flex-column justify-content-center gap-2">
-          <h2 className="fw-bold">{profileData.username}</h2>
-          <p className="mb-1">
-            <strong>Email:</strong> {profileData.email || "Not provided"}
-          </p>
-          <p className="mb-1">
-            <strong>Bio:</strong> {profileData.bio || "No bio yet"}
-          </p>
-          <div className="d-flex flex-wrap gap-2 mt-2">
+        <div className="col-md-6 text-start d-flex flex-column justify-content-center gap-2">
+          <div className="d-flex justify-content-between">
+            <h2 className="fw-bold">{profileData.username}</h2>
+            {isOwner && (
+              <button
+                className="threeD-btn greenBtn"
+                data-bs-toggle="offcanvas"
+                data-bs-target="#editProfileCanvas"
+              >
+                Edit Profile
+              </button>
+            )}
+          </div>
+
+          <p className="mb-1"><strong>Email:</strong> {profileData.email || "Not provided"}</p>
+          <p className="mb-1"><strong>Bio:</strong> {profileData.bio || "No bio yet"}</p>
+
+          {/* Social Links */}
+          <div className="mb-2">
+            {profileData.socialLinks &&
+              Object.values(profileData.socialLinks)
+                .filter((link) => link)
+                .map((link, i) => (
+                  <div key={i}>
+                    <a href={link} target="_blank" rel="noopener noreferrer">
+                      {link}
+                    </a>
+                  </div>
+                ))}
+          </div>
+
+          <hr />
+          <div className="d-flex flex-wrap justify-content-between gap-2 mt-2">
             <button className="threeD-btn redBtn" onClick={() => navigate(`/followers/${uid}`)}>
               Followers: {followers.length}
             </button>
@@ -356,55 +413,91 @@ const AdminProfile = () => {
             <button className="threeD-btn blueBtn" onClick={() => navigate(`/requested/${uid}`)}>
               Requested: {requested.length}
             </button>
-            {isOwner && (
-              <button
-                className={`threeD-btn ${profileData.isLocked ? "redBtn" : "lightGrayBtn"}`}
-                onClick={toggleLockProfile}
-              >
-                {profileData.isLocked ? "Unlock Profile 🔓" : "Lock Profile 🔒"}
-              </button>
-            )}
-            {isOwner && (
-              <button
-                className="btn btn-primary threeD-btn blueBtn"
-                type="button"
-                data-bs-toggle="collapse"
-                data-bs-target="#collapseExample"
-                aria-expanded="false"
-                aria-controls="collapseExample"
-              >
-                Edit Bio
-              </button>
-            )}
-            {/* 🆕 Status Upload Button */}
-            {isOwner && (
-              <button
-                className="threeD-btn greenBtn"
-                onClick={() => navigate("/status/upload")}
-              >
-                ➕ Upload Status
-              </button>
-            )}
           </div>
-
-
         </div>
       </div>
 
-      {/* Bio Edit Accordion */}
+      {/* Edit Profile Offcanvas */}
       {isOwner && (
-        <div className="collapse mb-5 text-end" id="collapseExample">
-          <div className="accordion-body">
-            <textarea
-              className="form-control mb-2"
-              rows={5}
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              placeholder="Write something about yourself..."
-            />
-            <button className="threeD-btn blueBtn" onClick={handleBioUpdate}>
-              Save Bio
+        <div className="offcanvas offcanvas-end" tabIndex="-1" id="editProfileCanvas">
+          <div className="offcanvas-header">
+            <h5 className="offcanvas-title">Edit Your Profile</h5>
+            <button type="button" className="btn-close text-reset" data-bs-dismiss="offcanvas"></button>
+          </div>
+          <div className="offcanvas-body d-flex flex-column gap-3">
+            {/* Profile Picture */}
+            <div>
+              <label className="form-label fw-bold">Profile Picture</label>
+              <input type="file" className="form-control mb-2" accept="image/*" onChange={(e) => setFile(e.target.files[0])} />
+              <button className="threeD-btn blueBtn" onClick={handleDpUpdate} disabled={uploading}>
+                {uploading ? "Uploading..." : "Upload DP"}
+              </button>
+            </div>
+
+            {/* Bio */}
+            <div>
+              <label className="form-label fw-bold">Bio</label>
+              <textarea className="form-control" rows={6} value={bio} onChange={(e) => setBio(e.target.value)} />
+              <button className="threeD-btn blueBtn mt-2" onClick={handleBioUpdate}>Save Bio</button>
+            </div>
+
+            {/* Social Links */}
+            <hr />
+            <div>
+              <label className="form-label fw-bold">Social Links</label>
+              {socialLinks.list?.map((linkObj, idx) => (
+                <div key={idx} className="d-flex gap-2 mb-2">
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="Enter link"
+                    value={linkObj.url}
+                    onChange={(e) => {
+                      const newList = [...socialLinks.list];
+                      newList[idx].url = e.target.value;
+                      setSocialLinks({ list: newList });
+                    }}
+                  />
+                  <button className="threeD-btn redBtn" onClick={() => {
+                    const newList = socialLinks.list.filter((_, i) => i !== idx);
+                    setSocialLinks({ list: newList });
+                  }}>✕</button>
+                </div>
+              ))}
+              <hr />
+              <div className="d-flex justify-content-between">
+                <button className="threeD-btn greenBtn m-1" onClick={() => setSocialLinks({ list: [...socialLinks.list, { url: "" }] })}>
+                  + Add Link
+                </button>
+                <button className="threeD-btn blueBtn m-1" onClick={handleSocialLinksUpdate}>Save Social Links</button>
+              </div>
+            </div>
+
+            {/* Profile Actions */}
+            <button
+              className="threeD-btn yellowBtn mt-2"
+              data-bs-toggle="offcanvas"
+              data-bs-target="#profileActionsCanvas"
+            >
+              Profile Actions
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Profile Actions Offcanvas */}
+      {isOwner && (
+        <div className="offcanvas offcanvas-end" tabIndex="-1" id="profileActionsCanvas">
+          <div className="offcanvas-header">
+            <h5 className="offcanvas-title">Profile Actions</h5>
+            <button type="button" className="btn-close text-reset" data-bs-dismiss="offcanvas"></button>
+          </div>
+          <div className="offcanvas-body d-flex flex-column gap-3">
+            <button className={`threeD-btn ${profileData.isLocked ? "redBtn" : "lightGrayBtn"}`} onClick={toggleLockProfile}>
+              {profileData.isLocked ? "Unlock Profile 🔓" : "Lock Profile 🔒"}
+            </button>
+            <button className="threeD-btn redBtn" onClick={handleLogout}>Logout</button>
+            <DeleteAccount />
           </div>
         </div>
       )}
@@ -420,42 +513,12 @@ const AdminProfile = () => {
             {tab.charAt(0).toUpperCase() + tab.slice(1)}
           </button>
         ))}
-        <style>
-          {`
-.mobile-tab-bar {
-  position: sticky;
-  bottom: 0;
-  width: 100%;
-  display: flex;
-  justify-content: space-around;
-  background: #fff;
-  box-shadow: 0 -3px 10px rgba(0,0,0,0.1);
-  padding: 8px 0;
-  border-top-left-radius: 15px;
-  border-top-right-radius: 15px;
-  z-index: 100;
-}
-.mobile-tab-btn {
-  flex: 1;
-  text-align: center;
-  padding: 10px 0;
-  border: none;
-  background: none;
-  font-weight: 600;
-  font-size: 0.9rem;
-  color: #555;
-  transition: all 0.2s ease;
-  border-radius: 12px;
-  margin: 0 4px;
-}
-.mobile-tab-btn.active {
-  background: #007bff;
-  color: #fff;
-  box-shadow: 0 4px 8px rgba(0,123,255,0.3);
-}
-.mobile-tab-btn:active { transform: translateY(2px); }
-`}
-        </style>
+        <style>{`
+          .mobile-tab-bar { position: sticky; bottom:0; display:flex; justify-content:space-around; background:#fff; box-shadow:0 -3px 10px rgba(0,0,0,0.1); padding:8px 0; border-top-left-radius:15px; border-top-right-radius:15px; z-index:100;}
+          .mobile-tab-btn { flex:1; text-align:center; padding:10px 0; border:none; background:none; font-weight:600; font-size:0.9rem; color:#555; transition: all 0.2s ease; border-radius:12px; margin:0 4px;}
+          .mobile-tab-btn.active { background:#007bff; color:#fff; box-shadow:0 4px 8px rgba(0,123,255,0.3);}
+          .mobile-tab-btn:active { transform: translateY(2px);}
+        `}</style>
       </div>
 
       {/* Posts */}
@@ -495,15 +558,9 @@ const AdminProfile = () => {
                   />
                 )}
                 <div className="card-body d-flex justify-content-between align-items-center">
-                  <p className="card-text mb-0 text-truncate">{post.caption || "No caption"}</p>
+                  <p className="card-text mb-0">{post.caption || ""}</p>
                   {isOwner && (
-                    <button
-                      className="threeD-btn redBtn btn-sm"
-                      onClick={() => {
-                        setSelectedPostId(post.id);
-                        setShowDeleteModal(true);
-                      }}
-                    >
+                    <button className="btn btn-sm btn-danger" onClick={() => handleDeletePost(post.id)}>
                       Delete
                     </button>
                   )}
@@ -516,68 +573,15 @@ const AdminProfile = () => {
         )}
       </div>
 
-      {/* Delete Modal */}
-      {showDeleteModal && (
-        <div
-          className="modal fade show custom-modal"
-          style={{ display: "block", backgroundColor: "rgba(0,0,0,0.5)" }}
-          onClick={() => setShowDeleteModal(false)}
-        >
-          <div
-            className="modal-dialog modal-dialog-centered modal-sm"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="modal-content border-0 shadow-lg rounded">
-              <div className="modal-header border-0 pb-0">
-                <h6 className="modal-title fw-bold">Delete this post?</h6>
-              </div>
-              <div className="modal-body pt-2">
-                <p className="small text-muted mb-0">
-                  This action <strong>cannot be undone</strong>. Do you really want to delete this post?
-                </p>
-              </div>
-              <div className="modal-footer border-0 pt-2 gap-2">
-                <button
-                  className="threeD-btn lightGrayBtn btn-sm"
-                  onClick={() => setShowDeleteModal(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="threeD-btn redBtn btn-sm"
-                  onClick={() => {
-                    handleDeletePost(selectedPostId);
-                    setShowDeleteModal(false);
-                  }}
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Fullscreen Video Feed */}
       {showVideoFeed && (
         <VideoFeed
-          videos={filteredPosts.filter((p) => p.type === "video").map((p) => ({ id: p.id, src: p.src }))}
+          videos={filteredPosts.filter((p) => p.type === "video")}
           startIndex={videoStartIndex}
           onClose={() => setShowVideoFeed(false)}
         />
       )}
 
-      {/* Fullscreen Image Viewer */}
       {showImageViewer && <ImageViewer src={showImageViewer} onClose={() => setShowImageViewer(null)} />}
-
-      {/* Logout */}
-      <button className="btn btn-outline-danger mb-2" onClick={handleLogout}>
-        Logout
-      </button>
-      <div className="btn btn-outline-danger mb-5">
-        {isOwner && <DeleteAccount />}
-      </div>
-
     </div>
   );
 };

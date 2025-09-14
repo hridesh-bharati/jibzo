@@ -1,17 +1,22 @@
 // src/assets/users/AllUsers.jsx
 import React, { useEffect, useState } from "react";
 import { db, auth } from "../../assets/utils/firebaseConfig";
-import { ref, onValue, update } from "firebase/database";
+import { ref, onValue, update, remove } from "firebase/database";
 import { toast } from "react-toastify";
 import { onAuthStateChanged } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
+
+const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL;
 
 export default function AllUsers() {
   const [users, setUsers] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
   const [sentRequests, setSentRequests] = useState([]);
   const [friends, setFriends] = useState([]);
-  const [searchTerm, setSearchTerm] = useState(""); // 🔍 search state
+  const [followersCount, setFollowersCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+  const [requestedCount, setRequestedCount] = useState(0);
+  const [searchTerm, setSearchTerm] = useState("");
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -23,6 +28,9 @@ export default function AllUsers() {
           const data = snapshot.val();
           setSentRequests(data?.followRequests?.sent ? Object.keys(data.followRequests.sent) : []);
           setFriends(data?.friends ? Object.keys(data.friends) : []);
+          setFollowersCount(data?.followers ? Object.keys(data.followers).length : 0);
+          setFollowingCount(data?.following ? Object.keys(data.following).length : 0);
+          setRequestedCount(data?.followRequests?.received ? Object.keys(data.followRequests.received).length : 0);
         });
       }
     });
@@ -69,22 +77,41 @@ export default function AllUsers() {
     toast.info("Unfriended ❌");
   };
 
-  const openUserProfile = (userUID) => navigate(`/user-profile/${userUID}`);
+  const deleteUser = async (targetUID) => {
+    if (!currentUser?.uid) return;
+    if (currentUser.email !== ADMIN_EMAIL) return toast.error("❌ Only founder can delete users!");
+    if (targetUID === currentUser.uid) return toast.error("Cannot delete yourself!");
+    if (!window.confirm("Are you sure you want to delete this user?")) return;
 
-  // 🔍 Filter users by search term
+    try {
+      await remove(ref(db, `usersData/${targetUID}`));
+      toast.success("User deleted 🗑️");
+    } catch {
+      toast.error("❌ Failed to delete user");
+    }
+  };
+
   const filteredUsers = users.filter(
-    (u) =>
-      u.uid !== currentUser?.uid &&
-      (u.username || "Unnamed User")
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase())
+    (u) => u.uid !== currentUser?.uid && (u.username || "Unnamed User").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
     <div className="container my-3" style={{ maxWidth: 600 }}>
-      <h3 className="mb-3">All Users</h3>
+      <h3 className="mb-3 d-flex">All <div className="text-danger mx-2"> Jibzo </div> Users</h3>
 
-      {/* 🔍 Search Box */}
+      {/* Followers / Following / Requested buttons like AdminProfile */}
+      <div className="d-flex gap-2 mb-3 flex-wrap">
+        <button className="threeD-btn redBtn flex-fill" onClick={() => navigate(`/followers/${currentUser?.uid}`)}>
+          Followers: {followersCount}
+        </button>
+        <button className="threeD-btn yellowBtn flex-fill" onClick={() => navigate(`/following/${currentUser?.uid}`)}>
+          Following: {followingCount}
+        </button>
+        <button className="threeD-btn blueBtn flex-fill" onClick={() => navigate(`/requested/${currentUser?.uid}`)}>
+          Requested: {requestedCount}
+        </button>
+      </div>
+
       <input
         type="text"
         className="form-control mb-3"
@@ -99,54 +126,34 @@ export default function AllUsers() {
             key={user.uid}
             className="list-group-item d-flex align-items-center justify-content-between"
           >
-            <div
-              className="d-flex align-items-center"
-              style={{ cursor: "pointer" }}
-              onClick={() => openUserProfile(user.uid)}
-            >
+            <div style={{ cursor: "pointer" }} onClick={() => navigate(`/user-profile/${user.uid}`)}>
               <img
                 src={user.photoURL || "icons/avatar.jpg"}
                 alt="avatar"
                 className="rounded-circle me-3"
                 style={{ width: 50, height: 50, objectFit: "cover" }}
               />
-              <div>
-                <h6 className="mb-0">{user.username || "Unnamed User"}</h6>
-                {user.isPrivate && <small className="text-muted">🔒 Private</small>}
-              </div>
+              <span>{user.username || "Unnamed User"}</span>
             </div>
-            <div>
+
+            <div className="d-flex gap-2">
               {friends.includes(user.uid) ? (
-                <button
-                  className="btn btn-sm btn-success"
-                  onClick={() => unfriendUser(user.uid)}
-                >
-                  Friends
-                </button>
+                <button className="btn btn-sm btn-success" onClick={() => unfriendUser(user.uid)}>Friends</button>
               ) : sentRequests.includes(user.uid) ? (
-                <button
-                  className="btn btn-sm btn-outline-warning"
-                  onClick={() => cancelFollowRequest(user.uid)}
-                >
-                  Cancel
-                </button>
+                <button className="btn btn-sm btn-outline-warning" onClick={() => cancelFollowRequest(user.uid)}>Cancel</button>
               ) : (
-                <button
-                  className="btn btn-sm btn-outline-primary"
-                  onClick={() => sendFollowRequest(user.uid)}
-                >
-                  Add
-                </button>
+                <button className="btn btn-sm btn-outline-primary" onClick={() => sendFollowRequest(user.uid)}>Add</button>
+              )}
+
+              {currentUser?.email === ADMIN_EMAIL && (
+                <button className="btn btn-sm btn-danger" onClick={() => deleteUser(user.uid)}>Delete from Database</button>
               )}
             </div>
           </li>
         ))}
 
-        {/* No results */}
         {filteredUsers.length === 0 && (
-          <li className="list-group-item text-center text-muted">
-            No users found
-          </li>
+          <p className="text-center">Loading Users...</p>
         )}
       </ul>
     </div>
