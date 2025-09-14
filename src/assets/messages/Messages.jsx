@@ -21,7 +21,7 @@ import {
 import "bootstrap/dist/css/bootstrap.min.css";
 import Picker from "emoji-picker-react";
 import imageCompression from "browser-image-compression";
-import Call from "../Call/Call";
+
 // ---------------- MAIN COMPONENT ----------------
 export default function Messages() {
   const { uid } = useParams();
@@ -482,9 +482,7 @@ export default function Messages() {
             )}
           </div>
         </Link>
-
         <div className="position-relative">
-
           <button
             className="btn btn-sm btn-transparent text-white btn-no-outline"
             onClick={() => setShowMenu((prev) => !prev)}
@@ -704,13 +702,6 @@ export default function Messages() {
             <i className="bi bi-send-fill"></i>
           </button>
         </form>
-        {chatUser && (
-          <Call
-            partnerUid={uid}
-            chatId={chatId}
-            onClose={() => console.log("Call ended")}
-          />
-        )}
       </div>
     </div>
   );
