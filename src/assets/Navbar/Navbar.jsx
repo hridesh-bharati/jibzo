@@ -18,58 +18,13 @@ const Navbar = () => {
 
   // Messages
   const [unreadCount, setUnreadCount] = useState(0);
-  const [unreadUsers, setUnreadUsers] = useState([]);
+  const [chatHistory, setChatHistory] = useState([]);
   const [isInboxOpen, setIsInboxOpen] = useState(false);
 
-  // Likes
+  // Likes / Notifications
   const [notifications, setNotifications] = useState([]);
   const [unreadLikes, setUnreadLikes] = useState(0);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
-
-  //History
-  const [chatHistory, setChatHistory] = useState([]);
-  useEffect(() => {
-    if (!currentUid) return;
-    const messagesRef = ref(db, `chats`);
-    const unsub = onValue(messagesRef, async (snapshot) => {
-      const chats = [];
-      let count = 0;
-
-      snapshot.forEach((chatSnap) => {
-        const chatData = chatSnap.val();
-        if (!chatData || !chatData.messages) return;
-
-        const messages = Object.entries(chatData.messages).map(([id, msg]) => ({ id, ...msg }));
-        const unreadMsgs = messages.filter(msg => !msg.read && msg.sender !== currentUid);
-        if (unreadMsgs.length) count += unreadMsgs.length;
-
-        const chatUsers = chatSnap.key.split("_");
-        const otherUserId = chatUsers.find(uid => uid !== currentUid);
-
-        chats.push({
-          chatId: chatSnap.key,
-          otherUserId,
-          messages,
-          unreadCount: unreadMsgs.length,
-        });
-      });
-
-      // Fetch usernames for all other users
-      await Promise.all(chats.map(async (chat) => {
-        try {
-          const snap = await get(ref(db, `usersData/${chat.otherUserId}`));
-          const data = snap.val();
-          chat.username = data?.username || "Someone";
-        } catch {
-          chat.username = "Someone";
-        }
-      }));
-
-      setChatHistory(chats);
-      setUnreadCount(count);
-    });
-    return () => unsub();
-  }, [currentUid]);
 
   // ✅ Auth listener
   useEffect(() => {
@@ -117,7 +72,7 @@ const Navbar = () => {
     try {
       await update(ref(db), updates);
       toast.success("Friend request accepted ✅");
-    } catch (err) {
+    } catch {
       toast.error("Failed to accept request ❌");
     }
   };
@@ -131,43 +86,51 @@ const Navbar = () => {
     try {
       await update(ref(db), updates);
       toast.info("Friend request rejected ❌");
-    } catch (err) {
+    } catch {
       toast.error("Failed to reject request ❌");
     }
   };
 
-  // 🔹 Messages (Unread notifications)
+  // 🔹 Messages (Unread notifications & history)
   useEffect(() => {
     if (!currentUid) return;
     const messagesRef = ref(db, `chats`);
     const unsub = onValue(messagesRef, async (snapshot) => {
-      let usersWithUnreadMessages = [];
+      const chats = [];
       let count = 0;
 
-      snapshot.forEach((chat) => {
-        const chatData = chat.val();
+      snapshot.forEach((chatSnap) => {
+        const chatData = chatSnap.val();
         if (!chatData || !chatData.messages) return;
-        Object.entries(chatData.messages).forEach(([id, msg]) => {
-          if (!msg.read && msg.sender !== currentUid) {
-            count++;
-            const index = usersWithUnreadMessages.findIndex(u => u.uid === msg.sender);
-            if (index === -1) usersWithUnreadMessages.push({ uid: msg.sender, username: "", unreadCount: 1 });
-            else usersWithUnreadMessages[index].unreadCount += 1;
-          }
+
+        const messages = Object.entries(chatData.messages).map(([id, msg]) => ({ id, ...msg }));
+        const unreadMsgs = messages.filter(msg => !msg.read && msg.sender !== currentUid);
+        if (unreadMsgs.length) count += unreadMsgs.length;
+
+        const chatUsers = chatSnap.key.split("_");
+        const otherUserId = chatUsers.find(uid => uid !== currentUid);
+
+        chats.push({
+          chatId: chatSnap.key,
+          otherUserId,
+          messages,
+          unreadCount: unreadMsgs.length,
         });
       });
 
-      // fetch usernames
-      await Promise.all(usersWithUnreadMessages.map(async (user) => {
+      // Fetch usernames for other users
+      await Promise.all(chats.map(async (chat) => {
         try {
-          const snap = await get(ref(db, `usersData/${user.uid}`));
+          const snap = await get(ref(db, `usersData/${chat.otherUserId}`));
           const data = snap.val();
-          if (data?.username) user.username = data.username;
-        } catch { }
+          chat.username = data?.username || "Someone";
+        } catch {
+          chat.username = "Someone";
+        }
       }));
 
+      setChatHistory(chats);
       setUnreadCount(count);
-      setUnreadUsers(usersWithUnreadMessages);
     });
     return () => unsub();
   }, [currentUid]);
@@ -184,12 +147,13 @@ const Navbar = () => {
           });
           if (Object.keys(updates).length) await update(chatRef, updates);
         });
-        setUnreadCount(0); // badge goes away, but history remains
+        setUnreadCount(0);
       }
       return next;
     });
   };
 
+  const openChat = (uid) => { navigate(`/messages/${uid}`); setIsInboxOpen(false); };
 
   // 🔹 Likes / Notifications
   useEffect(() => {
@@ -204,14 +168,17 @@ const Navbar = () => {
         try {
           const userSnap = await get(ref(db, `usersData/${notif.likerId}`));
           const liker = userSnap.val();
+
           notifList.push({
             id,
             likerId: notif.likerId,
             likerName: liker?.username || "Someone",
             postCaption: notif.postCaption || "your post",
+            postId: notif.postId || null,
             timestamp: notif.timestamp || Date.now(),
             seen: notif.seen || false
           });
+
           if (!notif.seen) unread++;
         } catch {
           notifList.push({
@@ -219,6 +186,7 @@ const Navbar = () => {
             likerId: notif.likerId,
             likerName: "Someone",
             postCaption: notif.postCaption || "your post",
+            postId: notif.postId || null,
             timestamp: notif.timestamp || Date.now(),
             seen: notif.seen || false
           });
@@ -230,14 +198,17 @@ const Navbar = () => {
       setNotifications(notifList);
       setUnreadLikes(unread);
     });
+
     return () => unsub();
   }, [currentUid]);
 
-  const toggleNotif = () => {
+  const toggleNotif = async () => {
     setIsNotifOpen(prev => {
       const next = !prev;
       if (next && unreadLikes > 0) {
-        notifications.forEach(n => update(ref(db, `notifications/${currentUid}/${n.id}`), { seen: true }));
+        notifications.forEach(n => {
+          if (!n.seen) update(ref(db, `notifications/${currentUid}/${n.id}`), { seen: true });
+        });
         setUnreadLikes(0);
         setNotifications(prev => prev.map(n => ({ ...n, seen: true })));
       }
@@ -245,8 +216,11 @@ const Navbar = () => {
     });
   };
 
-  const openChat = (uid) => { navigate(`/messages/${uid}`); setIsInboxOpen(false); };
-  const openPost = (postId) => { navigate(`/post/${postId}`); setIsNotifOpen(false); };
+  const openPost = (postId) => {
+    if (!postId) return toast.info("Post not found");
+    navigate(`/post/${postId}`);
+    setIsNotifOpen(false);
+  };
 
   return (
     <nav className="navbar shadow-sm p-2 d-flex align-items-center justify-content-between">
@@ -303,19 +277,9 @@ const Navbar = () => {
                 <p className="text-muted">No chats yet</p>
               ) : (
                 chatHistory.map(chat => (
-                  <div
-                    key={chat.chatId}
-                    className="d-flex align-items-center gap-2 mb-2"
-                  >
-                    <img
-                      src={`https://ui-avatars.com/api/?name=${chat.username}&background=random`}
-                      className="avatar-sm"
-                      alt={chat.username}
-                    />
-                    <div
-                      className="flex-grow-1 cursor-pointer"
-                      onClick={() => openChat(chat.otherUserId)}
-                    >
+                  <div key={chat.chatId} className="d-flex align-items-center gap-2 mb-2">
+                    <img src={`https://ui-avatars.com/api/?name=${chat.username}&background=random`} className="avatar-sm" alt={chat.username} />
+                    <div className="flex-grow-1 cursor-pointer" onClick={() => openChat(chat.otherUserId)}>
                       <strong>{chat.username}</strong>
                       {chat.messages.length > 0 && (
                         <div className="text-muted small">
@@ -323,26 +287,23 @@ const Navbar = () => {
                         </div>
                       )}
                     </div>
-                    {/* Delete button for this user's chat */}
-                    <button
-                      className="btn btn-sm btn-outline-danger p-1"
+
+                    {/* Delete button */}
+                    <button className="btn btn-sm btn-outline-danger p-1"
                       onClick={async (e) => {
                         e.stopPropagation();
                         if (!currentUid) return;
 
-                        // Mark as deleted by current user
                         await update(ref(db, `userChats/${currentUid}/${chat.chatId}`), {
                           deletedBy: currentUid,
                           deletedAt: Date.now()
                         });
 
-                        // Remove from local state for UI
                         setChatHistory(prev => prev.filter(c => c.chatId !== chat.chatId));
                       }}
                     >
                       🗑
                     </button>
-
                   </div>
                 ))
               )}
@@ -350,7 +311,7 @@ const Navbar = () => {
           )}
         </div>
 
-        {/* Likes */}
+        {/* Likes / Notifications */}
         <div className="position-relative">
           <button className="icon-btn" onClick={toggleNotif}>
             <i className="bi bi-heart-fill fs-4 text-danger"></i>
@@ -375,5 +336,4 @@ const Navbar = () => {
     </nav>
   );
 };
-
 export default Navbar;

@@ -446,9 +446,31 @@ export default function GetPost({ showFilter = true }) {
     const userId = currentUser?.uid || guestId;
     const post = posts.find((p) => p.id === id);
     const already = post?.likes?.[userId];
-    if (already) await remove(ref(db, `galleryImages/${id}/likes/${userId}`));
-    else await set(ref(db, `galleryImages/${id}/likes/${userId}`), true);
+
+    const postOwnerId = post.userId; // Make sure each post has userId
+
+    if (already) {
+      // Remove like
+      await remove(ref(db, `galleryImages/${id}/likes/${userId}`));
+      // Optionally remove notification
+      await remove(ref(db, `notifications/${postOwnerId}/${userId}_${id}`));
+    } else {
+      // Add like
+      await set(ref(db, `galleryImages/${id}/likes/${userId}`), true);
+
+      // Add notification for post owner (skip if self-like)
+      if (userId !== postOwnerId) {
+        await set(ref(db, `notifications/${postOwnerId}/${userId}_${id}`), {
+          likerId: userId,
+          postId: id,
+          postCaption: post.caption || "your post",
+          timestamp: Date.now(),
+          seen: false
+        });
+      }
+    }
   };
+
 
   const addComment = async (id) => {
     if (!commentText.trim()) return;
