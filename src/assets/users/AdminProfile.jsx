@@ -345,46 +345,46 @@ const AdminProfile = () => {
           <p className="mb-1">
             <strong>Bio:</strong> {profileData.bio || "No bio yet"}
           </p>
-        <div className="d-flex flex-wrap gap-2 mt-2">
-  <button className="threeD-btn redBtn" onClick={() => navigate(`/followers/${uid}`)}>
-    Followers: {followers.length}
-  </button>
-  <button className="threeD-btn yellowBtn" onClick={() => navigate(`/following/${uid}`)}>
-    Following: {following.length}
-  </button>
-  <button className="threeD-btn blueBtn" onClick={() => navigate(`/requested/${uid}`)}>
-    Requested: {requested.length}
-  </button>
-  {isOwner && (
-    <button
-      className={`threeD-btn ${profileData.isLocked ? "redBtn" : "lightGrayBtn"}`}
-      onClick={toggleLockProfile}
-    >
-      {profileData.isLocked ? "Unlock Profile 🔓" : "Lock Profile 🔒"}
-    </button>
-  )}
-  {isOwner && (
-    <button
-      className="btn btn-primary threeD-btn blueBtn"
-      type="button"
-      data-bs-toggle="collapse"
-      data-bs-target="#collapseExample"
-      aria-expanded="false"
-      aria-controls="collapseExample"
-    >
-      Edit Bio
-    </button>
-  )}
-  {/* 🆕 Status Upload Button */}
-  {isOwner && (
-    <button
-      className="threeD-btn greenBtn"
-      onClick={() => navigate("/status/upload")}
-    >
-      ➕ Upload Status
-    </button>
-  )}
-</div>
+          <div className="d-flex flex-wrap gap-2 mt-2">
+            <button className="threeD-btn redBtn" onClick={() => navigate(`/followers/${uid}`)}>
+              Followers: {followers.length}
+            </button>
+            <button className="threeD-btn yellowBtn" onClick={() => navigate(`/following/${uid}`)}>
+              Following: {following.length}
+            </button>
+            <button className="threeD-btn blueBtn" onClick={() => navigate(`/requested/${uid}`)}>
+              Requested: {requested.length}
+            </button>
+            {isOwner && (
+              <button
+                className={`threeD-btn ${profileData.isLocked ? "redBtn" : "lightGrayBtn"}`}
+                onClick={toggleLockProfile}
+              >
+                {profileData.isLocked ? "Unlock Profile 🔓" : "Lock Profile 🔒"}
+              </button>
+            )}
+            {isOwner && (
+              <button
+                className="btn btn-primary threeD-btn blueBtn"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#collapseExample"
+                aria-expanded="false"
+                aria-controls="collapseExample"
+              >
+                Edit Bio
+              </button>
+            )}
+            {/* 🆕 Status Upload Button */}
+            {isOwner && (
+              <button
+                className="threeD-btn greenBtn"
+                onClick={() => navigate("/status/upload")}
+              >
+                ➕ Upload Status
+              </button>
+            )}
+          </div>
 
 
         </div>
