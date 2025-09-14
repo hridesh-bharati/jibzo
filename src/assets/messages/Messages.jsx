@@ -324,6 +324,8 @@ export default function Messages() {
       ? new Date(ts).toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
+        second: "2-digit",
+        hour12: true,
       })
       : "";
 
@@ -334,14 +336,19 @@ export default function Messages() {
 
   // Chat screen
   return (
-    <div className="container border rounded d-flex flex-column p-0" style={{ height: "84vh", background: "#e6f0ff" }}>
+    <div className="container border rounded d-flex flex-column p-0" style={{ height: "91vh", background: "#e6f0ff" }}>
       {/* Header */}
       <div className="d-flex justify-content-between align-items-center bg-success text-white p-2">
         <Link
           to={`/user-profile/${chatUser?.uid}`}
           className="d-flex align-items-center text-white text-decoration-none"
         >
-          <img src={chatUser?.photoURL || "icons/avatar.jpg"} alt="DP" className="rounded-circle me-2" style={{ width: 44, height: 44, objectFit: "cover" }} />
+          <img
+            src={chatUser?.photoURL || "icons/avatar.jpg"}
+            alt="DP"
+            className="rounded-circle me-2"
+            style={{ width: 44, height: 44, objectFit: "cover" }}
+          />
           <div>
             <div>{chatUser?.username || "User"}</div>
             {!partnerStatus?.hide && (
@@ -351,12 +358,18 @@ export default function Messages() {
                   : partnerStatus?.state === "online"
                     ? "online"
                     : partnerStatus?.last_changed
-                      ? "last seen " + new Date(partnerStatus.last_changed).toLocaleTimeString()
+                      ? "last seen " + new Date(partnerStatus.last_changed).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit",
+                        hour12: true,
+                      })
                       : "offline"}
               </small>
             )}
           </div>
         </Link>
+
 
         {/* Three-dot menu */}
         <div className="position-relative">
