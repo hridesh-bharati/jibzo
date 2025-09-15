@@ -317,7 +317,6 @@
 //     </div>
 //   );
 // }
-
 // src/assets/users/UserProfile.jsx
 import React, { useEffect, useState } from "react";
 import { db, auth } from "../../assets/utils/firebaseConfig";
@@ -332,8 +331,8 @@ import {
 } from "firebase/database";
 import { useParams, Link } from "react-router-dom";
 import { toast } from "react-toastify";
-import Heart from "../../assets/uploads/Heart";
-import ShareButton from "../../assets/uploads/ShareBtn";
+import Heart from "../../assets/uploads/Heart.jsx"; // Ensure .jsx if needed
+import ShareButton from "../../assets/uploads/ShareBtn.jsx"; // Ensure .jsx
 
 export default function UserProfile() {
   const { uid } = useParams();
@@ -341,7 +340,7 @@ export default function UserProfile() {
   const [currentUserData, setCurrentUserData] = useState(null);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [commentText, setCommentText] = useState("");
+  const [commentText, setCommentText] = useState({}); // store per-post comments
   const [filter, setFilter] = useState("all");
   const currentUser = auth.currentUser;
 
@@ -356,14 +355,11 @@ export default function UserProfile() {
 
     const postsRef = ref(db, "galleryImages");
     const unsubscribePosts = onValue(postsRef, (snap) => {
-      if (snap.exists()) {
-        const all = Object.entries(snap.val()).map(([id, val]) => ({
-          id,
-          ...val,
-        }));
-        const uPosts = all.filter((p) => p.uid === uid || p.userId === uid);
-        setPosts(uPosts);
-      } else setPosts([]);
+      const all = snap.exists()
+        ? Object.entries(snap.val()).map(([id, val]) => ({ id, ...val }))
+        : [];
+      const uPosts = all.filter((p) => p.uid === uid || p.userId === uid);
+      setPosts(uPosts);
       setLoading(false);
     });
 
@@ -373,7 +369,7 @@ export default function UserProfile() {
     };
   }, [uid]);
 
-  // 🔹 Fetch current logged in user data (for friends check)
+  // 🔹 Fetch current logged in user data
   useEffect(() => {
     if (!currentUser) return;
     const curRef = ref(db, `usersData/${currentUser.uid}`);
@@ -443,17 +439,18 @@ export default function UserProfile() {
   };
 
   const addComment = async (id) => {
-    if (!commentText.trim()) return;
+    const text = commentText[id]?.trim();
+    if (!text) return;
     await push(ref(db, `galleryImages/${id}/comments`), {
       userId: currentUser.uid,
       userName:
         currentUser.displayName ||
         currentUser.email?.split("@")[0] ||
         "User",
-      text: commentText.trim(),
+      text,
       timestamp: serverTimestamp(),
     });
-    setCommentText("");
+    setCommentText((prev) => ({ ...prev, [id]: "" }));
   };
 
   const deleteComment = async (postId, commentId, commentUserId) => {
@@ -470,18 +467,17 @@ export default function UserProfile() {
       {/* Wallpaper & Profile */}
       <div className="w-100 bg-dark">
         <div
-          className="position-relative w-100 mb-5"
+          className="position-relative w-100 mb-5 pb-3"
           style={{
-            backgroundImage: `url(${
-              userData.wallpaper || "https://via.placeholder.com/900x200"
-            })`,
+            backgroundImage: `url(${userData.wallpaper || "https://via.placeholder.com/900x200"
+              })`,
             backgroundSize: "cover",
             backgroundPosition: "center",
             height: "170px",
           }}
         >
           <div
-            className="position-absolute d-flex align-items-center justify-content-around w-100 px-2"
+            className="position-absolute d-flex align-items-center justify-content-start w-100 px-2"
             style={{ top: "85%", transform: "translateY(-50%)" }}
           >
             {/* DP */}
@@ -493,17 +489,13 @@ export default function UserProfile() {
               height={120}
               style={{ objectFit: "cover" }}
             />
-            {/* Username */}
-            <div className="text-white ms-3 small">
-              <h5 className="fw-bolder">{userData.username}</h5>
-            </div>
           </div>
         </div>
       </div>
 
-      {/* ✅ Always show Follow button (Public) */}
+      {/* Follow / Unfollow */}
       {currentUser?.uid !== uid && (
-        <div className="mb-4 text-center">
+        <div className="text-end me-2">
           {isFriend || isFollowing ? (
             <button className="btn btn-sm btn-danger" onClick={unfollow}>
               Unfollow
@@ -523,16 +515,20 @@ export default function UserProfile() {
         </div>
       )}
 
-      {/* 🔒 If locked and not friend and not owner → Only show locked message */}
+      <div className="ms-3 small">
+        <h5 className="fw-bolder">{userData.username}</h5>
+        {currentUser?.uid !== uid && (
+          <p className="fw-bolder text-muted">{userData.email}</p>
+        )}
+      </div>
+
+      {/* Locked Profile */}
       {isLocked && !isFriend && currentUser?.uid !== uid ? (
         <div
           className="d-flex flex-column align-items-center justify-content-center text-muted"
           style={{ minHeight: "30vh" }}
         >
-          <i
-            className="bi bi-person-heart display-1 mb-3"
-            style={{ fontSize: "7rem", color: "#6c757d" }}
-          ></i>
+          <i className="bi bi-person-heart display-1 mb-3 fs-1 text-secondary"></i>
           <h2 className="fw-bold">This profile is locked 🔒</h2>
           <p className="mt-2">Follow to see posts and details</p>
         </div>
@@ -573,18 +569,17 @@ export default function UserProfile() {
             {["all", "image", "video", "pdf"].map((type) => (
               <button
                 key={type}
-                className={`btn btn-sm px-3 ${
-                  filter === type ? "btn-primary" : "btn-outline-secondary"
-                }`}
+                className={`btn btn-sm px-3 ${filter === type ? "btn-primary" : "btn-outline-secondary"
+                  }`}
                 onClick={() => setFilter(type)}
               >
                 {type === "all"
                   ? "All"
                   : type === "image"
-                  ? "Photo"
-                  : type === "video"
-                  ? "Video"
-                  : "PDF"}
+                    ? "Photo"
+                    : type === "video"
+                      ? "Video"
+                      : "PDF"}
               </button>
             ))}
           </div>
@@ -592,7 +587,7 @@ export default function UserProfile() {
           {/* Posts */}
           <div className="row pb-5">
             {filteredPosts.length === 0 && (
-              <p className="text-center">No posts</p>
+              <div className="text-center">No posts</div>
             )}
             {filteredPosts.map((post) => {
               const liked = post.likes?.[currentUser?.uid];
@@ -623,7 +618,7 @@ export default function UserProfile() {
                     {post.type === "pdf" && (
                       <iframe
                         src={`https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(
-                          post.url || post.src
+                          post.url || ""
                         )}`}
                         className="card-img-top rounded"
                         style={{ height: 250 }}
@@ -643,9 +638,7 @@ export default function UserProfile() {
                           liked={liked}
                           onToggle={() => toggleLike(post.id)}
                         />
-                        <small className="text-muted ms-2">
-                          {likeCount} likes
-                        </small>
+                        <small className="text-muted ms-2">{likeCount} likes</small>
                         <button
                           className="btn btn-link p-0 mx-3 text-dark"
                           onClick={() =>
@@ -689,20 +682,14 @@ export default function UserProfile() {
                                 style={{ fontSize: "0.9rem" }}
                               >
                                 <div>
-                                  <strong>
-                                    {comment.userName || "User"}
-                                  </strong>
+                                  <strong>{comment.userName || "User"}</strong>
                                   : {comment.text}
                                 </div>
                                 {currentUser?.uid === comment.userId && (
                                   <button
                                     className="btn btn-sm btn-close"
                                     onClick={() =>
-                                      deleteComment(
-                                        post.id,
-                                        cid,
-                                        comment.userId
-                                      )
+                                      deleteComment(post.id, cid, comment.userId)
                                     }
                                   />
                                 )}
@@ -717,9 +704,12 @@ export default function UserProfile() {
                           type="text"
                           className="form-control"
                           placeholder="Add a comment..."
-                          value={commentText}
+                          value={commentText[post.id] || ""}
                           onChange={(e) =>
-                            setCommentText(e.target.value)
+                            setCommentText((prev) => ({
+                              ...prev,
+                              [post.id]: e.target.value,
+                            }))
                           }
                           onKeyDown={(e) =>
                             e.key === "Enter" && addComment(post.id)
@@ -728,7 +718,7 @@ export default function UserProfile() {
                         <button
                           className="btn btn-primary"
                           onClick={() => addComment(post.id)}
-                          disabled={!commentText.trim()}
+                          disabled={!commentText[post.id]?.trim()}
                         >
                           Post
                         </button>

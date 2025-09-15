@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from "react";
 import { db, auth } from "../../assets/utils/firebaseConfig";
 import { ref, onValue, update, remove } from "firebase/database";
@@ -7,8 +6,9 @@ import "bootstrap/dist/js/bootstrap.bundle.min.js";
 import "./ViewStatuses.css";
 import { FaEye } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
+
 export default function ViewStatuses() {
-  const navigate = useNavigate()
+  const navigate = useNavigate();
   const [statuses, setStatuses] = useState({});
   const [users, setUsers] = useState({});
   const [viewer, setViewer] = useState(null);
@@ -69,6 +69,7 @@ export default function ViewStatuses() {
 
   const closeViewer = () => {
     setViewer(null);
+    setSeenList(null);
     setProgress(0);
     if (timerRef.current) clearInterval(timerRef.current);
   };
@@ -135,114 +136,153 @@ export default function ViewStatuses() {
   };
 
   return (
-    <div className="status-container container py-3">
+    <div className="status-container container py-3" style={{ userSelect: "none" }}>
       <div className="d-flex justify-content-between align-items-center mb-3">
-        <h3>Stories</h3>
+        <h3 style={{ color: "rgba(255, 0, 106, 1)" }}>
+          Stories <i className="bi bi-person-hearts"></i>
+        </h3>
         {auth.currentUser && (
           <button
             className="threeD-btn greenBtn"
             onClick={() => navigate("/status/upload")}
           >
-            <i class="bi bi-plus-circle-fill"></i> Add Story
+            <i className="bi bi-plus-circle-fill"></i> Add Story
           </button>
         )}
       </div>
 
       {/* Status bubbles */}
       <div className="status-strip">
-        {Object.entries(statuses).map(([userId, userStatuses]) => {
-          const userInfo = users[userId] || {};
-          const firstStatus = Object.values(userStatuses)[0];
-          const displayName = userInfo.username || firstStatus.userName || "User";
-          const displayPic = userInfo.photoURL || firstStatus.userPic || "icons/avatar.jpg";
+        {Object.entries(statuses)
+          .sort(([uidA, statusesA], [uidB, statusesB]) => {
+            const currentUid = auth.currentUser?.uid;
 
-          return (
-            <div
-              key={userId}
-              className="status-bubble"
-              onClick={() => openViewer(userId, userStatuses)}
-            >
-              <img src={displayPic} alt="dp" className="status-thumb" />
-              <small className="mt-1 d-block text-truncate" style={{ maxWidth: 70 }}>
-                {displayName}
-              </small>
-            </div>
-          );
-        })}
+            const aSeenAll = Object.values(statusesA).every(
+              (s) => s.viewers && s.viewers[currentUid]
+            );
+            const bSeenAll = Object.values(statusesB).every(
+              (s) => s.viewers && s.viewers[currentUid]
+            );
+
+            if (aSeenAll === bSeenAll) return 0;
+            return aSeenAll ? 1 : -1; // unseen first, seen later
+          })
+          .map(([userId, userStatuses]) => {
+            const userInfo = users[userId] || {};
+            const firstStatus = Object.values(userStatuses)[0];
+            const displayName =
+              userInfo.username || firstStatus.userName || "User";
+            const displayPic =
+              userInfo.photoURL || firstStatus.userPic || "icons/avatar.jpg";
+
+            return (
+              <div
+                key={userId}
+                className="status-bubble"
+                onClick={() => openViewer(userId, userStatuses)}
+              >
+                <img src={displayPic} alt="dp" className="status-thumb" />
+                <small
+                  className="mt-1 d-block text-truncate"
+                  style={{ maxWidth: 70 }}
+                >
+                  {displayName}
+                </small>
+              </div>
+            );
+          })}
       </div>
 
       {/* Full screen viewer */}
-      {viewer && (
-        <div
-          className="viewer-overlay"
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
-          onClick={handleTap}
-        >
-          <div className="viewer-content">
-            <div className="progress-bars d-flex">
-              {viewer.stories.map((_, i) => (
-                <div
-                  key={i}
-                  className="progress flex-fill mx-1"
-                  style={{ height: "3px", background: "#444" }}
-                >
+      {viewer && (() => {
+        const [statusId, status] = viewer.stories[viewer.index];
+        const storyTime = status.timestamp
+          ? new Date(status.timestamp).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+              hour12: true,
+            })
+          : "";
+
+        return (
+          <div
+            className="viewer-overlay"
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            onClick={handleTap}
+          >
+            <div className="viewer-content">
+              {/* Progress bars */}
+              <div className="progress-bars d-flex">
+                {viewer.stories.map((_, i) => (
                   <div
-                    className="progress-bar"
-                    style={{
-                      width:
-                        i < viewer.index
-                          ? "100%"
-                          : i === viewer.index
+                    key={i}
+                    className="progress flex-fill mx-1"
+                    style={{ height: "3px", background: "hsla(0, 1%, 14%, 1.00)" }}
+                  >
+                    <div
+                      className="progress-bar"
+                      style={{
+                        width:
+                          i < viewer.index
+                            ? "100%"
+                            : i === viewer.index
                             ? `${progress}%`
                             : "0%",
-                      background: "white",
-                    }}
+                        background: "red",
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {/* Header */}
+              <div className="viewer-header mt-4 d-flex align-items-center justify-content-between">
+                <div className="d-flex align-items-center">
+                  <img
+                    src={
+                      users[viewer.userId]?.photoURL ||
+                      status.userPic ||
+                      "icons/avatar.jpg"
+                    }
+                    alt="user"
+                    className="viewer-avatar me-2"
                   />
+                  <div>
+                    <span>
+                      {users[viewer.userId]?.username ||
+                        status.userName ||
+                        "User"}
+                    </span>
+                    <br />
+                    <small className="text-dark">{storyTime}</small>
+                  </div>
                 </div>
-              ))}
-            </div>
 
-            <div className="viewer-header mt-4">
-              <img
-                src={users[viewer.userId]?.photoURL || viewer.stories[viewer.index][1].userPic || "icons/avatar.jpg"}
-                alt="user"
-                className="viewer-avatar me-2"
-              />
-              <span>{users[viewer.userId]?.username || viewer.stories[viewer.index][1].userName || "User"}</span>
+                {auth.currentUser?.uid === viewer.userId && (
+                  <button
+                    className="btn btn-sm btn-danger p-1 py-0 ms-2"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteStatus(viewer.userId, statusId);
+                      closeViewer();
+                    }}
+                  >
+                    <i className="bi bi-trash3-fill text-white"></i>
+                  </button>
+                )}
+              </div>
 
-              {auth.currentUser?.uid === viewer.userId && (
-                <button
-                  className="btn btn-sm btn-danger ms-2"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const [statusId] = viewer.stories[viewer.index];
-                    deleteStatus(viewer.userId, statusId);
-                    closeViewer();
-                  }}
-                >
-                  🗑
-                </button>
-              )}
-
-              <button
-                className="btn btn-sm btn-light ms-auto"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  closeViewer();
-                }}
-                style={{ zIndex: 1100, position: "relative" }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="viewer-body">
-              {(() => {
-                const [statusId, status] = viewer.stories[viewer.index];
-                if (status.type === "image")
-                  return <img src={status.mediaURL} alt="story" className="viewer-media" />;
-                return (
+              {/* Media */}
+              <div className="viewer-body">
+                {status.type === "image" ? (
+                  <img
+                    src={status.mediaURL}
+                    alt="story"
+                    className="viewer-media"
+                  />
+                ) : (
                   <video
                     src={status.mediaURL}
                     className="viewer-media"
@@ -250,65 +290,58 @@ export default function ViewStatuses() {
                     controls
                     onEnded={nextStory}
                   />
-                );
-              })()}
-            </div>
-
-            {auth.currentUser?.uid === viewer.userId && (
-              <div className="seen-btn">
-                <button
-                  className="btn btn-outline-info btn-sm"
-                  data-bs-toggle="offcanvas"
-                  data-bs-target="#seenOffcanvas"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const [statusId, status] = viewer.stories[viewer.index];
-                    setSeenList({ statusId, viewers: status.viewers || {} });
-                    setViewer(null);
-                  }}
-                >
-                  <FaEye /> Viewers
-                </button>
+                )}
               </div>
-            )}
-          </div>
-        </div>
-      )}
 
-      {/* Seen list offcanvas */}
-      <div
-        className="offcanvas offcanvas-bottom"
-        tabIndex="-1"
-        id="seenOffcanvas"
-        aria-labelledby="seenOffcanvasLabel"
-        style={{ zIndex: 999 }}
-        data-bs-backdrop="false"
-        data-bs-scroll="true"
-      >
-        <div className="offcanvas-header">
-          <h5 id="seenOffcanvasLabel">Seen by</h5>
-          <button
-            type="button"
-            className="btn-close"
-            data-bs-dismiss="offcanvas"
-            aria-label="Close"
-          ></button>
-        </div>
-        <div className="offcanvas-body">
-          {!seenList || !seenList.viewers || Object.keys(seenList.viewers).length === 0 ? (
+              {/* Seen button */}
+              {auth.currentUser?.uid === viewer.userId && (
+                <div className="seen-btn">
+                  <button
+                    className="btn btn-outline-danger btn-sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSeenList({
+                        statusId,
+                        viewers: status.viewers || {},
+                      });
+                    }}
+                  >
+                    <FaEye /> Viewers
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Seen viewers overlay */}
+      {viewer && seenList && (
+        <div
+          className="position-absolute bottom-0 start-50 translate-middle-x w-100 bg-light p-3 rounded myshadow border"
+          style={{ maxHeight: "50%", overflowY: "auto", zIndex: 1100 }}
+        >
+          <div className="d-flex justify-content-between mb-2">
+            <h5>Seen by</h5>
+            <button
+              className="btn-close"
+              onClick={() => setSeenList(null)}
+            ></button>
+          </div>
+          {!seenList.viewers ||
+          Object.keys(seenList.viewers).length === 0 ? (
             <p>No one has seen yet</p>
           ) : (
             Object.entries(seenList.viewers).map(([vid, vdata]) => {
               const viewerInfo = users[vid] || {};
               return (
-                <div
-                  key={vid}
-                  className="viewer-card mb-2 d-flex align-items-center gap-2"
-                >
+                <div key={vid} className="d-flex align-items-center gap-2 mb-2">
                   <img
                     src={viewerInfo.photoURL || "icons/avatar.jpg"}
                     alt="viewer"
-                    style={{ width: 40, height: 40, borderRadius: "50%" }}
+                    className="rounded-circle"
+                    width={40}
+                    height={40}
                   />
                   <div>
                     <strong>{viewerInfo.username || "User"}</strong>
@@ -316,11 +349,11 @@ export default function ViewStatuses() {
                     <small>
                       {vdata?.seenAt
                         ? new Date(vdata.seenAt).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          second: "2-digit",
-                          hour12: true,
-                        })
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                            hour12: true,
+                          })
                         : ""}
                     </small>
                   </div>
@@ -329,7 +362,7 @@ export default function ViewStatuses() {
             })
           )}
         </div>
-      </div>
+      )}
     </div>
   );
 }

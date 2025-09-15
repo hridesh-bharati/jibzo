@@ -1,12 +1,26 @@
+// src/assets/users/UserRegister.jsx
 import React, { useState, useRef } from "react";
 import emailjs from "emailjs-com";
-import { getAuth, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
-import { db, ref, set, get } from "../../assets/utils/firebaseConfig";
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  updateProfile,
+} from "firebase/auth";
+import { db } from "../../assets/utils/firebaseConfig";
+import { ref as dbRef, set, get } from "firebase/database";
+import {
+  getStorage,
+  ref as storageRef,
+  uploadBytes,
+  getDownloadURL,
+} from "firebase/storage";
 import { useNavigate, Link } from "react-router-dom";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import axios from "axios";
 
-const IMGBB_API_KEY = import.meta.env.VITE_IMGBB_API_KEY;
+const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_NAME;
+const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
 const UserRegister = () => {
   const [formData, setFormData] = useState({
@@ -19,7 +33,6 @@ const UserRegister = () => {
 
   const [usernameTaken, setUsernameTaken] = useState(false);
   const [usernameSuggestion, setUsernameSuggestion] = useState("");
-
   const [emailTaken, setEmailTaken] = useState(false);
 
   const [generatedOTP, setGeneratedOTP] = useState(null);
@@ -27,10 +40,12 @@ const UserRegister = () => {
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef();
   const auth = getAuth();
+  const storage = getStorage();
   const navigate = useNavigate();
 
   let typingTimeout = null;
 
+  // Input change
   const handleChange = (e) => {
     const { name, value, files } = e.target;
     if (name === "photo") {
@@ -46,23 +61,39 @@ const UserRegister = () => {
     }
   };
 
+  // Upload image with Cloudinary + fallback Firebase
   const uploadImage = async (file) => {
-    const formData = new FormData();
-    formData.append("image", file);
-    const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
-      method: "POST",
-      body: formData,
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error("Image upload failed!");
-    return data.data.url;
+    try {
+      // Upload to Cloudinary
+      const uploadData = new FormData();
+      uploadData.append("file", file);
+      uploadData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+      uploadData.append("folder", "profile_pics");
+
+      const res = await axios.post(
+        `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
+        uploadData
+      );
+
+      return res.data.secure_url;
+    } catch (cloudErr) {
+      console.warn("Cloudinary failed, falling back to Firebase:", cloudErr);
+      // Fallback to Firebase Storage
+      const storagePath = `profilePics/${Date.now()}_${file.name}`;
+      const fileRef = storageRef(storage, storagePath);
+      await uploadBytes(fileRef, file);
+      return await getDownloadURL(fileRef);
+    }
   };
 
+  // Check username availability
   const checkUsername = async (username) => {
     if (!username) return;
-    const snapshot = await get(ref(db, "usersData"));
+    const snapshot = await get(dbRef(db, "usersData"));
     const users = snapshot.val();
-    const usernames = users ? Object.values(users).map(u => u.username.toLowerCase()) : [];
+    const usernames = users
+      ? Object.values(users).map((u) => u.username.toLowerCase())
+      : [];
 
     if (usernames.includes(username.toLowerCase())) {
       setUsernameTaken(true);
@@ -79,14 +110,18 @@ const UserRegister = () => {
     }
   };
 
+  // Check email availability
   const checkEmail = async (email) => {
     if (!email) return;
-    const snapshot = await get(ref(db, "usersData"));
+    const snapshot = await get(dbRef(db, "usersData"));
     const users = snapshot.val();
-    const emails = users ? Object.values(users).map(u => u.email.toLowerCase()) : [];
+    const emails = users
+      ? Object.values(users).map((u) => u.email.toLowerCase())
+      : [];
     setEmailTaken(emails.includes(email.toLowerCase()));
   };
 
+  // Send OTP
   const sendOTP = async () => {
     const { username, email } = formData;
     if (!username || !email) {
@@ -123,6 +158,7 @@ const UserRegister = () => {
     }
   };
 
+  // Register User
   const handleSubmit = async (e) => {
     e.preventDefault();
     const { username, email, password, otp, photo } = formData;
@@ -140,7 +176,9 @@ const UserRegister = () => {
       return;
     }
     if (usernameTaken) {
-      toast.error(`Username "${username}" is already taken! Try "${usernameSuggestion}"`);
+      toast.error(
+        `Username "${username}" is already taken! Try "${usernameSuggestion}"`
+      );
       return;
     }
     if (emailTaken) {
@@ -152,12 +190,16 @@ const UserRegister = () => {
     try {
       const photoURL = await uploadImage(photo);
 
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
       const user = userCredential.user;
 
       await updateProfile(user, { displayName: username, photoURL });
 
-      await set(ref(db, `usersData/${user.uid}`), {
+      await set(dbRef(db, `usersData/${user.uid}`), {
         uid: user.uid,
         username,
         email,
@@ -248,7 +290,11 @@ const UserRegister = () => {
           required
         />
 
-        <button className="btn btn-success w-100" type="submit" disabled={loading}>
+        <button
+          className="btn btn-success w-100"
+          type="submit"
+          disabled={loading}
+        >
           {loading ? "Registering..." : "Register"}
         </button>
       </form>

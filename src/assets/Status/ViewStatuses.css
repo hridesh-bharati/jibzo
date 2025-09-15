@@ -15,7 +15,7 @@
     width: 60px;
     height: 60px;
     border-radius: 50%;
-    border: 2px solid #25d366;
+    border: 2px solid #ff0077a4;
     object-fit: cover;
 }
 
@@ -23,8 +23,8 @@
 .viewer-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.95);
-    color: white;
+    background: rgb(255, 255, 255);
+    color: rgb(0, 0, 0);
     z-index: 1050;
     display: flex;
     justify-content: center;
@@ -65,7 +65,7 @@
 .viewer-media {
     max-width: 100%;
     max-height: 80vh;
-    border-radius: 10px;
+    border-radius: 0px;
     object-fit: contain;
 }
 
@@ -84,21 +84,4 @@
     left: 10px;
     right: 10px;
     gap: 3px;
-}
-
-.progress {
-    flex: 1;
-    background: #444;
-    border-radius: 2px;
-}
-
-.progress-bar {
-    height: 3px;
-    background: white;
-    border-radius: 2px;
-}
-
-/* Seen list card */
-.viewer-card img {
-    object-fit: cover;
 }

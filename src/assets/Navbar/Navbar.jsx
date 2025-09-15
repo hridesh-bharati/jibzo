@@ -228,9 +228,7 @@ const Navbar = () => {
       <Link to="/home" className="d-flex align-items-center">
         <img src="icons/logo.png" width={100} alt="logo" />
       </Link>
-
       <PWAInstall />
-
       <div className="d-flex align-items-center gap-1">
 
         {/* Friend Requests */}

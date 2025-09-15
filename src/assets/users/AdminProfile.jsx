@@ -1,4 +1,3 @@
-// src/assets/users/AdminProfile.jsx
 import React, { useEffect, useState, useRef } from "react";
 import { db, auth } from "../../assets/utils/firebaseConfig";
 import { ref, onValue, update, remove } from "firebase/database";
@@ -18,10 +17,7 @@ const VideoFeed = ({ videos, startIndex, onClose }) => {
 
   useEffect(() => {
     if (containerRef.current) {
-      containerRef.current.scrollTo({
-        top: startIndex * window.innerHeight,
-        behavior: "auto",
-      });
+      containerRef.current.scrollTo({ top: startIndex * window.innerHeight });
     }
   }, [startIndex]);
 
@@ -31,14 +27,14 @@ const VideoFeed = ({ videos, startIndex, onClose }) => {
       const index = Math.round(container.scrollTop / window.innerHeight);
       if (index !== currentIndex) setCurrentIndex(index);
     };
-    container.addEventListener("scroll", handleScroll, { passive: true });
+    container.addEventListener("scroll", handleScroll);
     return () => container.removeEventListener("scroll", handleScroll);
   }, [currentIndex]);
 
   useEffect(() => {
     videoRefs.current.forEach((vid, i) => {
       if (!vid) return;
-      if (i === currentIndex) vid.play().catch(() => {});
+      if (i === currentIndex) vid.play().catch(() => { });
       else vid.pause();
     });
   }, [currentIndex]);
@@ -66,7 +62,7 @@ const VideoFeed = ({ videos, startIndex, onClose }) => {
           <video
             ref={(el) => (videoRefs.current[i] = el)}
             src={video.src}
-            style={{ width: "auto", height: "auto", maxWidth: "100%", maxHeight: "90vh" }}
+            style={{ maxWidth: "100%", maxHeight: "90vh" }}
             loop
             controls={false}
           />
@@ -76,7 +72,7 @@ const VideoFeed = ({ videos, startIndex, onClose }) => {
               position: "absolute",
               top: 20,
               right: 20,
-              background: "rgba(12, 4, 4, 0.5)",
+              background: "rgba(12,4,4,0.5)",
               border: "none",
               color: "#fff",
               padding: "8px 12px",
@@ -101,12 +97,7 @@ const ImageViewer = ({ src, onClose }) => (
     style={{ zIndex: 1050 }}
     onClick={onClose}
   >
-    <img
-      src={src}
-      alt="Fullscreen"
-      className="img-fluid rounded"
-      style={{ maxHeight: "90%", maxWidth: "90%" }}
-    />
+    <img src={src} alt="Fullscreen" style={{ maxHeight: "90%", maxWidth: "90%" }} />
   </div>
 );
 
@@ -144,7 +135,7 @@ const AdminProfile = () => {
     return () => unsubscribe();
   }, [paramUid, navigate]);
 
-  // Fetch user data
+  // Fetch user data & posts
   useEffect(() => {
     if (!uid) return;
 
@@ -160,8 +151,8 @@ const AdminProfile = () => {
         setRequested(Object.keys(data.followRequests?.received || {}));
         const linksList = data.socialLinks
           ? Object.entries(data.socialLinks)
-              .filter(([_, link]) => link)
-              .map(([_, url]) => ({ url }))
+            .filter(([_, link]) => link)
+            .map(([_, url]) => ({ url }))
           : [];
         setSocialLinks({ list: linksList });
       } else setProfileData(null);
@@ -185,25 +176,19 @@ const AdminProfile = () => {
     };
   }, [uid]);
 
-  // Update DP
+  // Upload DP
   const handleDpUpdate = async () => {
     if (!currentUser || !file) return toast.warn("Select an image first!");
-    if (!cloudinaryPreset || !cloudinaryCloud)
-      return toast.error("❌ Cloudinary ENV not configured!");
+    if (!cloudinaryPreset || !cloudinaryCloud) return toast.error("Cloudinary ENV missing");
     setUploading(true);
     try {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("upload_preset", cloudinaryPreset);
-      const res = await axios.post(
-        `https://api.cloudinary.com/v1_1/${cloudinaryCloud}/image/upload`,
-        formData
-      );
+      const res = await axios.post(`https://api.cloudinary.com/v1_1/${cloudinaryCloud}/image/upload`, formData);
       const photoURL = res.data.secure_url;
 
-      // Update in DB
       await update(ref(db, `usersData/${currentUser.uid}`), { photoURL });
-      // Update Firebase Auth
       await updateProfile(currentUser, { photoURL });
       setProfileData((prev) => ({ ...prev, photoURL }));
       toast.success("🎉 Profile picture updated!");
@@ -216,7 +201,7 @@ const AdminProfile = () => {
     }
   };
 
-  // Update Wallpaper
+  // Upload Wallpaper
   const handleChangeWallpaper = () => {
     const input = document.createElement("input");
     input.type = "file";
@@ -224,17 +209,12 @@ const AdminProfile = () => {
     input.onchange = async (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      if (!cloudinaryPreset || !cloudinaryCloud) return toast.error("Cloudinary ENV missing");
-
+      setUploading(true);
       try {
-        setUploading(true);
         const formData = new FormData();
         formData.append("file", file);
         formData.append("upload_preset", cloudinaryPreset);
-        const res = await axios.post(
-          `https://api.cloudinary.com/v1_1/${cloudinaryCloud}/image/upload`,
-          formData
-        );
+        const res = await axios.post(`https://api.cloudinary.com/v1_1/${cloudinaryCloud}/image/upload`, formData);
         const wallpaperURL = res.data.secure_url;
         await update(ref(db, `usersData/${currentUser.uid}`), { wallpaper: wallpaperURL });
         setWallpaper(wallpaperURL);
@@ -249,7 +229,7 @@ const AdminProfile = () => {
     input.click();
   };
 
-  // Update bio
+  // Update Bio
   const handleBioUpdate = async () => {
     if (!currentUser) return;
     try {
@@ -261,7 +241,7 @@ const AdminProfile = () => {
     }
   };
 
-  // Update social links
+  // Update Social Links
   const handleSocialLinksUpdate = async () => {
     if (!currentUser) return;
     try {
@@ -277,7 +257,7 @@ const AdminProfile = () => {
     }
   };
 
-  // Delete post
+  // Delete Post
   const handleDeletePost = async (postId) => {
     if (!postId) return;
     try {
@@ -290,6 +270,7 @@ const AdminProfile = () => {
     }
   };
 
+  // Lock/Unlock Profile
   const toggleLockProfile = async () => {
     if (!currentUser) return;
     try {
@@ -302,6 +283,7 @@ const AdminProfile = () => {
     }
   };
 
+  // Logout
   const handleLogout = async () => {
     try {
       await signOut(auth);
@@ -316,8 +298,7 @@ const AdminProfile = () => {
   if (!profileData) return <p className="m-5 p-5 text-center">No profile found.</p>;
 
   const isOwner = currentUser?.uid === uid;
-  const filteredPosts =
-    activeTab === "all" ? userPosts : userPosts.filter((p) => p.type === activeTab);
+  const filteredPosts = activeTab === "all" ? userPosts : userPosts.filter((p) => p.type === activeTab);
 
   return (
     <div className="container" style={{ maxWidth: 900 }}>
@@ -522,7 +503,7 @@ const AdminProfile = () => {
       </div>
 
       {/* Posts */}
-      <div className="row g-3 mb-4">
+      <div className="row g-3 mb-5 pb-4">
         {filteredPosts.length > 0 ? (
           filteredPosts.map((post) => (
             <div key={post.id} className="col-12 col-sm-6 col-md-4">
@@ -571,6 +552,10 @@ const AdminProfile = () => {
         ) : (
           <p className="text-center">No posts yet.</p>
         )}
+        <div className="bg-light text-center p-4 rounded shadow-sm">
+          <h5 className="fw-bold mb-1">Hridesh</h5>
+          <p className="text-muted mb-0" style={{ fontSize: "0.7rem" }}>Founder & Creator of Jibzo App</p>
+        </div>
       </div>
 
       {showVideoFeed && (
@@ -582,6 +567,7 @@ const AdminProfile = () => {
       )}
 
       {showImageViewer && <ImageViewer src={showImageViewer} onClose={() => setShowImageViewer(null)} />}
+        
     </div>
   );
 };

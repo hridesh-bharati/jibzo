@@ -96,7 +96,7 @@ export default function AllUsers() {
   );
 
   return (
-    <div className="container my-3" style={{ maxWidth: 600 }}>
+    <div className="container mx-0 p-0 my-3" style={{ maxWidth: 600 }}>
       <h3 className="mb-3 d-flex">All <div className="text-danger mx-2"> Jibzo </div> Users</h3>
 
       {/* Followers / Following / Requested buttons like AdminProfile */}

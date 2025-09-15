@@ -5,12 +5,21 @@ import { FaDownload } from "react-icons/fa";
 export default function PWAInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstalled, setIsInstalled] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
 
   useEffect(() => {
-    // Check if already installed (localStorage flag)
+    // Check if already installed
     if (localStorage.getItem("pwa-installed") === "true") {
       setIsInstalled(true);
     }
+
+    // Detect iOS
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    setIsIOS(/iphone|ipad|ipod/.test(userAgent));
+
+    // Detect standalone mode
+    setIsStandalone(window.matchMedia("(display-mode: standalone)").matches);
 
     const handleBeforeInstallPrompt = (e) => {
       e.preventDefault();
@@ -18,7 +27,6 @@ export default function PWAInstall() {
     };
 
     const handleAppInstalled = () => {
-      console.log("🎉 App installed!");
       setIsInstalled(true);
       localStorage.setItem("pwa-installed", "true");
       setDeferredPrompt(null);
@@ -27,6 +35,10 @@ export default function PWAInstall() {
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
     window.addEventListener("appinstalled", handleAppInstalled);
 
+    if (isStandalone) {
+      setIsInstalled(true);
+    }
+
     return () => {
       window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
       window.removeEventListener("appinstalled", handleAppInstalled);
@@ -34,28 +46,34 @@ export default function PWAInstall() {
   }, []);
 
   const handleInstall = async () => {
+    if (isIOS) {
+      alert(
+        "To install this app:\n1. Tap the Share button\n2. Select 'Add to Home Screen'\n3. Tap 'Add'"
+      );
+      return;
+    }
+
     if (!deferredPrompt) return;
+
     deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
+
     if (outcome === "accepted") {
-      console.log("✅ User accepted install");
-    } else {
-      console.log("❌ User dismissed install");
+      setIsInstalled(true);
+      localStorage.setItem("pwa-installed", "true");
     }
     setDeferredPrompt(null);
   };
 
-  // ❌ Agar installed hai to button hi mat dikhao
-  if (isInstalled) return null;
+  if (isInstalled) return null; // Hide button if installed
 
   return (
     <button
       onClick={handleInstall}
-      className="btn btn-outline-primary btn-sm d-flex align-items-center gap-1"
-      style={{ fontSize: "0.7rem" }}
+      className="btn btn-primary d-flex align-items-center btn-sm"
     >
-      <FaDownload />
-      <span>Install App</span>
+      <FaDownload /> 
+      {isIOS ? " Install App " : " Install "}
     </button>
   );
 }
