@@ -5,18 +5,22 @@ export default function InstallButton() {
   const [isInstalled, setIsInstalled] = useState(false);
 
   useEffect(() => {
+    // Check if already installed
     if (localStorage.getItem("appInstalled") === "true") {
       setIsInstalled(true);
       return;
     }
 
+    // Save the deferred prompt when triggered
     const handleBeforeInstallPrompt = (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
     };
 
+    // Listen for beforeinstallprompt
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
 
+    // Listen for app installed event
     window.addEventListener("appinstalled", () => {
       localStorage.setItem("appInstalled", "true");
       setIsInstalled(true);
@@ -44,10 +48,20 @@ export default function InstallButton() {
   return (
     <button
       onClick={handleInstallClick}
-      className="btn btn-success btn-sm"
+      style={installButtonStyle}
       disabled={!deferredPrompt}
     >
-      📲 Install App
+      Install App
     </button>
   );
 }
+
+const installButtonStyle = {
+  zIndex: 1000,
+  backgroundColor: "#28a745",
+  color: "white",
+  border: "none",
+  borderRadius: "8px",
+  fontSize: "10px",
+  cursor: "pointer",
+};
