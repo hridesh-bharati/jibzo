@@ -43,25 +43,31 @@ export default function InstallButton() {
     }
   };
 
-  if (isInstalled) return null;
+  if (isInstalled) return null; // Button chhup jaaye agar install ho gaya
 
   return (
     <button
       onClick={handleInstallClick}
       style={installButtonStyle}
-      disabled={!deferredPrompt}
+      disabled={!deferredPrompt} 
     >
-      Install App
+      📲 Install App
     </button>
   );
 }
 
 const installButtonStyle = {
+  position: "fixed",
+  bottom: "100px",
+  right: "20px",
   zIndex: 1000,
   backgroundColor: "#28a745",
   color: "white",
   border: "none",
   borderRadius: "8px",
-  fontSize: "10px",
+  padding: "12px 20px",
+  fontSize: "16px",
+  fontWeight: "600",
   cursor: "pointer",
+  boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
 };

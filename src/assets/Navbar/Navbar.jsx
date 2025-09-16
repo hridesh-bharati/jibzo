@@ -6,7 +6,6 @@ import { ref, onValue, get, update } from "firebase/database";
 import { onAuthStateChanged } from "firebase/auth";
 import { toast } from "react-toastify";
 import './Navbar.css';
-import PWAInstall from "../Pwa/InstallApp";
 
 const Navbar = () => {
   const navigate = useNavigate();
@@ -228,7 +227,6 @@ const Navbar = () => {
       <Link to="/home" className="d-flex align-items-center">
         <img src="icons/logo.png" width={100} alt="logo" />
       </Link>
-      <PWAInstall />
       <div className="d-flex align-items-center gap-1">
         {/* Friend Requests */}
         <div className="position-relative">
