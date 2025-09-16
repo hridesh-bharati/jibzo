@@ -304,7 +304,7 @@ function ReelsPlayer({
       if (!videoEl) return;
 
       if (id === activeVideo) {
-        videoEl.muted = true;
+        videoEl.muted = false;
         videoEl.play().catch(() => { });
       } else {
         videoEl.pause();
