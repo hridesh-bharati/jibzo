@@ -230,7 +230,6 @@ const Navbar = () => {
       </Link>
       <PWAInstall />
       <div className="d-flex align-items-center gap-1">
-
         {/* Friend Requests */}
         <div className="position-relative">
           <button className="icon-btn" onClick={() => setIsFriendReqOpen(prev => !prev)}>
