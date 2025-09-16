@@ -1,136 +1,73 @@
-// import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 
-// export default function InstallPrompt() {
-//   const [deferredPrompt, setDeferredPrompt] = useState(null);
-//   const [isPromptVisible, setIsPromptVisible] = useState(false);
-
-//   useEffect(() => {
-//     // Handler to save the deferred prompt event
-//     const handleBeforeInstallPrompt = (e) => {
-//       e.preventDefault(); // Prevent the default install prompt
-//       setDeferredPrompt(e); // Save the event
-//       setIsPromptVisible(true); // Show custom prompt
-//     };
-
-//     // Listen for beforeinstallprompt event
-//     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
-//     // Cleanup on component unmount
-//     return () => {
-//       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-//     };
-//   }, []);
-
-//   const handleInstallClick = async () => {
-//     if (deferredPrompt) {
-//       // Show the install prompt
-//       deferredPrompt.prompt();
-
-//       // Wait for the user's response (accept/dismiss)
-//       const { outcome } = await deferredPrompt.userChoice;
-
-//       if (outcome === 'accepted') {
-//         console.log('User accepted the install prompt');
-//         setIsPromptVisible(false); // Hide prompt after acceptance
-//       } else {
-//         console.log('User dismissed the install prompt');
-//       }
-
-//       // Reset deferred prompt
-//       setDeferredPrompt(null);
-//     }
-//   };
-
-//   const handleCloseClick = () => {
-//     setIsPromptVisible(false);
-//   };
-
-//   return isPromptVisible ? (
-//     <div className="install-prompt-container fixed-bottom m-3 d-flex align-items-center">
-//       <button
-//         onClick={handleInstallClick}
-//         className="install-btn btn btn-success rounded-pill shadow me-2"
-//       >
-//         <img src="images/icon/icon.webp" style={{ height: '30px' }} alt="App" />
-//         <span className="mx-1"> Install Drishtee App</span>
-//       </button>
-
-//       <button
-//         onClick={handleCloseClick}
-//         className="close-btn btn btn-danger rounded-circle shadow"
-//         aria-label="Close install prompt"
-//       >
-//         &times;
-//       </button>
-//     </div>
-//   ) : null;
-// }
-
-
-import { useEffect, useState } from 'react';
-
-export default function InstallPrompt() {
+export default function InstallButton() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [isPromptVisible, setIsPromptVisible] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
 
   useEffect(() => {
-    // Handler to save the deferred prompt event
+    // Check if already installed
+    if (localStorage.getItem("appInstalled") === "true") {
+      setIsInstalled(true);
+      return;
+    }
+
+    // Save the deferred prompt when triggered
     const handleBeforeInstallPrompt = (e) => {
-      e.preventDefault(); // Prevent the default install prompt
-      setDeferredPrompt(e); // Save the event
-      setIsPromptVisible(true); // Show custom prompt
+      e.preventDefault();
+      setDeferredPrompt(e);
     };
 
-    // Listen for beforeinstallprompt event
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    // Listen for beforeinstallprompt
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
 
-    // Cleanup on component unmount
+    // Listen for app installed event
+    window.addEventListener("appinstalled", () => {
+      localStorage.setItem("appInstalled", "true");
+      setIsInstalled(true);
+    });
+
     return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
     };
   }, []);
 
   const handleInstallClick = async () => {
     if (deferredPrompt) {
-      // Show the install prompt
       deferredPrompt.prompt();
-
-      // Wait for the user's response (accept/dismiss)
       const { outcome } = await deferredPrompt.userChoice;
-
-      if (outcome === 'accepted') {
-        console.log('User accepted the install prompt');
-        setIsPromptVisible(false); // Hide prompt after acceptance
-      } else {
-        console.log('User dismissed the install prompt');
+      if (outcome === "accepted") {
+        localStorage.setItem("appInstalled", "true");
+        setIsInstalled(true);
       }
-
-      // Reset deferred prompt
       setDeferredPrompt(null);
     }
   };
 
-  const handleCloseClick = () => {
-    setIsPromptVisible(false);
-  };
+  if (isInstalled) return null; // Button chhup jaaye agar install ho gaya
 
-  return isPromptVisible ? (
-    <div className="install-prompt-container fixed-bottom m-3 d-flex align-items-center">
-      <button
-        onClick={handleInstallClick}
-        className="install-btn btn btn-success rounded-pill shadow me-2"
-      >
-        <img src="icons/logo.png" style={{ height: '30px' }} alt="App" />
-        <span className="mx-1"> Install jibzo App</span>
-      </button>
-
-      <button
-        onClick={handleCloseClick}
-        className="close-btn btn btn-danger rounded-circle shadow"
-        aria-label="Close install prompt"
-      >
-        &times;
-      </button>
-    </div>
-  ) : null;
+  return (
+    <button
+      onClick={handleInstallClick}
+      style={installButtonStyle}
+      disabled={!deferredPrompt} // Button tabhi enable ho jab deferredPrompt mile
+    >
+      📲 Install App
+    </button>
+  );
 }
+
+const installButtonStyle = {
+  position: "fixed",
+  bottom: "20px",
+  right: "20px",
+  zIndex: 1000,
+  backgroundColor: "#28a745",
+  color: "white",
+  border: "none",
+  borderRadius: "8px",
+  padding: "12px 20px",
+  fontSize: "16px",
+  fontWeight: "600",
+  cursor: "pointer",
+  boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+};
