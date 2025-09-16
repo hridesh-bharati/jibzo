@@ -3,11 +3,12 @@ import React, { useState } from "react";
 import {
   getAuth,
   signInWithEmailAndPassword,
-  sendPasswordResetEmail,
 } from "firebase/auth";
 import { useNavigate, Link } from "react-router-dom";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+
+import sendResetEmail from "../utils/email"; 
 
 const Login = () => {
   const [formData, setFormData] = useState({
@@ -15,7 +16,7 @@ const Login = () => {
     password: "",
   });
   const [loading, setLoading] = useState(false);
-  const [resetStage, setResetStage] = useState(false); // false = login, true = forgot password
+  const [resetStage, setResetStage] = useState(false);
 
   const auth = getAuth();
   const navigate = useNavigate();
@@ -43,19 +44,25 @@ const Login = () => {
     }
   };
 
-  // Send password reset email
+  // Forgot password using EmailJS
   const handleForgotPassword = async () => {
     const { email } = formData;
     if (!email) return toast.error("Enter your email!");
 
     setLoading(true);
     try {
-      await sendPasswordResetEmail(auth, email);
-      toast.success(`Password reset email sent to ${email}`);
-      setResetStage(false); // back to login
-      setFormData({ email: "", password: "" });
-    } catch (error) {
-      toast.error(error.message);
+      const { success, error } = await sendResetEmail(email);
+
+      if (success) {
+        toast.success(`Password reset email sent to ${email}`);
+        setResetStage(false); // back to login
+        setFormData({ email: "", password: "" });
+      } else {
+        console.error(error);
+        toast.error("Failed to send reset email. Try again later.");
+      }
+    } catch (err) {
+      toast.error("Something went wrong!");
     } finally {
       setLoading(false);
     }

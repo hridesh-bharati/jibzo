@@ -304,7 +304,7 @@ function ReelsPlayer({
       if (!videoEl) return;
 
       if (id === activeVideo) {
-        videoEl.muted = false;
+        videoEl.muted = true;
         videoEl.play().catch(() => { });
       } else {
         videoEl.pause();
@@ -527,20 +527,19 @@ export default function GetPost({ showFilter = true }) {
     return () => unsub();
   }, []);
 
-useEffect(() => {
-  const postsRef = ref(db, "galleryImages");
-  return onValue(postsRef, (snap) => {
-    const data = snap.val();
-    if (!data) return setPosts([]);
+  useEffect(() => {
+    const postsRef = ref(db, "galleryImages");
+    return onValue(postsRef, (snap) => {
+      const data = snap.val();
+      if (!data) return setPosts([]);
 
-    let arr = Object.entries(data).map(([id, v]) => ({ id, ...v }));
+      let arr = Object.entries(data).map(([id, v]) => ({ id, ...v }));
 
-    // 🔀 Shuffle dynamically instead of sorting only by timestamp
-    arr = arr.sort(() => Math.random() - 0.5);
-
-    setPosts(arr);
-  });
-}, []);
+      // 🔀 Shuffle dynamically instead of sorting only by timestamp
+      arr = arr.sort((a, b) => b.timestamp - a.timestamp);
+      setPosts(arr);
+    });
+  }, []);
 
   const isAdmin = () =>
     (currentUser?.email || "").toLowerCase() ===
