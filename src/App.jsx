@@ -26,6 +26,7 @@ import Messages from "./assets/messages/Messages";
 import UploadStatus from "./assets/Status/UploadStatus";
 import ViewStatus from "./assets/Status/ViewStatuses";
 import DeleteAccount from "./assets/users/DeleteAccount";
+import Support from "./assets/users/Support";
 // import InstallPrompt from "./assets/Pwa/InstallApp";
 
 const App = () => {
@@ -124,7 +125,8 @@ const App = () => {
 
         {/* Public status view */}
         <Route path="/status" element={<ViewStatus />} />
-
+        <Route path="/support" element={<Support />} />
+ 
       </Routes>
 
       {/* Footer only if logged in and not on login/register/root */}

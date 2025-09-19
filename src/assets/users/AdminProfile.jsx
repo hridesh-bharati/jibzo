@@ -1,7 +1,18 @@
+// src/assets/users/AdminProfile.jsx
 import React, { useEffect, useState, useRef } from "react";
 import { db, auth } from "../../assets/utils/firebaseConfig";
 import { ref, onValue, update, remove } from "firebase/database";
-import { signOut, updateProfile, onAuthStateChanged } from "firebase/auth";
+import {
+  signOut,
+  updateProfile,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  updateEmail,
+  sendEmailVerification,
+  updatePassword,
+  reauthenticateWithCredential,
+  EmailAuthProvider
+} from "firebase/auth";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import axios from "axios";
@@ -16,28 +27,38 @@ const VideoFeed = ({ videos, startIndex, onClose }) => {
   const videoRefs = useRef([]);
 
   useEffect(() => {
-    if (containerRef.current) {
+    if (containerRef.current && videos.length > 0) {
       containerRef.current.scrollTo({ top: startIndex * window.innerHeight });
     }
-  }, [startIndex]);
+  }, [startIndex, videos.length]);
 
   useEffect(() => {
     const container = containerRef.current;
+    if (!container) return;
+
     const handleScroll = () => {
       const index = Math.round(container.scrollTop / window.innerHeight);
-      if (index !== currentIndex) setCurrentIndex(index);
+      if (index !== currentIndex && index >= 0 && index < videos.length) {
+        setCurrentIndex(index);
+      }
     };
+
     container.addEventListener("scroll", handleScroll);
     return () => container.removeEventListener("scroll", handleScroll);
-  }, [currentIndex]);
+  }, [currentIndex, videos.length]);
 
   useEffect(() => {
     videoRefs.current.forEach((vid, i) => {
       if (!vid) return;
-      if (i === currentIndex) vid.play().catch(() => { });
-      else vid.pause();
+      if (i === currentIndex) {
+        vid.play().catch(() => { });
+      } else {
+        vid.pause();
+      }
     });
   }, [currentIndex]);
+
+  if (!videos || videos.length === 0) return null;
 
   return (
     <div
@@ -47,7 +68,7 @@ const VideoFeed = ({ videos, startIndex, onClose }) => {
     >
       {videos.map((video, i) => (
         <div
-          key={video.id}
+          key={video.id || i}
           style={{
             height: "100vh",
             width: "100%",
@@ -118,6 +139,14 @@ const AdminProfile = () => {
   const [socialLinks, setSocialLinks] = useState({ list: [] });
   const [wallpaper, setWallpaper] = useState("");
 
+  // Email and password update states
+  const [currentEmail, setCurrentEmail] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [emailUpdateLoading, setEmailUpdateLoading] = useState(false);
+  const [passwordUpdateLoading, setPasswordUpdateLoading] = useState(false);
+
   const navigate = useNavigate();
   const { uid: paramUid } = useParams();
   const [currentUser, setCurrentUser] = useState(null);
@@ -126,11 +155,29 @@ const AdminProfile = () => {
   const cloudinaryPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
   const cloudinaryCloud = import.meta.env.VITE_CLOUDINARY_NAME;
 
+  // Password validation
+  const validatePassword = (password) => {
+    const minLength = 8;
+    const hasUpperCase = /[A-Z]/.test(password);
+    const hasLowerCase = /[a-z]/.test(password);
+    const hasNumbers = /\d/.test(password);
+    const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+
+    return password.length >= minLength &&
+      hasUpperCase &&
+      hasLowerCase &&
+      hasNumbers &&
+      hasSpecialChar;
+  };
+
   // Firebase auth listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (!user && !paramUid) navigate("/login");
       setCurrentUser(user);
+      if (user) {
+        setCurrentEmail(user.email || "");
+      }
     });
     return () => unsubscribe();
   }, [paramUid, navigate]);
@@ -149,13 +196,17 @@ const AdminProfile = () => {
         setFollowers(Object.keys(data.followers || {}));
         setFollowing(Object.keys(data.following || {}));
         setRequested(Object.keys(data.followRequests?.received || {}));
+
+        // Handle social links
         const linksList = data.socialLinks
           ? Object.entries(data.socialLinks)
             .filter(([_, link]) => link)
             .map(([_, url]) => ({ url }))
           : [];
         setSocialLinks({ list: linksList });
-      } else setProfileData(null);
+      } else {
+        setProfileData(null);
+      }
       setLoading(false);
     });
 
@@ -167,7 +218,9 @@ const AdminProfile = () => {
           .map(([id, value]) => ({ id, ...value }))
           .filter((post) => post.userId === uid);
         setUserPosts(postsArray);
-      } else setUserPosts([]);
+      } else {
+        setUserPosts([]);
+      }
     });
 
     return () => {
@@ -241,6 +294,70 @@ const AdminProfile = () => {
     }
   };
 
+  // Update Email
+  const handleEmailUpdate = async () => {
+    if (!currentUser || !newEmail || !currentPassword) return toast.warn("Fill all required fields!");
+    if (newEmail === currentUser.email) return toast.warn("New email must be different from current email!");
+
+    setEmailUpdateLoading(true);
+    try {
+      // Re-authenticate user
+      const credential = EmailAuthProvider.credential(currentUser.email, currentPassword);
+      await reauthenticateWithCredential(currentUser, credential);
+
+      // Update email
+      await updateEmail(currentUser, newEmail);
+
+      // Send verification email
+      await sendEmailVerification(currentUser);
+
+      // Update email in database
+      await update(ref(db, `usersData/${currentUser.uid}`), { email: newEmail });
+
+      setProfileData((prev) => ({ ...prev, email: newEmail }));
+      setCurrentEmail(newEmail);
+      setNewEmail("");
+      setCurrentPassword("");
+
+      toast.success("📧 Email updated! Please verify your new email.");
+    } catch (err) {
+      console.error(err);
+      toast.error(err.message);
+    } finally {
+      setEmailUpdateLoading(false);
+    }
+  };
+
+  // Update Password
+  const handlePasswordUpdate = async () => {
+    if (!currentUser || !currentPassword || !newPassword) return toast.warn("Fill all required fields!");
+
+    // Validate new password
+    if (!validatePassword(newPassword)) {
+      return toast.error("Password must be at least 8 characters with uppercase, lowercase, number, and special character!");
+    }
+
+    setPasswordUpdateLoading(true);
+    try {
+      // Re-authenticate user
+      const credential = EmailAuthProvider.credential(currentUser.email, currentPassword);
+      await reauthenticateWithCredential(currentUser, credential);
+
+      // Update password
+      await updatePassword(currentUser, newPassword);
+
+      setCurrentPassword("");
+      setNewPassword("");
+
+      toast.success("🔒 Password updated successfully!");
+    } catch (err) {
+      console.error(err);
+      toast.error(err.message);
+    } finally {
+      setPasswordUpdateLoading(false);
+    }
+  };
+
   // Update Social Links
   const handleSocialLinksUpdate = async () => {
     if (!currentUser) return;
@@ -298,7 +415,11 @@ const AdminProfile = () => {
   if (!profileData) return <p className="m-5 p-5 text-center">No profile found.</p>;
 
   const isOwner = currentUser?.uid === uid;
-  const filteredPosts = activeTab === "all" ? userPosts : userPosts.filter((p) => p.type === activeTab);
+  const filteredPosts = activeTab === "all"
+    ? userPosts
+    : userPosts.filter((p) => p.type === activeTab);
+
+  const videoPosts = filteredPosts.filter((p) => p.type === "video");
 
   return (
     <div className="container" style={{ maxWidth: 900 }}>
@@ -332,8 +453,8 @@ const AdminProfile = () => {
                 objectFit: "cover",
                 position: "absolute",
                 zIndex: 10,
-                top: "50%",
-                left: "20px",
+                top: "70%",
+                left: "30px",
                 transform: "translateY(-50%)",
               }}
             />
@@ -346,7 +467,7 @@ const AdminProfile = () => {
                 style={{ zIndex: 20, cursor: "pointer" }}
                 title="Change wallpaper"
               >
-                <i className="bi bi-pencil-square"></i>
+                <i className="bi bi-camera-fill me-2"></i> Edit Cover Photo
               </button>
             )}
           </div>
@@ -399,72 +520,116 @@ const AdminProfile = () => {
       </div>
 
       {/* Edit Profile Offcanvas */}
+      {/* ---------- Edit Profile Offcanvas (Profile / Security / Actions) ---------- */}
       {isOwner && (
-        <div className="offcanvas offcanvas-end" tabIndex="-1" id="editProfileCanvas">
-          <div className="offcanvas-header">
-            <h5 className="offcanvas-title">Edit Your Profile</h5>
-            <button type="button" className="btn-close text-reset" data-bs-dismiss="offcanvas"></button>
+        <div className="offcanvas offcanvas-end" tabIndex="-1" id="editProfileCanvas" style={{ width: 520 }}>
+          <div className="offcanvas-header border-bottom">
+            <h5 className="offcanvas-title">Edit Profile</h5>
+            <button type="button" className="btn-close" data-bs-dismiss="offcanvas" />
           </div>
-          <div className="offcanvas-body d-flex flex-column gap-3">
-            {/* Profile Picture */}
-            <div>
-              <label className="form-label fw-bold">Profile Picture</label>
-              <input type="file" className="form-control mb-2" accept="image/*" onChange={(e) => setFile(e.target.files[0])} />
-              <button className="threeD-btn blueBtn" onClick={handleDpUpdate} disabled={uploading}>
-                {uploading ? "Uploading..." : "Upload DP"}
-              </button>
-            </div>
+          <div className="offcanvas-body">
+            <ul className="nav nav-pills mb-4" id="editProfileTabs" role="tablist">
+              <li className="nav-item" role="presentation">
+                <button className="nav-link active" id="profile-tab" data-bs-toggle="pill" data-bs-target="#profile" type="button" role="tab">Profile</button>
+              </li>
+              <li className="nav-item" role="presentation">
+                <button className="nav-link" id="security-tab" data-bs-toggle="pill" data-bs-target="#security" type="button" role="tab">Security</button>
+              </li>
+              <li className="nav-item" role="presentation">
+                <button className="nav-link" id="actions-tab" data-bs-toggle="pill" data-bs-target="#actions" type="button" role="tab">Actions</button>
+              </li>
+            </ul>
 
-            {/* Bio */}
-            <div>
-              <label className="form-label fw-bold">Bio</label>
-              <textarea className="form-control" rows={6} value={bio} onChange={(e) => setBio(e.target.value)} />
-              <button className="threeD-btn blueBtn mt-2" onClick={handleBioUpdate}>Save Bio</button>
-            </div>
-
-            {/* Social Links */}
-            <hr />
-            <div>
-              <label className="form-label fw-bold">Social Links</label>
-              {socialLinks.list?.map((linkObj, idx) => (
-                <div key={idx} className="d-flex gap-2 mb-2">
-                  <input
-                    type="text"
-                    className="form-control"
-                    placeholder="Enter link"
-                    value={linkObj.url}
-                    onChange={(e) => {
-                      const newList = [...socialLinks.list];
-                      newList[idx].url = e.target.value;
-                      setSocialLinks({ list: newList });
-                    }}
-                  />
-                  <button className="threeD-btn redBtn" onClick={() => {
-                    const newList = socialLinks.list.filter((_, i) => i !== idx);
-                    setSocialLinks({ list: newList });
-                  }}>✕</button>
+            <div className="tab-content" id="editProfileTabsContent">
+              {/* Profile Tab */}
+              <div className="tab-pane fade show active" id="profile" role="tabpanel">
+                <div className="mb-3">
+                  <h6 className="mb-2">Profile Picture</h6>
+                  <div className="d-flex align-items-center gap-3">
+                    <img src={profileData.photoURL || "icons/avatar.jpg"} alt="me" width={60} height={60} className="rounded-circle" />
+                    <div>
+                      <input type="file" className="form-control form-control-sm" accept="image/*" onChange={(e) => setFile(e.target.files[0])} />
+                      <small className="text-muted">JPG, PNG recommended. Max 5MB.</small>
+                      <div className="mt-2">
+                        <button className="btn btn-primary btn-sm" onClick={handleDpUpdate} disabled={uploading}>{uploading ? "Uploading..." : "Update Picture"}</button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              ))}
-              <hr />
-              <div className="d-flex justify-content-between">
-                <button className="threeD-btn greenBtn m-1" onClick={() => setSocialLinks({ list: [...socialLinks.list, { url: "" }] })}>
-                  + Add Link
-                </button>
-                <button className="threeD-btn blueBtn m-1" onClick={handleSocialLinksUpdate}>Save Social Links</button>
+
+                <div className="mb-3">
+                  <h6 className="mb-2">Bio</h6>
+                  <textarea className="form-control" rows={4} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Describe yourself..."></textarea>
+                  <div className="mt-2 d-flex gap-2">
+                    <button className="btn btn-primary btn-sm" onClick={handleBioUpdate}>Save Bio</button>
+                    <button className="btn btn-outline-secondary btn-sm" onClick={() => { setBio(profileData.bio || ""); }}>Reset</button>
+                  </div>
+                </div>
+
+                <div className="mb-3">
+                  <h6 className="mb-2">Social Links</h6>
+                  {socialLinks.list?.map((linkObj, idx) => (
+                    <div key={idx} className="d-flex gap-2 mb-2">
+                      <input type="url" className="form-control form-control-sm" placeholder="https://example.com" value={linkObj.url} onChange={(e) => {
+                        const newList = [...socialLinks.list]; newList[idx].url = e.target.value; setSocialLinks({ list: newList });
+                      }} />
+                      <button className="btn btn-outline-danger btn-sm" onClick={() => { const newList = socialLinks.list.filter((_, i) => i !== idx); setSocialLinks({ list: newList }); }}>
+                        <i className="bi bi-trash"></i>
+                      </button>
+                    </div>
+                  ))}
+                  <div className="d-flex gap-2">
+                    <button className="btn btn-outline-secondary btn-sm" onClick={() => setSocialLinks({ list: [...socialLinks.list, { url: "" }] })}><i className="bi bi-plus"></i> Add Link</button>
+                    <button className="btn btn-primary btn-sm" onClick={handleSocialLinksUpdate}>Save Links</button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Security Tab */}
+              <div className="tab-pane fade" id="security" role="tabpanel">
+                <div className="mb-3">
+                  <h6 className="mb-2">Email</h6>
+                  <input type="email" className="form-control mb-2" value={currentEmail} disabled />
+                  <input type="email" className="form-control mb-2" placeholder="New email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
+                  <input type="password" className="form-control mb-2" placeholder="Current password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+                  <button className="btn btn-primary btn-sm" onClick={handleEmailUpdate} disabled={emailUpdateLoading}>{emailUpdateLoading ? "Updating..." : "Update Email"}</button>
+                </div>
+
+                <div className="mb-3">
+                  <h6 className="mb-2">Change Password</h6>
+                  <input type="password" className="form-control mb-2" placeholder="Current password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+                  <input type="password" className="form-control mb-2" placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+                  <small className="text-muted d-block mb-2">Min 8 chars, uppercase, lowercase, number & special char.</small>
+                  <button className="btn btn-primary btn-sm" onClick={handlePasswordUpdate} disabled={passwordUpdateLoading}>{passwordUpdateLoading ? "Updating..." : "Update Password"}</button>
+                </div>
+              </div>
+
+              {/* Actions Tab */}
+              <div className="tab-pane fade" id="actions" role="tabpanel">
+                <div className="mb-3">
+                  <h6 className="mb-2">Profile Privacy</h6>
+                  <div className="form-check form-switch">
+                    <input className="form-check-input" type="checkbox" id="profileLockSwitch" checked={profileData.isLocked} onChange={toggleLockProfile} />
+                    <label className="form-check-label" htmlFor="profileLockSwitch">{profileData.isLocked ? "Locked" : "Public"}</label>
+                  </div>
+                  <small className="text-muted d-block mt-1">{profileData.isLocked ? "Only approved followers can see your content." : "Anyone can see your content."}</small>
+                </div>
+
+                <div className="mb-3">
+                  <h6 className="mb-2">Session</h6>
+                  <button className="btn btn-outline-secondary" onClick={handleLogout}><i className="bi bi-box-arrow-right me-1"></i> Logout</button>
+                </div>
+
+                <div className="mb-3">
+                  <h6 className="mb-2 text-danger">Danger Zone</h6>
+                  <DeleteAccount />
+                </div>
               </div>
             </div>
-
-            {/* Profile Actions */}
-            <button
-              className="threeD-btn yellowBtn mt-2"
-              data-bs-toggle="offcanvas"
-              data-bs-target="#profileActionsCanvas"
-            >
-              Profile Actions
-            </button>
           </div>
         </div>
       )}
+
 
       {/* Profile Actions Offcanvas */}
       {isOwner && (
@@ -473,6 +638,140 @@ const AdminProfile = () => {
             <h5 className="offcanvas-title">Profile Actions</h5>
             <button type="button" className="btn-close text-reset" data-bs-dismiss="offcanvas"></button>
           </div>
+
+
+
+          {/* -----------Accounts---------------- */}
+          <div className="accordion accordion-flush" id="accordionProfile">
+            {/* 1. Bio Update */}
+            <div className="accordion-item">
+              <h2 className="accordion-header">
+                <button
+                  className="accordion-button collapsed"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#collapseBio"
+                  aria-expanded="false"
+                  aria-controls="collapseBio"
+                >
+                  1. Bio Update
+                </button>
+              </h2>
+              <div
+                id="collapseBio"
+                className="accordion-collapse collapse"
+                data-bs-parent="#accordionProfile"
+              >
+                <div className="accordion-body">
+                  <textarea
+                    className="form-control"
+                    rows={4}
+                    placeholder="Update your bio..."
+                    value={bio}
+                    onChange={(e) => setBio(e.target.value)}
+                  />
+                  <button className="btn btn-primary mt-2" onClick={handleBioUpdate}>
+                    Save Bio
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Email Update */}
+            <div className="accordion-item">
+              <h2 className="accordion-header">
+                <button
+                  className="accordion-button collapsed"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#collapseEmail"
+                  aria-expanded="false"
+                  aria-controls="collapseEmail"
+                >
+                  2. Email Update
+                </button>
+              </h2>
+              <div
+                id="collapseEmail"
+                className="accordion-collapse collapse"
+                data-bs-parent="#accordionProfile"
+              >
+                <div className="accordion-body">
+                  <input
+                    type="email"
+                    className="form-control mb-2"
+                    placeholder="Current Email (optional)"
+                    value={currentEmail}
+                    onChange={(e) => setCurrentEmail(e.target.value)}
+                  />
+                  <input
+                    type="email"
+                    className="form-control mb-2"
+                    placeholder="New Email"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                  />
+                  <input
+                    type="password"
+                    className="form-control mb-2"
+                    placeholder="Current Password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                  />
+                  <button className="btn btn-primary" onClick={handleEmailUpdate}>
+                    Update Email
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Change Password */}
+            <div className="accordion-item">
+              <h2 className="accordion-header">
+                <button
+                  className="accordion-button collapsed"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#collapsePassword"
+                  aria-expanded="false"
+                  aria-controls="collapsePassword"
+                >
+                  3. Change Password
+                </button>
+              </h2>
+              <div
+                id="collapsePassword"
+                className="accordion-collapse collapse"
+                data-bs-parent="#accordionProfile"
+              >
+                <div className="accordion-body">
+                  <input
+                    type="password"
+                    className="form-control mb-2"
+                    placeholder="Current Password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                  />
+                  <input
+                    type="password"
+                    className="form-control mb-2"
+                    placeholder="New Password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                  />
+                  <small className="text-muted">
+                    Password must be 4 characters including uppercase, lowercase, and a special symbol.
+                  </small>
+                  <button className="btn btn-primary mt-2" onClick={handlePasswordUpdate}>
+                    Update Password
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          {/* ------------Accounts------------------*/}
+
+
           <div className="offcanvas-body d-flex flex-column gap-3">
             <button className={`threeD-btn ${profileData.isLocked ? "redBtn" : "lightGrayBtn"}`} onClick={toggleLockProfile}>
               {profileData.isLocked ? "Unlock Profile 🔓" : "Lock Profile 🔒"}
@@ -495,10 +794,39 @@ const AdminProfile = () => {
           </button>
         ))}
         <style>{`
-          .mobile-tab-bar { position: sticky; bottom:0; display:flex; justify-content:space-around; background:#fff; box-shadow:0 -3px 10px rgba(0,0,0,0.1); padding:8px 0; border-top-left-radius:15px; border-top-right-radius:15px; z-index:100;}
-          .mobile-tab-btn { flex:1; text-align:center; padding:10px 0; border:none; background:none; font-weight:600; font-size:0.9rem; color:#555; transition: all 0.2s ease; border-radius:12px; margin:0 4px;}
-          .mobile-tab-btn.active { background:#007bff; color:#fff; box-shadow:0 4px 8px rgba(0,123,255,0.3);}
-          .mobile-tab-btn:active { transform: translateY(2px);}
+          .mobile-tab-bar { 
+            position: sticky; 
+            bottom: 0; 
+            display: flex; 
+            justify-content: space-around; 
+            background: #fff; 
+            box-shadow: 0 -3px 10px rgba(0,0,0,0.1); 
+            padding: 8px 0; 
+            border-top-left-radius: 15px; 
+            border-top-right-radius: 15px; 
+            z-index: 100;
+          }
+          .mobile-tab-btn { 
+            flex: 1; 
+            text-align: center; 
+            padding: 10px 0; 
+            border: none; 
+            background: none; 
+            font-weight: 600; 
+            font-size: 0.9rem; 
+            color: #555; 
+            transition: all 0.2s ease; 
+            border-radius: 12px; 
+            margin: 0 4px;
+          }
+          .mobile-tab-btn.active { 
+            background: #007bff; 
+            color: #fff; 
+            box-shadow: 0 4px 8px rgba(0,123,255,0.3);
+          }
+          .mobile-tab-btn:active { 
+            transform: translateY(2px);
+          }
         `}</style>
       </div>
 
@@ -523,8 +851,7 @@ const AdminProfile = () => {
                     className="card-img-top rounded"
                     style={{ objectFit: "cover", height: 200, cursor: "pointer" }}
                     onClick={() => {
-                      const videoPostsFiltered = filteredPosts.filter((p) => p.type === "video");
-                      const index = videoPostsFiltered.findIndex((v) => v.id === post.id);
+                      const index = videoPosts.findIndex((v) => v.id === post.id);
                       setVideoStartIndex(index);
                       setShowVideoFeed(true);
                     }}
@@ -558,16 +885,15 @@ const AdminProfile = () => {
         </div>
       </div>
 
-      {showVideoFeed && (
+      {showVideoFeed && videoPosts.length > 0 && (
         <VideoFeed
-          videos={filteredPosts.filter((p) => p.type === "video")}
+          videos={videoPosts}
           startIndex={videoStartIndex}
           onClose={() => setShowVideoFeed(false)}
         />
       )}
 
       {showImageViewer && <ImageViewer src={showImageViewer} onClose={() => setShowImageViewer(null)} />}
-        
     </div>
   );
 };

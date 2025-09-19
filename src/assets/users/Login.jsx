@@ -1,32 +1,71 @@
 // src/assets/users/Login.jsx
 import React, { useState } from "react";
-import {
-  getAuth,
-  signInWithEmailAndPassword,
-} from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
 import { useNavigate, Link } from "react-router-dom";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
-import sendResetEmail from "../utils/email"; 
+import emailjs from "@emailjs/browser";
+
+// ---------------- EMAIL UTILS ----------------
+
+// Generate 6-digit OTP
+const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+// Generate expiry time (1 min from now)
+const getExpiryTime = () => {
+  const expiry = new Date();
+  expiry.setMinutes(expiry.getMinutes() + 1);
+  return expiry.toLocaleTimeString(); // HH:MM:SS
+};
+
+// Send OTP email via EmailJS
+const sendResetEmail = async (email) => {
+  const otp = generateOTP();
+  const expiryTime = getExpiryTime();
+
+  const serviceId = import.meta.env.VITE_SERVICE_ID;
+  const templateId = import.meta.env.VITE_EMAIL_TEMPLATE_ID;
+  const publicKey = import.meta.env.VITE_EMAIL_API_KEY;
+
+  const templateParams = {
+    user_email: email,
+    otp,
+    expiryTime,
+  };
+
+  console.log("Sending OTP Email:", templateParams); // Debugging
+
+  try {
+    const response = await emailjs.send(
+      serviceId,
+      templateId,
+      templateParams,
+      publicKey
+    );
+    return { success: true, response, otp, expiryTime };
+  } catch (error) {
+    console.error("Email send error:", error);
+    return { success: false, error };
+  }
+};
+
+// ---------------- LOGIN COMPONENT ----------------
 
 const Login = () => {
-  const [formData, setFormData] = useState({
-    email: "",
-    password: "",
-  });
+  const [formData, setFormData] = useState({ email: "", password: "" });
   const [loading, setLoading] = useState(false);
   const [resetStage, setResetStage] = useState(false);
 
   const auth = getAuth();
   const navigate = useNavigate();
 
-  // Input handler
+  // ---------------- HANDLE INPUT ----------------
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  // Normal login
+  // ---------------- NORMAL LOGIN ----------------
   const handleLogin = async (e) => {
     e.preventDefault();
     const { email, password } = formData;
@@ -44,22 +83,23 @@ const Login = () => {
     }
   };
 
-  // Forgot password using EmailJS
+  // ---------------- FORGOT PASSWORD ----------------
   const handleForgotPassword = async () => {
     const { email } = formData;
     if (!email) return toast.error("Enter your email!");
 
     setLoading(true);
     try {
-      const { success, error } = await sendResetEmail(email);
+      const { success, otp, expiryTime, error } = await sendResetEmail(email);
 
       if (success) {
-        toast.success(`Password reset email sent to ${email}`);
-        setResetStage(false); // back to login
+        toast.success(`OTP sent to ${email}. Expires at ${expiryTime}`);
+        console.log("Generated OTP:", otp); // Debugging: remove in production
+        setResetStage(false);
         setFormData({ email: "", password: "" });
       } else {
         console.error(error);
-        toast.error("Failed to send reset email. Try again later.");
+        toast.error("Failed to send OTP. Try again later.");
       }
     } catch (err) {
       toast.error("Something went wrong!");
@@ -75,7 +115,7 @@ const Login = () => {
       </h3>
 
       {!resetStage ? (
-        // ----------------- LOGIN FORM -----------------
+        // ---------------- LOGIN FORM ----------------
         <form onSubmit={handleLogin} className="card p-4 shadow-sm">
           <input
             type="email"
@@ -95,7 +135,6 @@ const Login = () => {
             className="form-control mb-3"
             required
           />
-
           <button
             type="submit"
             className="btn btn-primary w-100 mb-2"
@@ -103,7 +142,6 @@ const Login = () => {
           >
             {loading ? "Logging in..." : "Login"}
           </button>
-
           <button
             type="button"
             className="btn btn-link w-100"
@@ -113,7 +151,7 @@ const Login = () => {
           </button>
         </form>
       ) : (
-        // ----------------- FORGOT PASSWORD FORM -----------------
+        // ---------------- FORGOT PASSWORD FORM ----------------
         <form className="card p-4 shadow-sm">
           <input
             type="email"
@@ -130,7 +168,7 @@ const Login = () => {
             onClick={handleForgotPassword}
             disabled={loading}
           >
-            {loading ? "Sending..." : "Send Reset Email"}
+            {loading ? "Sending..." : "Send OTP"}
           </button>
           <button
             type="button"
@@ -145,6 +183,7 @@ const Login = () => {
       <p className="text-center mt-3">
         Don’t have an account? <Link to="/register">Register</Link>
       </p>
+
       <ToastContainer />
     </div>
   );
