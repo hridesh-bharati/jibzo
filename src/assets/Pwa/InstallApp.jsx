@@ -3,18 +3,12 @@ import { useEffect, useState } from "react";
 export default function InstallButton() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstalled, setIsInstalled] = useState(false);
-  const [isDismissed, setIsDismissed] = useState(false); // new state
+  const [isDismissed, setIsDismissed] = useState(false); // temporary only
 
   useEffect(() => {
     // Check if already installed
     if (localStorage.getItem("appInstalled") === "true") {
       setIsInstalled(true);
-      return;
-    }
-
-    // Check if user already dismissed
-    if (localStorage.getItem("appInstallDismissed") === "true") {
-      setIsDismissed(true);
       return;
     }
 
@@ -50,11 +44,9 @@ export default function InstallButton() {
   };
 
   const handleDismissClick = () => {
-    setIsDismissed(true);
-    localStorage.setItem("appInstallDismissed", "true");
+    setIsDismissed(true); // temporary only (in memory)
   };
 
-  // If installed or dismissed, don't show button
   if (isInstalled || isDismissed) return null;
 
   return (
@@ -97,8 +89,8 @@ const installButtonStyle = {
 };
 
 const closeButtonStyle = {
-  backgroundColor: "#ecececff",
-  color: "white",
+  backgroundColor: "#ececec",
+  color: "black",
   border: "none",
   borderRadius: "50%",
   width: "36px",
