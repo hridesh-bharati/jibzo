@@ -97,7 +97,7 @@ const installButtonStyle = {
 };
 
 const closeButtonStyle = {
-  backgroundColor: "#dc3545",
+  backgroundColor: "#ecececff",
   color: "white",
   border: "none",
   borderRadius: "50%",
