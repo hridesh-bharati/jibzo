@@ -27,7 +27,7 @@ import UploadStatus from "./assets/Status/UploadStatus";
 import ViewStatus from "./assets/Status/ViewStatuses";
 import DeleteAccount from "./assets/users/DeleteAccount";
 import Support from "./assets/users/Support";
-// import InstallPrompt from "./assets/Pwa/InstallApp";
+import InstallPrompt from "./assets/Pwa/InstallApp";
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -54,7 +54,7 @@ const App = () => {
 
   return (
     <>
-      {/* <InstallPrompt /> */}
+      <InstallPrompt />
       <Routes>
         {/* Root redirects to login */}
         <Route path="/" element={<Navigate to="/login" />} />
