@@ -1,12 +1,10 @@
-// src/assets/users/AdminProfile.jsx
 import React, { useEffect, useState, useRef } from "react";
 import { db, auth } from "../../assets/utils/firebaseConfig";
-import { ref, onValue, update, remove } from "firebase/database";
+import { ref, onValue, update } from "firebase/database";
 import {
   signOut,
   updateProfile,
   onAuthStateChanged,
-  signInWithEmailAndPassword,
   updateEmail,
   sendEmailVerification,
   updatePassword,
@@ -17,6 +15,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import axios from "axios";
 import DeleteAccount from "./DeleteAccount";
+import "./AdminProfile.css"
+import GetPost from "../uploads/GetPost";
 
 /* =========================
    Fullscreen Video Feed
@@ -124,7 +124,7 @@ const ImageViewer = ({ src, onClose }) => (
 
 const AdminProfile = () => {
   const [profileData, setProfileData] = useState(null);
-  const [userPosts, setUserPosts] = useState([]);
+  // Removed userPosts state
   const [loading, setLoading] = useState(true);
   const [file, setFile] = useState(null);
   const [bio, setBio] = useState("");
@@ -139,13 +139,18 @@ const AdminProfile = () => {
   const [socialLinks, setSocialLinks] = useState({ list: [] });
   const [wallpaper, setWallpaper] = useState("");
 
-  // Email and password update states
+  // Email Update states
   const [currentEmail, setCurrentEmail] = useState("");
-  const [newEmail, setNewEmail] = useState("");
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
+  const [emailPassword, setEmailPassword] = useState("");
   const [emailUpdateLoading, setEmailUpdateLoading] = useState(false);
+
+  // Password Update states
+  const [passwordCurrent, setPasswordCurrent] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [passwordUpdateLoading, setPasswordUpdateLoading] = useState(false);
+
+  // For Accordion profile-actions canvas
+  const [currentPassword, setCurrentPassword] = useState("");
 
   const navigate = useNavigate();
   const { uid: paramUid } = useParams();
@@ -182,7 +187,7 @@ const AdminProfile = () => {
     return () => unsubscribe();
   }, [paramUid, navigate]);
 
-  // Fetch user data & posts
+  // Fetch user data (removed posts fetch)
   useEffect(() => {
     if (!uid) return;
 
@@ -210,22 +215,11 @@ const AdminProfile = () => {
       setLoading(false);
     });
 
-    const postsRef = ref(db, "galleryImages");
-    const unsubscribePosts = onValue(postsRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const postsArray = Object.entries(data)
-          .map(([id, value]) => ({ id, ...value }))
-          .filter((post) => post.userId === uid);
-        setUserPosts(postsArray);
-      } else {
-        setUserPosts([]);
-      }
-    });
+    // Removed postsRef and posts fetching
 
     return () => {
       unsubscribeUser();
-      unsubscribePosts();
+      // Removed unsubscribePosts
     };
   }, [uid]);
 
@@ -294,32 +288,27 @@ const AdminProfile = () => {
     }
   };
 
-  // Update Email
   const handleEmailUpdate = async () => {
-    if (!currentUser || !newEmail || !currentPassword) return toast.warn("Fill all required fields!");
-    if (newEmail === currentUser.email) return toast.warn("New email must be different from current email!");
+    const passwordToUse = emailPassword || currentPassword;
+    if (!currentUser || !passwordToUse)
+      return toast.warn("Enter your current password!");
 
     setEmailUpdateLoading(true);
     try {
-      // Re-authenticate user
-      const credential = EmailAuthProvider.credential(currentUser.email, currentPassword);
+      // Re-authenticate user with current email + password
+      const credential = EmailAuthProvider.credential(currentUser.email, passwordToUse);
       await reauthenticateWithCredential(currentUser, credential);
 
-      // Update email
-      await updateEmail(currentUser, newEmail);
+      // Update email with current email (no change needed)
+      // This function is now just for verification/reauthentication
 
-      // Send verification email
+      // Send verification
       await sendEmailVerification(currentUser);
 
-      // Update email in database
-      await update(ref(db, `usersData/${currentUser.uid}`), { email: newEmail });
-
-      setProfileData((prev) => ({ ...prev, email: newEmail }));
-      setCurrentEmail(newEmail);
-      setNewEmail("");
+      setEmailPassword("");
       setCurrentPassword("");
 
-      toast.success("📧 Email updated! Please verify your new email.");
+      toast.success("✅ Email verified! Check your inbox for the verification email.");
     } catch (err) {
       console.error(err);
       toast.error(err.message);
@@ -328,26 +317,25 @@ const AdminProfile = () => {
     }
   };
 
-  // Update Password
   const handlePasswordUpdate = async () => {
-    if (!currentUser || !currentPassword || !newPassword) return toast.warn("Fill all required fields!");
+    const passwordToUse = passwordCurrent || currentPassword;
+    if (!currentUser || !passwordToUse || !newPassword)
+      return toast.warn("Fill all required fields!");
 
-    // Validate new password
     if (!validatePassword(newPassword)) {
-      return toast.error("Password must be at least 8 characters with uppercase, lowercase, number, and special character!");
+      return toast.error("Password must include uppercase, lowercase, number, and special character!");
     }
 
     setPasswordUpdateLoading(true);
     try {
-      // Re-authenticate user
-      const credential = EmailAuthProvider.credential(currentUser.email, currentPassword);
+      const credential = EmailAuthProvider.credential(currentUser.email, passwordToUse);
       await reauthenticateWithCredential(currentUser, credential);
 
-      // Update password
       await updatePassword(currentUser, newPassword);
 
-      setCurrentPassword("");
+      setPasswordCurrent("");
       setNewPassword("");
+      setCurrentPassword("");
 
       toast.success("🔒 Password updated successfully!");
     } catch (err) {
@@ -374,18 +362,7 @@ const AdminProfile = () => {
     }
   };
 
-  // Delete Post
-  const handleDeletePost = async (postId) => {
-    if (!postId) return;
-    try {
-      await remove(ref(db, `galleryImages/${postId}`));
-      setUserPosts((prev) => prev.filter((p) => p.id !== postId));
-      toast.success("🗑️ Post deleted!");
-    } catch (err) {
-      console.error(err);
-      toast.error("❌ Failed to delete post!");
-    }
-  };
+  // Removed handleDeletePost
 
   // Lock/Unlock Profile
   const toggleLockProfile = async () => {
@@ -415,14 +392,10 @@ const AdminProfile = () => {
   if (!profileData) return <p className="m-5 p-5 text-center">No profile found.</p>;
 
   const isOwner = currentUser?.uid === uid;
-  const filteredPosts = activeTab === "all"
-    ? userPosts
-    : userPosts.filter((p) => p.type === activeTab);
-
-  const videoPosts = filteredPosts.filter((p) => p.type === "video");
+  // Removed filteredPosts and videoPosts
 
   return (
-    <div className="container" style={{ maxWidth: 900 }}>
+    <div className="container  p-0" style={{ maxWidth: 900 }}>
       {/* Profile Info */}
       <div className="row d-flex align-items-start justify-content-center mb-4 gap-3">
         <div className="col-md-6 d-flex flex-column align-items-center">
@@ -474,21 +447,17 @@ const AdminProfile = () => {
         </div>
 
         <div className="col-md-6 text-start d-flex flex-column justify-content-center gap-2">
-          <div className="d-flex justify-content-between">
+          <div className="d-flex justify-content-between m-3">
             <h2 className="fw-bold">{profileData.username}</h2>
             {isOwner && (
-              <button
-                className="threeD-btn greenBtn"
-                data-bs-toggle="offcanvas"
-                data-bs-target="#editProfileCanvas"
-              >
+              <button className="theme-btn" data-bs-toggle="offcanvas" data-bs-target="#editProfileCanvas">
                 Edit Profile
               </button>
             )}
           </div>
 
-          <p className="mb-1"><strong>Email:</strong> {profileData.email || "Not provided"}</p>
-          <p className="mb-1"><strong>Bio:</strong> {profileData.bio || "No bio yet"}</p>
+          <p className="mx-2 my-0"><strong>Email:</strong> {profileData.email || "Not provided"}</p>
+          <p className="mx-2 my-0"><strong>Bio:</strong> {profileData.bio || "No bio yet"}</p>
 
           {/* Social Links */}
           <div className="mb-2">
@@ -520,7 +489,6 @@ const AdminProfile = () => {
       </div>
 
       {/* Edit Profile Offcanvas */}
-      {/* ---------- Edit Profile Offcanvas (Profile / Security / Actions) ---------- */}
       {isOwner && (
         <div className="offcanvas offcanvas-end" tabIndex="-1" id="editProfileCanvas" style={{ width: 520 }}>
           <div className="offcanvas-header border-bottom">
@@ -587,20 +555,25 @@ const AdminProfile = () => {
 
               {/* Security Tab */}
               <div className="tab-pane fade" id="security" role="tabpanel">
+                {/* Email Verification Section */}
                 <div className="mb-3">
-                  <h6 className="mb-2">Email</h6>
+                  <h6 className="mb-2">Verify Email</h6>
                   <input type="email" className="form-control mb-2" value={currentEmail} disabled />
-                  <input type="email" className="form-control mb-2" placeholder="New email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
-                  <input type="password" className="form-control mb-2" placeholder="Current password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
-                  <button className="btn btn-primary btn-sm" onClick={handleEmailUpdate} disabled={emailUpdateLoading}>{emailUpdateLoading ? "Updating..." : "Update Email"}</button>
+                  <input type="password" className="form-control mb-2" placeholder="Current password" value={emailPassword} onChange={(e) => setEmailPassword(e.target.value)} />
+                  <button className="btn btn-primary btn-sm" onClick={handleEmailUpdate} disabled={emailUpdateLoading}>
+                    {emailUpdateLoading ? "Verifying..." : "Verify Email"}
+                  </button>
                 </div>
 
+                {/* Password Section */}
                 <div className="mb-3">
                   <h6 className="mb-2">Change Password</h6>
-                  <input type="password" className="form-control mb-2" placeholder="Current password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+                  <input type="password" className="form-control mb-2" placeholder="Current password" value={passwordCurrent} onChange={(e) => setPasswordCurrent(e.target.value)} />
                   <input type="password" className="form-control mb-2" placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
                   <small className="text-muted d-block mb-2">Min 8 chars, uppercase, lowercase, number & special char.</small>
-                  <button className="btn btn-primary btn-sm" onClick={handlePasswordUpdate} disabled={passwordUpdateLoading}>{passwordUpdateLoading ? "Updating..." : "Update Password"}</button>
+                  <button className="btn btn-primary btn-sm" onClick={handlePasswordUpdate} disabled={passwordUpdateLoading}>
+                    {passwordUpdateLoading ? "Updating..." : "Update Password"}
+                  </button>
                 </div>
               </div>
 
@@ -630,7 +603,6 @@ const AdminProfile = () => {
         </div>
       )}
 
-
       {/* Profile Actions Offcanvas */}
       {isOwner && (
         <div className="offcanvas offcanvas-end" tabIndex="-1" id="profileActionsCanvas">
@@ -638,8 +610,6 @@ const AdminProfile = () => {
             <h5 className="offcanvas-title">Profile Actions</h5>
             <button type="button" className="btn-close text-reset" data-bs-dismiss="offcanvas"></button>
           </div>
-
-
 
           {/* -----------Accounts---------------- */}
           <div className="accordion accordion-flush" id="accordionProfile">
@@ -677,7 +647,7 @@ const AdminProfile = () => {
               </div>
             </div>
 
-            {/* 2. Email Update */}
+            {/* 2. Email Verification */}
             <div className="accordion-item">
               <h2 className="accordion-header">
                 <button
@@ -688,7 +658,7 @@ const AdminProfile = () => {
                   aria-expanded="false"
                   aria-controls="collapseEmail"
                 >
-                  2. Email Update
+                  2. Verify Email
                 </button>
               </h2>
               <div
@@ -700,16 +670,8 @@ const AdminProfile = () => {
                   <input
                     type="email"
                     className="form-control mb-2"
-                    placeholder="Current Email (optional)"
                     value={currentEmail}
-                    onChange={(e) => setCurrentEmail(e.target.value)}
-                  />
-                  <input
-                    type="email"
-                    className="form-control mb-2"
-                    placeholder="New Email"
-                    value={newEmail}
-                    onChange={(e) => setNewEmail(e.target.value)}
+                    disabled
                   />
                   <input
                     type="password"
@@ -719,7 +681,7 @@ const AdminProfile = () => {
                     onChange={(e) => setCurrentPassword(e.target.value)}
                   />
                   <button className="btn btn-primary" onClick={handleEmailUpdate}>
-                    Update Email
+                    Verify Email
                   </button>
                 </div>
               </div>
@@ -760,7 +722,7 @@ const AdminProfile = () => {
                     onChange={(e) => setNewPassword(e.target.value)}
                   />
                   <small className="text-muted">
-                    Password must be 4 characters including uppercase, lowercase, and a special symbol.
+                    Password must include uppercase, lowercase, number & special symbol (min 8 chars).
                   </small>
                   <button className="btn btn-primary mt-2" onClick={handlePasswordUpdate}>
                     Update Password
@@ -770,7 +732,6 @@ const AdminProfile = () => {
             </div>
           </div>
           {/* ------------Accounts------------------*/}
-
 
           <div className="offcanvas-body d-flex flex-column gap-3">
             <button className={`threeD-btn ${profileData.isLocked ? "redBtn" : "lightGrayBtn"}`} onClick={toggleLockProfile}>
@@ -782,118 +743,12 @@ const AdminProfile = () => {
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="mobile-tab-bar">
-        {"all,image,video,pdf".split(",").map((tab) => (
-          <button
-            key={tab}
-            className={`mobile-tab-btn ${activeTab === tab ? "active" : ""}`}
-            onClick={() => setActiveTab(tab)}
-          >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
-          </button>
-        ))}
-        <style>{`
-          .mobile-tab-bar { 
-            position: sticky; 
-            bottom: 0; 
-            display: flex; 
-            justify-content: space-around; 
-            background: #fff; 
-            box-shadow: 0 -3px 10px rgba(0,0,0,0.1); 
-            padding: 8px 0; 
-            border-top-left-radius: 15px; 
-            border-top-right-radius: 15px; 
-            z-index: 100;
-          }
-          .mobile-tab-btn { 
-            flex: 1; 
-            text-align: center; 
-            padding: 10px 0; 
-            border: none; 
-            background: none; 
-            font-weight: 600; 
-            font-size: 0.9rem; 
-            color: #555; 
-            transition: all 0.2s ease; 
-            border-radius: 12px; 
-            margin: 0 4px;
-          }
-          .mobile-tab-btn.active { 
-            background: #007bff; 
-            color: #fff; 
-            box-shadow: 0 4px 8px rgba(0,123,255,0.3);
-          }
-          .mobile-tab-btn:active { 
-            transform: translateY(2px);
-          }
-        `}</style>
+      {/* Posts -  all post display */}
+      <GetPost uid={uid} />
+      <div className="bg-light text-center p-4 rounded shadow-sm mb-5">
+        <h5 className="fw-bold mb-1">Hridesh</h5>
+        <p className="text-muted mb-0" style={{ fontSize: "0.7rem" }}>Founder & Creator of Jibzo App</p>
       </div>
-
-      {/* Posts */}
-      <div className="row g-3 mb-5 pb-4">
-        {filteredPosts.length > 0 ? (
-          filteredPosts.map((post) => (
-            <div key={post.id} className="col-12 col-sm-6 col-md-4">
-              <div className="card shadow-sm hover-shadow rounded">
-                {post.type === "image" && (
-                  <img
-                    src={post.src}
-                    className="card-img-top rounded"
-                    alt={post.caption || ""}
-                    style={{ objectFit: "cover", height: 200, cursor: "pointer" }}
-                    onClick={() => setShowImageViewer(post.src)}
-                  />
-                )}
-                {post.type === "video" && (
-                  <video
-                    src={post.src}
-                    className="card-img-top rounded"
-                    style={{ objectFit: "cover", height: 200, cursor: "pointer" }}
-                    onClick={() => {
-                      const index = videoPosts.findIndex((v) => v.id === post.id);
-                      setVideoStartIndex(index);
-                      setShowVideoFeed(true);
-                    }}
-                  />
-                )}
-                {post.type === "pdf" && (
-                  <iframe
-                    src={`https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(post.src)}`}
-                    className="card-img-top rounded"
-                    style={{ height: 200 }}
-                    title="PDF Preview"
-                  />
-                )}
-                <div className="card-body d-flex justify-content-between align-items-center">
-                  <p className="card-text mb-0">{post.caption || ""}</p>
-                  {isOwner && (
-                    <button className="btn btn-sm btn-danger" onClick={() => handleDeletePost(post.id)}>
-                      Delete
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))
-        ) : (
-          <p className="text-center">No posts yet.</p>
-        )}
-        <div className="bg-light text-center p-4 rounded shadow-sm">
-          <h5 className="fw-bold mb-1">Hridesh</h5>
-          <p className="text-muted mb-0" style={{ fontSize: "0.7rem" }}>Founder & Creator of Jibzo App</p>
-        </div>
-      </div>
-
-      {showVideoFeed && videoPosts.length > 0 && (
-        <VideoFeed
-          videos={videoPosts}
-          startIndex={videoStartIndex}
-          onClose={() => setShowVideoFeed(false)}
-        />
-      )}
-
-      {showImageViewer && <ImageViewer src={showImageViewer} onClose={() => setShowImageViewer(null)} />}
     </div>
   );
 };

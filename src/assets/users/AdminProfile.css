@@ -1,0 +1,66 @@
+/* Glassmorphism in light mode */
+.glass-card {
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 20px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(200, 200, 200, 0.3);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+  transition: all 0.3s ease;
+}
+.glass-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 20px rgba(0,0,0,0.12);
+}
+
+/* Airtel-Thanks style gradient button */
+.theme-btn {
+  padding: 8px 16px;
+  border-radius: 12px;
+  font-weight: 600;
+  border: none;
+  color: #fff;
+  background: linear-gradient(135deg, #ff0048, #ff6a00);
+  box-shadow: 0 4px 10px rgba(255,0,72,0.3);
+  transition: 0.3s;
+}
+.theme-btn:hover {
+  opacity: 0.95;
+  transform: scale(1.03);
+}
+
+/* Cards (posts) */
+.card-img-top {
+  border-radius: 15px 15px 0 0;
+}
+
+/* Offcanvas light glass */
+.offcanvas {
+  background: rgba(255, 255, 255, 0.95);
+  color: #333;
+  backdrop-filter: blur(12px);
+}
+.offcanvas .nav-link.active {
+  background: linear-gradient(135deg, #ff0048, #ff6a00);
+  color: #fff !important;
+  border-radius: 10px;
+}
+
+/* Mobile tab bar in light vivo style */
+.mobile-tab-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: space-around;
+  background: rgba(255,255,255,0.95);
+  backdrop-filter: blur(8px);
+  padding: 8px 0;
+  border-top-left-radius: 18px;
+  border-top-right-radius: 18px;
+  box-shadow: 0 -4px 15px rgba(0,0,0,0.08);
+}
+.mobile-tab-btn.active {
+  background: linear-gradient(135deg, #ff0048, #ff6a00);
+  color: #fff;
+  border-radius: 12px;
+}

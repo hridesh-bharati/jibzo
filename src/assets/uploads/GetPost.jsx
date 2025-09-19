@@ -13,6 +13,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import Heart from "./Heart";
 import ShareButton from "./ShareBtn";
 import "./Gallery.css";
+import DownloadBtn from "./DownloadBtn";
 
 /* -----------------------
    Skeleton loader
@@ -498,7 +499,7 @@ function PdfPreview({ url, name }) {
 /* -----------------------
    Main GetPost component
 ----------------------- */
-export default function GetPost({ showFilter = true }) {
+export default function GetPost({ showFilter = true, uid }) {
   const [posts, setPosts] = useState([]);
   const [filter, setFilter] = useState("all");
   const [commentText, setCommentText] = useState("");
@@ -654,8 +655,11 @@ export default function GetPost({ showFilter = true }) {
   }, [fullscreenSrc, fullscreenImage]);
 
   const visiblePosts =
-    filter === "all" ? posts : posts.filter((p) => p.type === filter);
-
+    uid
+      ? posts.filter((p) => p.userId === uid && (filter === "all" || p.type === filter))
+      : filter === "all"
+        ? posts
+        : posts.filter((p) => p.type === filter);
   const renderPreview = useCallback(
     (post) => {
       if (post.type === "image") {
@@ -789,26 +793,29 @@ export default function GetPost({ showFilter = true }) {
                           {likeCount} likes
                         </small>
 
-                        <button
-                          className="btn btn-link text-muted p-0 mx-3"
-                          onClick={() => openComments(post)}
-                        >
-                          <i className="bi bi-chat fs-1"></i>
-                        </button>
-                        <small className="text-muted">{commentCount}</small>
+                        <div className="mx-3">
+                          <button
+                            className="btn btn-link text-muted p-0 me-2"
+                            onClick={() => openComments(post)}
+                          >
+                            <i className="bi bi-chat fs-1"></i>
+                          </button>
+                          <small className="text-muted">{commentCount}</small>
 
+                        </div>
                         <ShareButton link={post.src} />
+                        <DownloadBtn link={post.src} />
                       </div>
 
                       {post.type === "pdf" && (
                         <button
-                          className="btn btn-sm btn-light d-flex align-items-center"
+                          className="btn btn-sm btn-light d-flex align-items-center me-2"
                           onClick={() =>
                             window.open(post.url || post.src, "_blank")
                           }
                         >
-                          <i className="bi bi-file-earmark-pdf fs-4 text-danger me-2"></i>
-                          Open PDF
+                          <i className="bi bi-file-earmark-pdf fs-4 text-danger"></i>
+                          Open
                         </button>
                       )}
                     </div>

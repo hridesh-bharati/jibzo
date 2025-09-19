@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 
-export default function ShareButton({ url, title = "Check this out!" }) {
+export default function ShareButton({ link, title = "Check this out!" }) {
+  const url = link || window.location.href;
   const [open, setOpen] = useState(false);
 
   const shareLinks = [
@@ -98,7 +99,7 @@ export default function ShareButton({ url, title = "Check this out!" }) {
           transition: transform 0.2s ease;
         }
         .share-item:hover { transform: scale(1.1); }
-        .share-icon { font-size: 28px; } /* icons slightly bigger */
+        .share-icon { font-size: 28px; }
       `}</style>
     </>
   );
