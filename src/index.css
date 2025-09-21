@@ -1,0 +1,124 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  background: transparent;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+#root::-webkit-scrollbar {
+  display: none;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  /* Full viewport height */
+}
+
+.myshadow {
+  box-shadow: 1px 1px 8px #dddddd;
+}
+
+input {
+  border: thick;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/*-----------------3D btns--------------------*/
+/* Base 3D button */
+.threeD-btn {
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  box-shadow: 0 4px var(--btn-shadow, #0056b3);
+  background: var(--btn-bg, #007bff);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.threeD-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 2px var(--btn-shadow, #0056b3);
+}
+
+.threeD-btn:hover {
+  background: var(--btn-hover, #0056b3);
+}
+
+/* Color variants */
+.redBtn {
+  --btn-bg: #dc3545;
+  --btn-shadow: #a71d2a;
+  --btn-hover: #a71d2a;
+}
+
+.yellowBtn {
+  --btn-bg: #ffc107;
+  --btn-shadow: #cc9a06;
+  --btn-hover: #cc9a06;
+  color: #000;
+  /* better contrast for yellow */
+}
+
+.blueBtn {
+  --btn-bg: #007bff;
+  --btn-shadow: #0056b3;
+  --btn-hover: #0056b3;
+}
+
+.blackBtn {
+  --btn-bg: #343a40;
+  --btn-shadow: #1d2124;
+  --btn-hover: #1d2124;
+}
+
+/* Light gray 3D button for Lock/Unlock */
+.lightGrayBtn {
+  --btn-bg: #d3d3d3;
+  --btn-shadow: #a9a9a9;
+  --btn-hover: #b0b0b0;
+  color: #000;
+  /* black text for contrast */
+}
+/* chat btn  */
+.chat-3d-btn {
+  background: linear-gradient(145deg, #4e54c8, #8f94fb);
+  color: #fff;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  border-radius: 12px;
+  box-shadow: 0 6px #3b40a4, 0 6px 10px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+  text-decoration: none;
+}
+
+.chat-3d-btn:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px #3b40a4, 0 10px 15px rgba(0, 0, 0, 0.2);
+}
+
+.chat-3d-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 4px #3b40a4, 0 4px 6px rgba(0, 0, 0, 0.2);
+}
+
+.selection-none{
+  user-select: none !important;
+}

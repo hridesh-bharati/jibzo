@@ -1,0 +1,60 @@
+ .navbar {
+   background-color: #fff;
+   position: sticky;
+   top: 0;
+   z-index: 1000;
+   padding: 0.5rem 1rem;
+ }
+
+ .icon-btn {
+   position: relative;
+   background: none;
+   border: none;
+   padding: 8px;
+   border-radius: 50%;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+ }
+
+ .icon-btn:active {
+   background-color: rgba(0, 0, 0, 0.05);
+ }
+
+ .badge {
+   position: absolute;
+   top: 0;
+   right: 0;
+   background: red;
+   color: #fff;
+   font-size: 0.65rem;
+   padding: 2px 5px;
+   border-radius: 50%;
+   transform: translate(50%, -50%);
+ }
+
+ .dropdown-card {
+   position: absolute;
+   top: 50px;
+   right: -10px;
+   width: 250px;
+   max-height: 350px;
+   overflow-y: auto;
+   background: #fff;
+   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.2);
+   border-radius: 12px;
+   padding: 10px;
+   z-index: 2000;
+   font-size: 0.7rem;
+ }
+
+ .avatar-sm {
+   width: 36px;
+   height: 36px;
+   border-radius: 50%;
+   object-fit: cover;
+ }
+
+ .cursor-pointer {
+   cursor: pointer;
+ }

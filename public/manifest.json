@@ -1,0 +1,64 @@
+{
+  "name": "Jibzo - Share. Connect. Create.",
+  "short_name": "Jibzo",
+  "lang": "en-IN",
+  "dir": "ltr",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#1976d2",
+  "description": "Jibzo is a modern platform to share images, videos, and documents with creative filters and community features.",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "New Post",
+      "short_name": "Post",
+      "description": "Upload image, video or PDF",
+      "url": "/upload",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/home.jpg",
+      "sizes": "1080x1920",
+      "type": "image/jpg",
+      "label": "Home Feed"
+    },
+    {
+      "src": "/screenshots/upload.jpg",
+      "sizes": "1080x1920",
+      "type": "image/jpg",
+      "label": "Upload Screen"
+    }
+  ],
+  "categories": [
+    "social",
+    "photography",
+    "productivity",
+    "media"
+  ],
+  "prefer_related_applications": false,
+  "related_applications": []
+}

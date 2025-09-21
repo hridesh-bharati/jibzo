@@ -1,0 +1,25 @@
+:root {
+    --color1: "#015761"
+}
+
+.color1 {
+    color: #015761;
+}
+
+.bgColor1 {
+    background-color: #015761;
+}
+.bgColor2{
+    background-color: #024ca0ff;
+}
+
+.heading1 {
+    color: #015761;
+    font-weight: bolder;
+}
+
+/* utilities classes */
+.text-justify {
+    text-align: justify !important;
+}
+
