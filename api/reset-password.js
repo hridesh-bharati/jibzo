@@ -1,10 +1,14 @@
-
-// api\reset-password.js
+// api/reset-password.js
 import admin from "firebase-admin";
 
 if (!admin.apps.length) {
-  const serviceAccount = JSON.parse(process.env.FIREBASE_ADMIN_KEY);
-  admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+    }),
+  });
 }
 
 export default async function handler(req, res) {
@@ -20,7 +24,7 @@ export default async function handler(req, res) {
     await admin.auth().updateUser(user.uid, { password: newPassword });
     res.status(200).json({ success: true, message: "Password updated!" });
   } catch (err) {
-    console.error(err);
+    console.error("Reset password error:", err);
     res.status(500).json({ success: false, message: "Failed to update password" });
   }
 }

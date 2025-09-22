@@ -47,6 +47,7 @@ const Login = () => {
       await set(ref(db, `otp/${email.replace(/\./g, "_")}`), { otp, createdAt: Date.now() });
       // const res = await axios.post("http://localhost:5000/api/sendemail", { email, otp });
       const res = await axios.post("/api/sendemail", { email, otp });
+
       if (res.data.success) {
         toast.success(`OTP sent to ${email}`);
         setOtpSent(true);
