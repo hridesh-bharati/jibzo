@@ -50,7 +50,7 @@
 import React, { useEffect, useState } from "react";
 import { db, auth } from "../../assets/utils/firebaseConfig";
 import { ref, onValue, update, get } from "firebase/database";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, Link } from "react-router-dom";
 import { toast } from "react-toastify";
 
 export default function Followers() {
@@ -132,7 +132,12 @@ export default function Followers() {
 
   return (
     <div className="container mt-3">
-      <h4>Followers</h4>
+      <div className="d-flex justify-content-between align-items-center p-3 bg-white shadow-sm rounded-3 mb-3">
+        <h4 className="mb-0 text-primary">Followers</h4>
+        <Link to="/all-insta-users" className="btn btn-outline-primary btn-sm">
+          View All Users
+        </Link>
+      </div>
       {followersList.length === 0 ? (
         <p>No followers</p>
       ) : (

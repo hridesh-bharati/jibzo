@@ -219,13 +219,36 @@ function CommentsOffcanvas({
                       <i className="bi bi-trash3-fill"></i>
                     </button>
                   )}
+
                 </div>
+
                 <small className="text-muted">
                   {c.timestamp ? new Date(c.timestamp).toLocaleDateString() : "Just now"}
                 </small>
               </div>
+
             </div>
+
           ))}
+          <div className="input-group">
+            <input
+              type="text"
+              className="form-control"
+              placeholder="Add a comment..."
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              onKeyDown={(e) =>
+                e.key === "Enter" && addComment(post.id)
+              }
+            />
+            <button
+              className="btn btn-primary"
+              disabled={!commentText.trim()}
+              onClick={() => addComment(post.id)}
+            >
+              Post
+            </button>
+          </div>
         </div>
 
         <div className="p-3 border-top bg-light">
@@ -336,6 +359,8 @@ function ReelsPlayer({
           const likeCount = post.likes ? Object.keys(post.likes).length : 0;
           const comments = post.comments ? Object.entries(post.comments) : [];
           const commentCount = comments.length;
+          const [showIcon, setShowIcon] = useState(null);
+          const [animate, setAnimate] = useState(false);
 
           const isPostAdmin =
             (currentUser?.email || "").toLowerCase() ===
@@ -355,16 +380,86 @@ function ReelsPlayer({
                 overflow: "hidden",
               }}
             >
-              <video
-                ref={(el) => (videoRefs.current[post.id] = el)}
-                data-id={post.id}
-                src={post.src}
-                loop
-                playsInline
-                muted={true}
-                className="p-0"
-                style={{ width: "100%", height: "100%" }}
-              />
+              <div className="position-relative" style={{ width: "100%", height: "100%" }}>
+                <video
+                  ref={(el) => (videoRefs.current[post.id] = el)}
+                  data-id={post.id}
+                  src={post.src}
+                  loop
+                  playsInline
+                  muted={false}
+                  className="p-0"
+                  style={{ width: "100%", height: "100%", cursor: "pointer" }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const videoEl = videoRefs.current[post.id];
+                    if (!videoEl) return;
+
+                    // Single click = Play/Pause toggle
+                    if (videoEl.paused) {
+                      videoEl.play();
+                      setActiveVideo(post.id);
+                      setShowIcon({ type: "play" });
+                    } else {
+                      videoEl.pause();
+                      setActiveVideo(null);
+                      setShowIcon({ type: "pause" });
+                    }
+
+                    // icon auto hide after 1s
+                    setAnimate(true);
+                    setTimeout(() => {
+                      setAnimate(false);
+                      setShowIcon(null);
+                    }, 1000);
+                  }}
+                  onDoubleClick={(e) => {
+                    const videoEl = videoRefs.current[post.id];
+                    if (!videoEl) return;
+
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const clickX = e.clientX - rect.left;
+
+                    if (clickX < rect.width / 2) {
+                      // Left side → -10s
+                      videoEl.currentTime = Math.max(0, videoEl.currentTime - 10);
+                      setShowIcon({ type: "rewind" });
+                    } else {
+                      // Right side → +10s
+                      videoEl.currentTime = Math.min(videoEl.duration, videoEl.currentTime + 10);
+                      setShowIcon({ type: "forward" });
+                    }
+
+                    setAnimate(true);
+                    setTimeout(() => {
+                      setAnimate(false);
+                      setShowIcon(null);
+                    }, 1000);
+                  }}
+                />
+
+                {/* Overlay Icon */}
+                {showIcon && (
+                  <div
+                    className="position-absolute top-50 start-50 translate-middle"
+                    style={{
+                      fontSize: "3rem",
+                      color: "white",
+                      textShadow: "0px 0px 15px rgba(0,0,0,0.8)",
+                      pointerEvents: "none",
+                      opacity: animate ? 1 : 0,
+                      transform: animate ? "scale(1)" : "scale(1.5)",
+                      transition: "opacity 1s ease, transform 1s ease",
+                    }}
+                  >
+                    {showIcon.type === "play" && <i className="bi bi-play-circle-fill"></i>}
+                    {showIcon.type === "pause" && <i className="bi bi-pause-circle-fill"></i>}
+                    {showIcon.type === "rewind" && <i className="bi bi-skip-backward-fill"></i>}
+                    {showIcon.type === "forward" && <i className="bi bi-skip-forward-fill"></i>}
+                  </div>
+                )}
+              </div>
+
 
               {/* Caption */}
               <div
@@ -408,47 +503,72 @@ function ReelsPlayer({
                 <p style={{ margin: 0 }}>{post.caption}</p>
               </div>
 
-              {/* Buttons */}
+              {/* Buttons + Comments input */}
               <div
                 style={{
                   position: "absolute",
                   right: 15,
-                  bottom: 100,
+                  bottom: 80,
                   display: "flex",
                   flexDirection: "column",
-                  gap: "20px",
+                  gap: "15px",
                   alignItems: "center",
                   color: "#fff",
                 }}
               >
-                <div className="bg-white rounded-circle m-0 p-0">
-                  <button className="btn m-0"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleLike(post.id);
-                    }}
-                  >
-                    <i
-                      className={`bi bi-heart-fill fs-4 ${liked ? "text-danger" : "text-secondary"}`}
-                    ></i>
+                {/* Like button */}
+                <div className="d-flex flex-column align-items-center">
+                  <button className="btn btn-light rounded-4 px-2" onClick={(e) => { e.stopPropagation(); toggleLike(post.id); }}>
+                    <i className={`bi bi-heart-fill fs-4 ${liked ? "text-danger" : "text-secondary"}`}></i>
                   </button>
+                  <small>{likeCount}</small>
                 </div>
-                <small style={{ color: "#fff" }}>{likeCount}</small>
 
-                <div className="bg-white rounded-circle">
-                  <button
-                    className="btn"
-                    onClick={() => openComments(post)}
-                  >
+                {/* Comments button */}
+                <div className="d-flex flex-column align-items-center">
+                  <button className="btn btn-light rounded-4 px-2" onClick={() => openComments(post)}>
                     <i className="bi bi-chat-fill fs-4"></i>
                   </button>
+                  <small>{commentCount}</small>
                 </div>
-                <small style={{ color: "#fff" }}>{commentCount}</small>
 
-                <div className="bg-white rounded-circle px-1">
+                {/* Share button */}
+                <div className="d-flex flex-column align-items-center bg-white rounded-4">
                   <ShareButton link={post.src} />
                 </div>
               </div>
+
+              {/* Comment input overlay at the bottom */}
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: 15,
+                  left: 20,
+                  width: "90%",
+                  display: "flex",
+                  gap: "5px",
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <input
+                  type="text"
+                  className="form-control form-control-sm"
+                  placeholder="Add a comment..."
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addComment(post.id)}
+                  style={{ borderRadius: "20px", padding: "5px 10px" }}
+                />
+                <button
+                  className="btn btn-sm btn-primary px-4"
+                  disabled={!commentText.trim()}
+                  onClick={() => addComment(post.id)}
+                  style={{ borderRadius: "20px" }}
+                >
+                  Post
+                </button>
+              </div>
+
             </div>
           );
         })}
@@ -834,25 +954,7 @@ export default function GetPost({ showFilter = true, uid }) {
                       </div>
                     )}
 
-                    <div className="input-group">
-                      <input
-                        type="text"
-                        className="form-control"
-                        placeholder="Add a comment..."
-                        value={commentText}
-                        onChange={(e) => setCommentText(e.target.value)}
-                        onKeyDown={(e) =>
-                          e.key === "Enter" && addComment(post.id)
-                        }
-                      />
-                      <button
-                        className="btn btn-primary"
-                        disabled={!commentText.trim()}
-                        onClick={() => addComment(post.id)}
-                      >
-                        Post
-                      </button>
-                    </div>
+
                   </div>
                 </div>
               );
