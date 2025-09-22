@@ -1,28 +1,25 @@
 import admin from "firebase-admin";
 
 if (!admin.apps.length) {
-  if (
-    !process.env.FIREBASE_TYPE ||
-    !process.env.FIREBASE_PROJECT_ID ||
-    !process.env.FIREBASE_PRIVATE_KEY ||
-    !process.env.FIREBASE_PRIVATE_KEY_ID ||
-    !process.env.FIREBASE_CLIENT_EMAIL
-  ) {
-    throw new Error("Firebase environment variables are missing!");
+  try {
+    const serviceAccountJSON = process.env.FIREBASE_SERVICE_ACCOUNT;
+    
+    if (!serviceAccountJSON) {
+      throw new Error("FIREBASE_SERVICE_ACCOUNT environment variable is missing!");
+    }
+
+    const serviceAccount = JSON.parse(serviceAccountJSON);
+    
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+      databaseURL: `https://${serviceAccount.project_id}-default-rtdb.firebaseio.com`,
+    });
+    
+    console.log('Firebase Admin initialized successfully');
+  } catch (error) {
+    console.error('Firebase initialization error:', error);
+    throw error;
   }
-
-  const serviceAccount = {
-    type: process.env.FIREBASE_TYPE,
-    project_id: process.env.FIREBASE_PROJECT_ID,
-    private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
-    private_key: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
-    client_email: process.env.FIREBASE_CLIENT_EMAIL,
-  };
-
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    databaseURL: `https://${process.env.FIREBASE_PROJECT_ID}-default-rtdb.firebaseio.com`,
-  });
 }
 
 export default async function handler(req, res) {
@@ -37,11 +34,18 @@ export default async function handler(req, res) {
   }
 
   try {
+    console.log('Attempting password reset for:', email);
+    
     const user = await admin.auth().getUserByEmail(email);
     await admin.auth().updateUser(user.uid, { password: newPassword });
+    
+    console.log('Password updated successfully for:', email);
     return res.status(200).json({ success: true, message: "Password updated successfully!" });
   } catch (error) {
     console.error("Reset password error:", error);
-    return res.status(500).json({ success: false, message: error.message || "Failed to update password" });
+    return res.status(500).json({ 
+      success: false, 
+      message: error.message || "Failed to update password" 
+    });
   }
 }
