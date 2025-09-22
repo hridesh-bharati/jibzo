@@ -1,3 +1,4 @@
+// api\sendemail.js
 import nodemailer from "nodemailer";
 
 export default async function handler(req, res) {
@@ -12,13 +13,13 @@ export default async function handler(req, res) {
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: { 
-        user: process.env.VITE_EMAIL_USER, 
-        pass: process.env.VITE_EMAIL_PASS 
+        user: process.env.EMAIL_USER, 
+        pass: process.env.EMAIL_PASS 
       },
     });
 
     await transporter.sendMail({
-      from: `"My App" <${process.env.VITE_EMAIL_USER}>`,
+      from: `"My App" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: "Your OTP Code",
       html: `<h3>Hello ${username || "User"},</h3>
