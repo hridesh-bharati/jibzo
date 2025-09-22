@@ -1,11 +1,13 @@
 import admin from "firebase-admin";
 
 if (!admin.apps.length) {
-  if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-    throw new Error("Missing FIREBASE_SERVICE_ACCOUNT_JSON environment variable");
-  }
-
-  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+  const serviceAccount = {
+    type: process.env.FIREBASE_TYPE,
+    project_id: process.env.FIREBASE_PROJECT_ID,
+    private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
+    private_key: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+    client_email: process.env.FIREBASE_CLIENT_EMAIL,
+  };
 
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
@@ -24,11 +26,6 @@ export default async function handler(req, res) {
     res.status(200).json({ success: true, message: "Password updated successfully!" });
   } catch (err) {
     console.error("Reset password error:", err);
-
-    let message = "Failed to update password";
-    if (err.code === "auth/user-not-found") message = "User not found";
-    if (err.code === "auth/invalid-password") message = "Password is invalid";
-
-    res.status(500).json({ success: false, message, error: err?.message || err });
+    res.status(500).json({ success: false, message: err.message || "Failed to update password" });
   }
 }
