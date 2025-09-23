@@ -110,7 +110,13 @@ const Login = () => {
       setLoading(false);
     }
   };
-
+  const btns = (
+    <button type="button" className="btn w-100" style={{ background: "#eb0000ff" }}>
+      <Link to="/Register" className="nav-link fw-medium text-white">
+        Back to Sign Up
+      </Link>
+    </button>
+  );
   return (
     <div className="container mt-5" style={{ maxWidth: 400 }}>
       <h3 className="text-center mb-4">Login / Forgot Password</h3>
@@ -139,6 +145,7 @@ const Login = () => {
           <button type="submit" className="btn btn-primary w-100 mb-2" disabled={loading}>
             {loading ? "Logging in..." : "Login"}
           </button>
+          {btns}
           <button type="button" className="btn btn-link w-100" onClick={() => setStage("forgotEmail")}>
             Forgot Password?
           </button>
@@ -157,9 +164,10 @@ const Login = () => {
             className="form-control mb-3"
             required
           />
-          <button type="button" className="btn btn-primary w-100 mb-2" onClick={handleSendOtp} disabled={loading}>
+          <button type="button" className="btn btn-primary fw-medium w-100 mb-2" onClick={handleSendOtp} disabled={loading}>
             {loading ? "Sending OTP..." : "Send OTP"}
           </button>
+          {btns}
           <button type="button" className="btn btn-link w-100" onClick={() => setStage("login")}>
             Back to Login
           </button>

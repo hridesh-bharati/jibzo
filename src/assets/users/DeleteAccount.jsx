@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ref, remove, onValue } from "firebase/database";
+import { ref, remove, get, update } from "firebase/database";
 import { auth, db } from "../utils/firebaseConfig";
 import {
   deleteUser,
@@ -10,12 +10,11 @@ import {
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import "bootstrap/dist/css/bootstrap.min.css";
-import "bootstrap/dist/js/bootstrap.bundle.min.js";
 
 const DeleteAccount = () => {
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
-  const [password, setPassword] = useState(""); // password confirm ke liye
+  const [password, setPassword] = useState("");
   const navigate = useNavigate();
   const user = auth.currentUser;
 
@@ -39,64 +38,177 @@ const DeleteAccount = () => {
           names.forEach((name) => caches.delete(name));
         });
       }
+
+      // Clear IndexedDB
+      if (window.indexedDB) {
+        indexedDB.databases().then((databases) => {
+          databases.forEach((db) => {
+            if (db.name) indexedDB.deleteDatabase(db.name);
+          });
+        });
+      }
     } catch (err) {
       console.error("Error clearing app data:", err);
     }
   };
 
+  // Remove user from other users' followers/following lists
+  const cleanupUserRelations = async (uid) => {
+    try {
+      const usersRef = ref(db, `usersData`);
+      const usersSnapshot = await get(usersRef);
+      
+      if (!usersSnapshot.exists()) return;
+
+      const usersData = usersSnapshot.val();
+      const updatePromises = [];
+
+      Object.keys(usersData).forEach(otherUserId => {
+        if (otherUserId !== uid) {
+          const updates = {};
+          
+          // Remove from followers
+          if (usersData[otherUserId].followers?.[uid]) {
+            updates[`followers/${uid}`] = null;
+          }
+          
+          // Remove from following
+          if (usersData[otherUserId].following?.[uid]) {
+            updates[`following/${uid}`] = null;
+          }
+          
+          // Remove from follow requests
+          if (usersData[otherUserId].followRequests?.received?.[uid]) {
+            updates[`followRequests/received/${uid}`] = null;
+          }
+          if (usersData[otherUserId].followRequests?.sent?.[uid]) {
+            updates[`followRequests/sent/${uid}`] = null;
+          }
+          
+          if (Object.keys(updates).length > 0) {
+            const userRef = ref(db, `usersData/${otherUserId}`);
+            updatePromises.push(update(userRef, updates));
+          }
+        }
+      });
+
+      await Promise.all(updatePromises);
+    } catch (error) {
+      console.error("Error cleaning up user relations:", error);
+      throw error;
+    }
+  };
+
+  // Delete user's posts from galleryImages
+  const deleteUserPosts = async (uid) => {
+    try {
+      const postsRef = ref(db, "galleryImages");
+      const postsSnapshot = await get(postsRef);
+      
+      if (!postsSnapshot.exists()) return;
+
+      const postsData = postsSnapshot.val();
+      const deletePromises = [];
+
+      Object.keys(postsData).forEach(postId => {
+        if (postsData[postId].userId === uid) {
+          deletePromises.push(remove(ref(db, `galleryImages/${postId}`)));
+        }
+      });
+
+      await Promise.all(deletePromises);
+    } catch (error) {
+      console.error("Error deleting user posts:", error);
+      throw error;
+    }
+  };
+
+  // Delete user's likes, comments, and other related data
+  const deleteUserActivity = async (uid) => {
+    try {
+      // Delete user's likes
+      const likesRef = ref(db, `likes/${uid}`);
+      await remove(likesRef);
+
+      // Delete user's comments
+      const commentsRef = ref(db, `comments/${uid}`);
+      await remove(commentsRef);
+
+      // Delete user's notifications
+      const notificationsRef = ref(db, `notifications/${uid}`);
+      await remove(notificationsRef);
+
+    } catch (error) {
+      console.error("Error deleting user activity:", error);
+      // Don't throw error here as these are secondary data
+    }
+  };
+
   // Main delete function
   const handleDeleteAccount = async () => {
-    if (!user) return toast.error("User not found!");
-    if (!password) return toast.error("⚠️ Please enter your password!");
+    if (!user) {
+      toast.error("User not found!");
+      return;
+    }
+
+    if (!password) {
+      toast.error("⚠️ Please enter your password!");
+      return;
+    }
 
     setLoading(true);
 
     try {
       // 1. Re-authenticate user
+      toast.info("Verifying your identity...");
       const credential = EmailAuthProvider.credential(user.email, password);
       await reauthenticateWithCredential(user, credential);
 
-      // 2. Remove user profile data
+      toast.info("Deleting your data...");
+
+      // 2. Clean up user relations first (important!)
+      await cleanupUserRelations(user.uid);
+
+      // 3. Delete user's posts
+      await deleteUserPosts(user.uid);
+
+      // 4. Delete user's activity data
+      await deleteUserActivity(user.uid);
+
+      // 5. Remove user profile data
       await remove(ref(db, `usersData/${user.uid}`));
 
-      // 3. Remove user's posts from galleryImages
-      const postsRef = ref(db, "galleryImages");
-      await new Promise((resolve, reject) => {
-        onValue(
-          postsRef,
-          async (snapshot) => {
-            const data = snapshot.val();
-            if (!data) {
-              resolve();
-              return;
-            }
-
-            const deletePromises = Object.entries(data)
-              .filter(([_, post]) => post.userId === user.uid)
-              .map(([id]) => remove(ref(db, `galleryImages/${id}`)));
-
-            await Promise.all(deletePromises);
-            resolve();
-          },
-          { onlyOnce: true, error: (err) => reject(err) }
-        );
-      });
-
-      // 4. Delete user from Firebase Auth (email bhi hat jayega)
+      // 6. Delete user from Firebase Auth
+      toast.info("Deleting your account...");
       await deleteUser(user);
 
-      // 5. Force signout
+      // 7. Force signout
       await signOut(auth);
 
-      // 6. Clear all app/browser data
+      // 8. Clear all app/browser data
       clearAppData();
 
-      // 7. Success toast + navigate
-      toast.success("✅ Account deleted permanently.");
-      navigate("/login");
+      // 9. Success message and redirect
+      toast.success("✅ Account deleted permanently. All data has been removed.");
+      
+      // Small delay for user to see success message
+      setTimeout(() => {
+        navigate("/login");
+      }, 2000);
+
     } catch (error) {
       console.error("Delete error:", error);
-      toast.error(error.message || "❌ Failed to delete account.");
+      
+      // Specific error handling
+      if (error.code === "auth/wrong-password") {
+        toast.error("❌ Incorrect password. Please try again.");
+      } else if (error.code === "auth/requires-recent-login") {
+        toast.error("❌ Please log in again before deleting your account.");
+      } else if (error.code === "auth/network-request-failed") {
+        toast.error("❌ Network error. Please check your internet connection.");
+      } else {
+        toast.error(error.message || "❌ Failed to delete account.");
+      }
     } finally {
       setLoading(false);
       setShowModal(false);
@@ -107,61 +219,92 @@ const DeleteAccount = () => {
   return (
     <div className="text-center">
       <button
-        className="threeD-btn redBtn"
+        className="btn btn-outline-danger btn-sm"
         onClick={() => setShowModal(true)}
         disabled={loading}
       >
-        {loading ? "Deleting..." : "🗑️ Delete Account Permanently"}
+        <i className="bi bi-trash-fill me-1"></i>
+        {loading ? "Deleting..." : "Delete Account Permanently"}
       </button>
 
-      {/* Center Modal */}
+      {/* Confirmation Modal */}
       {showModal && (
-        <div
-          className="modal fade show"
-          style={{ display: "block", background: "rgba(0,0,0,0.5)" }}
+        <div 
+          className="modal fade show" 
+          style={{ display: "block", backgroundColor: "rgba(0,0,0,0.5)" }}
           tabIndex="-1"
         >
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title text-danger">Confirm Delete</h5>
-                <button
-                  type="button"
-                  className="btn-close"
+              <div className="modal-header border-bottom bg-danger text-white">
+                <h5 className="modal-title">
+                  <i className="bi bi-exclamation-triangle-fill me-2"></i>
+                  Delete Account Permanently
+                </h5>
+                <button 
+                  type="button" 
+                  className="btn-close btn-close-white"
                   onClick={() => setShowModal(false)}
                   disabled={loading}
                 ></button>
               </div>
-
-              <div className="modal-body text-center">
-                <p>
-                  ⚠️ This will permanently delete your account and all your data.{" "}
-                  <b>This cannot be undone.</b>
-                </p>
-                <input
-                  type="password"
-                  className="form-control mt-2"
-                  placeholder="Enter password to confirm"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={loading}
-                />
+              
+              <div className="modal-body">
+                <div className="alert alert-warning mb-3">
+                  <strong>Warning:</strong> This action cannot be undone!
+                </div>
+                
+                <ul className="text-danger small mb-3">
+                  <li>Your profile and all personal data will be permanently deleted</li>
+                  <li>All your posts, likes, and comments will be removed</li>
+                  <li>Your account will be deleted from Firebase Authentication</li>
+                  <li>You will be removed from other users' followers/following lists</li>
+                  <li>All app data will be cleared from your browser</li>
+                </ul>
+                
+                <div className="mb-3">
+                  <label htmlFor="deletePassword" className="form-label">
+                    Enter your password to confirm:
+                  </label>
+                  <input
+                    type="password"
+                    className="form-control"
+                    id="deletePassword"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Your current password"
+                    disabled={loading}
+                    autoComplete="current-password"
+                  />
+                </div>
               </div>
-
-              <div className="modal-footer">
-                <button
+              
+              <div className="modal-footer border-top">
+                <button 
+                  type="button" 
                   className="btn btn-secondary"
                   onClick={() => setShowModal(false)}
                   disabled={loading}
                 >
                   Cancel
                 </button>
-                <button
+                <button 
+                  type="button" 
                   className="btn btn-danger"
                   onClick={handleDeleteAccount}
-                  disabled={loading}
+                  disabled={loading || !password}
                 >
-                  {loading ? "Deleting..." : "Yes, Delete"}
+                  {loading ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2"></span>
+                      Deleting Account...
+                    </>
+                  ) : (
+                    <>
+                      <i className="bi bi-trash-fill me-2"></i>
+                      Delete Permanently
+                    </>
+                  )}
                 </button>
               </div>
             </div>

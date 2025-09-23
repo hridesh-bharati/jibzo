@@ -255,7 +255,7 @@ const AdminProfile = () => {
           <p className="mx-2 my-0"><strong>Bio:</strong> {profileData.bio || "No bio yet"}</p>
           {isAdmin && <VisitorLenght />}
           {/* Social Links */}
-          <div className="mb-2">
+          <div className="mx-2">
             {profileData.socialLinks && Object.values(profileData.socialLinks).filter(link => link).map((link, i) => (
               <div key={i}><a href={link} target="_blank" rel="noopener noreferrer">{link}</a></div>
             ))}
