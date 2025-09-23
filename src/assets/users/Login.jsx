@@ -111,7 +111,6 @@ const Login = () => {
       setLoading(false);
     }
   };
-
   // Back to Sign Up button
   const btns = (
     <button type="button" className="btn-back-to-signup">
@@ -255,33 +254,22 @@ const Login = () => {
         )}
 
         {/* ---------------- CHANGE PASSWORD ---------------- */}
-        {stage === "changePassword" && verified && (
-          <form className="card-body">
-            <div className="input-group">
-              <i className="fas fa-lock input-icon"></i>
-              <input
-                type="password"
-                name="newPassword"
-                placeholder="Enter new password"
-                value={formData.newPassword}
-                onChange={handleChange}
-                className="form-input"
-                required
-              />
-            </div>
-            <button type="button" className="btn-change-password" onClick={handleChangePassword} disabled={loading}>
-              {loading ? (
-                <>
-                  <i className="fas fa-spinner fa-spin"></i> Updating...
-                </>
-              ) : (
-                <>
-                  <i className="fas fa-sync-alt"></i> Change Password
-                </>
-              )}
-            </button>
-          </form>
-        )}
+       {stage === "changePassword" && verified && (
+        <form className="card p-4 shadow-sm">
+          <input
+            type="password"
+            name="newPassword"
+            placeholder="Enter new password"
+            value={formData.newPassword}
+            onChange={handleChange}
+            className="form-control mb-3"
+            required
+          />
+          <button type="button" className="btn btn-success w-100" onClick={handleChangePassword} disabled={loading}>
+            {loading ? "Updating..." : "Change Password"}
+          </button>
+        </form>
+      )}
       </div>
       <ToastContainer />
     </div>
