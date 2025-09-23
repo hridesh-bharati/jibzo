@@ -6,6 +6,7 @@ import axios from "axios";
 import { useNavigate, Link } from "react-router-dom";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import "./Login.css"; // We'll create this CSS file
 
 const Login = () => {
   const [formData, setFormData] = useState({ email: "", password: "", otp: "", newPassword: "" });
@@ -110,106 +111,178 @@ const Login = () => {
       setLoading(false);
     }
   };
+
+  // Back to Sign Up button
   const btns = (
-    <button type="button" className="btn w-100" style={{ background: "#eb0000ff" }}>
-      <Link to="/Register" className="nav-link fw-medium text-white">
-        Back to Sign Up
+    <button type="button" className="btn-back-to-signup">
+      <Link to="/Register" className="nav-link">
+        <i className="fas fa-arrow-left"></i> Back to Sign Up
       </Link>
     </button>
   );
+
   return (
-    <div className="container mt-5" style={{ maxWidth: 400 }}>
-      <h3 className="text-center mb-4">Login / Forgot Password</h3>
+    <div className="login-container">
+      <div className="login-card">
+        {/* Card Header */}
+        <div className="card-header">
+          <div className="logo-container">
+            <i className="fas fa-user-circle"></i>
+          </div>
+          <h3 className="card-title">
+            {stage === "login" && "Welcome Back"}
+            {stage === "forgotEmail" && "Reset Password"}
+            {stage === "verifyOtp" && "Verify OTP"}
+            {stage === "changePassword" && "New Password"}
+          </h3>
+          <p className="card-subtitle">
+            {stage === "login" && "Sign in to your account"}
+            {stage === "forgotEmail" && "Enter your email to receive OTP"}
+            {stage === "verifyOtp" && "Enter the OTP sent to your email"}
+            {stage === "changePassword" && "Create a new password"}
+          </p>
+        </div>
 
-      {/* ---------------- LOGIN FORM ---------------- */}
-      {stage === "login" && (
-        <form onSubmit={handleLogin} className="card p-4 shadow-sm">
-          <input
-            type="email"
-            name="email"
-            placeholder="Email"
-            value={formData.email}
-            onChange={handleChange}
-            className="form-control mb-3"
-            required
-          />
-          <input
-            type="password"
-            name="password"
-            placeholder="Password"
-            value={formData.password}
-            onChange={handleChange}
-            className="form-control mb-3"
-            required
-          />
-          <button type="submit" className="btn btn-primary w-100 mb-2" disabled={loading}>
-            {loading ? "Logging in..." : "Login"}
-          </button>
-          {btns}
-          <button type="button" className="btn btn-link w-100" onClick={() => setStage("forgotEmail")}>
-            Forgot Password?
-          </button>
-        </form>
-      )}
+        {/* ---------------- LOGIN FORM ---------------- */}
+        {stage === "login" && (
+          <form onSubmit={handleLogin} className="card-body">
+            <div className="input-group">
+              <i className="fas fa-envelope input-icon"></i>
+              <input
+                type="email"
+                name="email"
+                placeholder="Email"
+                value={formData.email}
+                onChange={handleChange}
+                className="form-input"
+                required
+              />
+            </div>
+            <div className="input-group">
+              <i className="fas fa-lock input-icon"></i>
+              <input
+                type="password"
+                name="password"
+                placeholder="Password"
+                value={formData.password}
+                onChange={handleChange}
+                className="form-input"
+                required
+              />
+            </div>
+            <button type="submit" className="btn-login" disabled={loading}>
+              {loading ? (
+                <>
+                  <i className="fas fa-spinner fa-spin"></i> Logging in...
+                </>
+              ) : (
+                <>
+                  <i className="fas fa-sign-in-alt"></i> Login
+                </>
+              )}
+            </button>
+            <div className="card-footer">
+              {btns}
+              <button type="button" className="btn-forgot" onClick={() => setStage("forgotEmail")}>
+                Forgot Password?
+              </button>
+            </div>
+          </form>
+        )}
 
-      {/* ---------------- ENTER EMAIL FOR OTP ---------------- */}
-      {stage === "forgotEmail" && (
-        <form className="card p-4 shadow-sm">
-          <input
-            type="email"
-            name="email"
-            placeholder="Enter your email"
-            value={formData.email}
-            onChange={handleChange}
-            className="form-control mb-3"
-            required
-          />
-          <button type="button" className="btn btn-primary fw-medium w-100 mb-2" onClick={handleSendOtp} disabled={loading}>
-            {loading ? "Sending OTP..." : "Send OTP"}
-          </button>
-          {btns}
-          <button type="button" className="btn btn-link w-100" onClick={() => setStage("login")}>
-            Back to Login
-          </button>
-        </form>
-      )}
+        {/* ---------------- ENTER EMAIL FOR OTP ---------------- */}
+        {stage === "forgotEmail" && (
+          <form className="card-body">
+            <div className="input-group">
+              <i className="fas fa-envelope input-icon"></i>
+              <input
+                type="email"
+                name="email"
+                placeholder="Enter your email"
+                value={formData.email}
+                onChange={handleChange}
+                className="form-input"
+                required
+              />
+            </div>
+            <button type="button" className="btn-send-otp" onClick={handleSendOtp} disabled={loading}>
+              {loading ? (
+                <>
+                  <i className="fas fa-spinner fa-spin"></i> Sending OTP...
+                </>
+              ) : (
+                <>
+                  <i className="fas fa-paper-plane"></i> Send OTP
+                </>
+              )}
+            </button>
+            <div className="card-footer">
+              {btns}
+              <button type="button" className="btn-back" onClick={() => setStage("login")}>
+                <i className="fas fa-arrow-left"></i> Back to Login
+              </button>
+            </div>
+          </form>
+        )}
 
-      {/* ---------------- VERIFY OTP ---------------- */}
-      {stage === "verifyOtp" && !verified && (
-        <form className="card p-4 shadow-sm">
-          <input
-            type="text"
-            name="otp"
-            placeholder="Enter OTP"
-            value={formData.otp}
-            onChange={handleChange}
-            className="form-control mb-3"
-            required
-          />
-          <button type="button" className="btn btn-primary w-100 mb-2" onClick={handleVerifyOtp} disabled={loading}>
-            {loading ? "Verifying OTP..." : "Verify OTP"}
-          </button>
-        </form>
-      )}
+        {/* ---------------- VERIFY OTP ---------------- */}
+        {stage === "verifyOtp" && !verified && (
+          <form className="card-body">
+            <div className="input-group">
+              <i className="fas fa-key input-icon"></i>
+              <input
+                type="text"
+                name="otp"
+                placeholder="Enter OTP"
+                value={formData.otp}
+                onChange={handleChange}
+                className="form-input"
+                required
+              />
+            </div>
+            <button type="button" className="btn-verify" onClick={handleVerifyOtp} disabled={loading}>
+              {loading ? (
+                <>
+                  <i className="fas fa-spinner fa-spin"></i> Verifying...
+                </>
+              ) : (
+                <>
+                  <i className="fas fa-check-circle"></i> Verify OTP
+                </>
+              )}
+            </button>
+          </form>
+        )}
 
-      {/* ---------------- CHANGE PASSWORD ---------------- */}
-      {stage === "changePassword" && verified && (
-        <form className="card p-4 shadow-sm">
-          <input
-            type="password"
-            name="newPassword"
-            placeholder="Enter new password"
-            value={formData.newPassword}
-            onChange={handleChange}
-            className="form-control mb-3"
-            required
-          />
-          <button type="button" className="btn btn-success w-100" onClick={handleChangePassword} disabled={loading}>
-            {loading ? "Updating..." : "Change Password"}
-          </button>
-        </form>
-      )}
-
+        {/* ---------------- CHANGE PASSWORD ---------------- */}
+        {stage === "changePassword" && verified && (
+          <form className="card-body">
+            <div className="input-group">
+              <i className="fas fa-lock input-icon"></i>
+              <input
+                type="password"
+                name="newPassword"
+                placeholder="Enter new password"
+                value={formData.newPassword}
+                onChange={handleChange}
+                className="form-input"
+                required
+              />
+            </div>
+            <button type="button" className="btn-change-password" onClick={handleChangePassword} disabled={loading}>
+              {loading ? (
+                <>
+                  <i className="fas fa-spinner fa-spin"></i> Updating...
+                </>
+              ) : (
+                <>
+                  <i className="fas fa-sync-alt"></i> Change Password
+                </>
+              )}
+            </button>
+          </form>
+        )}
+      </div>
       <ToastContainer />
     </div>
   );

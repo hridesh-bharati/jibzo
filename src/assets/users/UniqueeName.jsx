@@ -1,20 +1,36 @@
-// src\assets\users\UniqueeName.jsx
+import { db } from "../utils/firebaseConfig";
+import { ref, get } from "firebase/database";
+
+const sanitizeUsername = (username) => {
+  if (!username) throw new Error("Username cannot be empty");
+  if (/\s/.test(username)) throw new Error("Username cannot contain spaces");
+  if (!/^[a-zA-Z0-9._]+$/.test(username))
+    throw new Error("Username can only contain letters, numbers, underscores, and dots");
+  return username;
+};
+
 const UniqueeName = async (username) => {
-  let finalUsername = username;
-  let exists = true;
+  const cleanUsername = sanitizeUsername(username).toLowerCase();
+  let finalUsername = cleanUsername;
   let counter = 0;
 
-  while (exists) {
-    const snapshot = await ref(db, "usersData").once("value").then(snap => snap.val());
-    const usernames = snapshot ? Object.values(snapshot).map(u => u.username.toLowerCase()) : [];
+  const snapshot = await get(ref(db, "usersData"));
+  const data = snapshot.val();
+  const usernames = data
+    ? Object.values(data).map((u) => u.username.toLowerCase())
+    : [];
 
-    if (!usernames.includes(finalUsername.toLowerCase())) {
-      exists = false;
-    } else {
-      counter++;
-      finalUsername = `${username}_${counter}`; // e.g., Hridesh_1, Hridesh_2...
-    }
+  // ✅ Check partial match: reject if cleanUsername is substring of any existing username
+  while (
+    usernames.some(
+      (u) => u.includes(finalUsername) || finalUsername.includes(u)
+    )
+  ) {
+    counter++;
+    finalUsername = `${cleanUsername}_${counter}`;
   }
 
   return finalUsername;
 };
+
+export default UniqueeName;

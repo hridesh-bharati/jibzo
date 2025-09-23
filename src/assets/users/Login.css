@@ -1,0 +1,215 @@
+/* Login.css */
+.login-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.login-card {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 20px;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 450px;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.login-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+}
+
+.card-header {
+  background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+  color: white;
+  padding: 30px 20px;
+  text-align: center;
+}
+
+.logo-container {
+  margin-bottom: 15px;
+}
+
+.logo-container i {
+  font-size: 3.5rem;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.card-title {
+  margin: 0 0 10px 0;
+  font-size: 1.8rem;
+  font-weight: 600;
+}
+
+.card-subtitle {
+  margin: 0;
+  opacity: 0.9;
+  font-size: 1rem;
+}
+
+.card-body {
+  padding: 30px;
+}
+
+.input-group {
+  position: relative;
+  margin-bottom: 20px;
+}
+
+.input-icon {
+  position: absolute;
+  left: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #6a11cb;
+  font-size: 1.1rem;
+}
+
+.form-input {
+  width: 100%;
+  padding: 15px 15px 15px 45px;
+  border: 2px solid #e1e5ee;
+  border-radius: 10px;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  background: #f8f9fa;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #6a11cb;
+  background: white;
+  box-shadow: 0 0 0 3px rgba(106, 17, 203, 0.1);
+}
+
+.btn-login, .btn-send-otp, .btn-verify, .btn-change-password {
+  width: 100%;
+  padding: 15px;
+  border: none;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-login {
+  background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+  color: white;
+}
+
+.btn-login:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(106, 17, 203, 0.4);
+}
+
+.btn-send-otp {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+}
+
+.btn-send-otp:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(245, 87, 108, 0.4);
+}
+
+.btn-verify {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  color: white;
+}
+
+.btn-verify:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(79, 172, 254, 0.4);
+}
+
+.btn-change-password {
+  background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+  color: white;
+}
+
+.btn-change-password:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(67, 233, 123, 0.4);
+}
+
+.btn-login:disabled, .btn-send-otp:disabled, .btn-verify:disabled, .btn-change-password:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.card-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.btn-back-to-signup, .btn-forgot, .btn-back {
+  background: transparent;
+  border: none;
+  color: #6a11cb;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: color 0.3s ease;
+  text-align: center;
+  padding: 10px;
+  border-radius: 5px;
+}
+
+.btn-back-to-signup:hover, .btn-forgot:hover, .btn-back:hover {
+  color: #2575fc;
+  background: rgba(106, 17, 203, 0.05);
+}
+
+.btn-back-to-signup a, .btn-forgot a, .btn-back a {
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+/* Responsive design */
+@media (max-width: 480px) {
+  .login-card {
+    max-width: 100%;
+  }
+  
+  .card-body {
+    padding: 20px;
+  }
+  
+  .card-header {
+    padding: 20px 15px;
+  }
+}
+
+/* Animation for form transitions */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.card-body {
+  animation: fadeIn 0.5s ease;
+}
+
+/* Toast customization */
+.Toastify__toast {
+  border-radius: 10px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
