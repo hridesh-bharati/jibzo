@@ -267,6 +267,9 @@ const Login = () => {
           />
           <button type="button" className="btn btn-success w-100" onClick={handleChangePassword} disabled={loading}>
             {loading ? "Updating..." : "Change Password"}
+          </button> <br />
+           <button type="button" className="btn btn-link w-100" onClick={() => setStage("login")}>
+            Back to Login
           </button>
         </form>
       )}
