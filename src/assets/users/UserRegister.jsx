@@ -52,6 +52,9 @@ const UserRegister = () => {
     photo: null,
   });
 
+
+
+  
   const [usernameStatus, setUsernameStatus] = useState("");
   const [usernameSuggestion, setUsernameSuggestion] = useState("");
   const [emailTaken, setEmailTaken] = useState(false);

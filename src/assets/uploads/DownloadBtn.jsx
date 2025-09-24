@@ -6,30 +6,22 @@ export default function DownloadBtn({ link }) {
   // Dynamically get filename from URL
   const getFileName = (url) => {
     try {
-      const parts = url.split("/").pop().split("?")[0]; // remove query params
+      const parts = url.split("/").pop().split("?")[0];  
       return parts || "file";
     } catch {
       return "file";
     }
   };
 
-  const handleDownload = async () => {
-    try {
-      const response = await fetch(link, { mode: "cors" });
-      const blob = await response.blob();
-      const urlBlob = window.URL.createObjectURL(blob);
+const handleDownload = () => {
+  const a = document.createElement("a");
+  a.href = link;
+  a.download = getFileName(link);
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+};
 
-      const a = document.createElement("a");
-      a.href = urlBlob;
-      a.download = getFileName(link); // dynamic filename
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(urlBlob);
-    } catch (error) {
-      console.error("Download failed:", error);
-    }
-  };
 
   return (
     <button className="download-btn" onClick={handleDownload}>
