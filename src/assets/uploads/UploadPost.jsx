@@ -1,13 +1,16 @@
-// src/components/Gallery/UploadPost.jsx
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import { ref as dbRef, push } from "firebase/database";
 import { db, auth } from "../../assets/utils/firebaseConfig";
-import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import axios from "axios";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import Compressor from "compressorjs";
-import { BsImage, BsUpload, BsHash, BsFileEarmarkPdf, BsCameraVideo } from "react-icons/bs";
+import Cropper from "react-easy-crop";
+import { Modal, Button } from "react-bootstrap";
+import { BsImage, BsCameraVideo, BsFileEarmarkPdf } from "react-icons/bs";
+import { BiCrop } from "react-icons/bi";
+import ReactAudioPlayer from "react-audio-player";
+import { getCroppedImage } from "../utils/FileCompress.js";
+import "./UploadPost.css";
 
 const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_NAME;
 const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
@@ -18,29 +21,71 @@ export default function UploadPost() {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [uploadType, setUploadType] = useState(null);
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
+  const [cropAspect, setCropAspect] = useState(1);
+  const [spotifyTrack, setSpotifyTrack] = useState(null);
+  const [spotifySongs, setSpotifySongs] = useState([]);
   const fileInputRef = useRef();
   const currentUser = auth.currentUser;
-  const storage = getStorage();
 
-  const handleFileChange = (e) => {
+  // Fetch Spotify songs
+  useEffect(() => {
+    const fetchSongs = async () => {
+      try {
+        const res = await fetch("/api/spotify");
+        const data = await res.json();
+        setSpotifySongs(data);
+      } catch (err) {
+        console.error("Spotify fetch error:", err);
+        toast.error("Failed to load songs. Using mock data.");
+
+        // Mock data fallback
+        setSpotifySongs([
+          { id: 1, name: "Song A", artist: "Artist A", preview_url: "", image: "" },
+          { id: 2, name: "Song B", artist: "Artist B", preview_url: "", image: "" },
+        ]);
+      }
+    };
+    fetchSongs();
+  }, []);
+
+  const handleFileChange = (e, type) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
+    setCrop({ x: 0, y: 0 });
+    setZoom(1);
+    setCroppedAreaPixels(null);
+    setUploadType(type);
+    setFile(selectedFile);
+    e.target.value = "";
+  };
 
-    if (uploadType === "image") {
-      new Compressor(selectedFile, {
-        quality: 0.75,
-        maxWidth: 1920,
-        maxHeight: 1080,
-        success(result) {
-          setFile(result);
-        },
-        error() {
-          toast.warn("Image compression failed — using original file");
-          setFile(selectedFile);
-        },
+  const onCropComplete = useCallback((_, croppedPixels) => {
+    setCroppedAreaPixels(croppedPixels);
+  }, []);
+
+  const openCropModal = () => {
+    if (!file) return toast.error("Select an image first");
+    setCropModalOpen(true);
+  };
+
+  const applyCrop = async () => {
+    if (!file || !croppedAreaPixels) return toast.error("Please select a crop area");
+    try {
+      const croppedBlob = await getCroppedImage(file, croppedAreaPixels);
+      const croppedFile = new File([croppedBlob], `cropped_${file.name}`, {
+        type: "image/jpeg",
+        lastModified: Date.now(),
       });
-    } else {
-      setFile(selectedFile);
+      setFile(croppedFile);
+      setCropModalOpen(false);
+      toast.success("Crop applied successfully!");
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to apply crop");
     }
   };
 
@@ -48,218 +93,134 @@ export default function UploadPost() {
     e.preventDefault();
     if (!file) return toast.error("Please select a file.");
     if (!caption.trim()) return toast.error("Please enter a caption.");
+    if (!uploadType) return toast.error("Please select a file type.");
 
     setUploading(true);
     setProgress(0);
+    let fileUrl = "";
 
     try {
-      let fileUrl = "";
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+      formData.append(
+        "folder",
+        uploadType === "image" ? "images" : uploadType === "video" ? "videos" : "pdfs"
+      );
 
-      if (uploadType === "pdf") {
-        try {
-          const formData = new FormData();
-          formData.append("file", file);
-          formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-          formData.append("folder", "pdfs");
+      const res = await axios.post(
+        `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${uploadType === "pdf" ? "raw" : uploadType}/upload`,
+        formData,
+        { onUploadProgress: (e) => setProgress(Math.round((e.loaded * 100) / e.total)) }
+      );
 
-          const res = await axios.post(
-            `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/raw/upload`,
-            formData,
-            {
-              onUploadProgress: (event) => {
-                if (event.total) {
-                  setProgress(Math.round((event.loaded * 100) / event.total));
-                }
-              },
-            }
-          );
-          fileUrl = res.data.secure_url;
-        } catch (cloudErr) {
-          const storagePath = `pdfs/${Date.now()}_${file.name}`;
-          const fileRef = storageRef(storage, storagePath);
-          await uploadBytes(fileRef, file);
-          fileUrl = await getDownloadURL(fileRef);
-        }
-      } else {
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-        formData.append("folder", uploadType === "image" ? "images" : "videos");
-
-        const res = await axios.post(
-          `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`,
-          formData,
-          {
-            onUploadProgress: (event) => {
-              if (event.total) {
-                setProgress(Math.round((event.loaded * 100) / event.total));
-              }
-            },
-          }
-        );
-        fileUrl = res.data.secure_url;
-      }
+      fileUrl = res.data.secure_url;
 
       await push(dbRef(db, "galleryImages"), {
         src: fileUrl,
         caption: caption.trim(),
         timestamp: Date.now(),
         type: uploadType,
-        source: uploadType === "pdf" ? "firebase" : "cloudinary",
-        user:
-          currentUser?.displayName ||
-          (currentUser?.email ? currentUser.email.split("@")[0] : "Guest User"),
+        user: currentUser?.displayName || currentUser?.email?.split("@")[0] || "Guest",
         userId: currentUser?.uid || "guest_" + Date.now(),
         userPic: currentUser?.photoURL || "icons/avatar.jpg",
+        spotify: spotifyTrack || null,
       });
 
       toast.success("File uploaded successfully!");
       setFile(null);
       setCaption("");
-      setProgress(100);
-      if (fileInputRef.current) fileInputRef.current.value = null;
+      setProgress(0);
       setUploadType(null);
+      setCrop({ x: 0, y: 0 });
+      setZoom(1);
+      setCroppedAreaPixels(null);
+      setSpotifyTrack(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (err) {
       console.error(err);
-      toast.error("Upload failed: " + (err?.message || "unknown"));
+      toast.error("Upload failed: " + (err?.message || "Unknown error"));
     } finally {
       setUploading(false);
     }
   };
 
   return (
-    <section
-      className="d-flex justify-content-center align-items-center"
-      style={{
-        minHeight: "92vh",
-        background: "linear-gradient(135deg,#f9d423,#ff4e50)",
-        padding: 20,
-      }}
-    >
-      <div
-        className="card shadow-lg p-4 text-center"
-        style={{ maxWidth: 420, width: "100%", borderRadius: 20 }}
-      >
-        <h3 className="fw-bold mb-3" style={{ color: "#ff4e50" }}>
-          <BsUpload className="me-2" /> New Post
-        </h3>
-
-        {file && (
-          <div className="mb-3">
-            {uploadType === "image" ? (
-              <img
-                src={URL.createObjectURL(file)}
-                alt="preview"
-                className="img-fluid"
-                style={{ maxHeight: 200, borderRadius: 10, objectFit: "cover" }}
-              />
-            ) : uploadType === "video" ? (
-              <video
-                src={URL.createObjectURL(file)}
-                autoPlay
-                loop
-                playsInline
-                controls
-                style={{ maxHeight: 200, borderRadius: 10, width: "100%", objectFit: "cover" }}
-              />
-            ) : uploadType === "pdf" ? (
-              <iframe
-                src={URL.createObjectURL(file)}
-                title="pdf-preview"
-                style={{ width: "100%", height: 200, borderRadius: 10 }}
-              />
-            ) : null}
-          </div>
-        )}
-
-        {uploading && (
-          <div className="progress mb-3" style={{ height: 8, borderRadius: 4 }}>
-            <div
-              className="progress-bar progress-bar-striped progress-bar-animated"
-              role="progressbar"
-              style={{
-                width: `${progress}%`,
-                background: "linear-gradient(90deg,#ff4e50,#f9d423)",
-              }}
-            >
-              {progress}%
+    <section className="upload-section d-flex flex-column align-items-center justify-content-center">
+      <div className="upload-card mobile-card shadow-lg p-0 text-center">
+        <div className="preview-container">
+          {file && uploadType === "image" && <img src={URL.createObjectURL(file)} className="img-preview" />}
+          {file && uploadType === "video" && <video src={URL.createObjectURL(file)} controls className="video-preview" />}
+          {file && uploadType === "pdf" && <iframe src={URL.createObjectURL(file)} className="pdf-preview" />}
+          <div className="tools-bar d-flex flex-column">
+            <label className="tool-btn mb-2">
+              <BsImage />
+              <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, "image")} className="d-none" />
+            </label>
+            <label className="tool-btn mb-2">
+              <BsCameraVideo />
+              <input type="file" accept="video/*" onChange={(e) => handleFileChange(e, "video")} className="d-none" />
+            </label>
+            <label className="tool-btn mb-2">
+              <BsFileEarmarkPdf />
+              <input type="file" accept=".pdf" onChange={(e) => handleFileChange(e, "pdf")} className="d-none" />
+            </label>
+            {file && uploadType === "image" && <button className="tool-btn" onClick={openCropModal}><BiCrop /></button>}
+            <div className="spotify-songs mt-2">
+              {spotifySongs.map((song) => (
+                <button key={song.id} className="spotify-btn" onClick={() => setSpotifyTrack(song)}>
+                  {song.image && <img src={song.image} width={30} style={{ marginRight: 5 }} />}
+                  {song.name}
+                </button>
+              ))}
             </div>
           </div>
+        </div>
+
+        {spotifyTrack && (
+          <div className="spotify-preview mt-2">
+            <p>🎵 {spotifyTrack.name} - {spotifyTrack.artist}</p>
+            {spotifyTrack.preview_url ? (
+              <ReactAudioPlayer src={spotifyTrack.preview_url} controls autoPlay />
+            ) : (
+              <p>No preview available</p>
+            )}
+          </div>
         )}
-        <hr />
-        <form onSubmit={handleUpload} className="d-flex flex-column gap-3">
-          <div className="d-flex gap-2">
-            <label className="btn btn-outline-primary flex-fill" style={{ borderRadius: 12 }}>
-              <BsImage className="me-1" /> Image
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  setUploadType("image");
-                  handleFileChange(e);
-                }}
-                ref={fileInputRef}
-                className="d-none"
-              />
-            </label>
 
-            <label className="btn btn-outline-success flex-fill" style={{ borderRadius: 12 }}>
-              <BsCameraVideo className="me-1" /> Video
-              <input
-                type="file"
-                accept="video/*"
-                onChange={(e) => {
-                  setUploadType("video");
-                  handleFileChange(e);
-                }}
-                className="d-none"
-              />
-            </label>
+        <Modal show={cropModalOpen} onHide={() => setCropModalOpen(false)} fullscreen centered>
+          <Modal.Header closeButton><Modal.Title>Crop Image</Modal.Title></Modal.Header>
+          <Modal.Body>{file && <Cropper image={URL.createObjectURL(file)} crop={crop} zoom={zoom} aspect={cropAspect} onCropChange={setCrop} onZoomChange={setZoom} onCropComplete={onCropComplete} showGrid />}</Modal.Body>
+          <Modal.Footer className="d-flex flex-column gap-2">
+            <div className="w-100">
+              <label>Zoom: {zoom.toFixed(2)}</label>
+              <input type="range" min={1} max={3} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="form-range" />
+            </div>
+            <div className="aspect-buttons d-flex justify-content-between w-100">
+              <Button size="sm" variant={cropAspect === 1 ? "primary" : "secondary"} onClick={() => setCropAspect(1)}>Square</Button>
+              <Button size="sm" variant={cropAspect === 4 / 3 ? "primary" : "secondary"} onClick={() => setCropAspect(4 / 3)}>4:3</Button>
+              <Button size="sm" variant={cropAspect === 16 / 9 ? "primary" : "secondary"} onClick={() => setCropAspect(16 / 9)}>16:9</Button>
+              <Button size="sm" variant={!cropAspect ? "primary" : "secondary"} onClick={() => setCropAspect(null)}>Free</Button>
+            </div>
+            <div className="d-flex justify-content-end gap-2 w-100">
+              <Button variant="secondary" onClick={() => setCropModalOpen(false)}>Cancel</Button>
+              <Button variant="warning" onClick={() => { setCropModalOpen(false); toast.info("Original image kept"); }}>Upload Original</Button>
+              <Button variant="primary" onClick={applyCrop}>Apply Crop</Button>
+            </div>
+          </Modal.Footer>
+        </Modal>
 
-            <label className="btn btn-outline-danger flex-fill" style={{ borderRadius: 12 }}>
-              <BsFileEarmarkPdf className="me-1" /> PDF
-              <input
-                type="file"
-                accept=".pdf"
-                onChange={(e) => {
-                  setUploadType("pdf");
-                  handleFileChange(e);
-                }}
-                className="d-none"
-              />
-            </label>
-          </div>
-
-          <div className="input-group">
-            <span className="input-group-text bg-light">
-              <BsHash />
-            </span>
-            <input
-              type="text"
-              placeholder="Write a caption..."
-              value={caption}
-              onChange={(e) => setCaption(e.target.value)}
-              className="form-control"
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="btn w-100 text-white fw-bold"
-            style={{
-              background: uploading
-                ? "linear-gradient(90deg,#6a11cb,#2575fc)"
-                : "linear-gradient(90deg,#ff4e50,#f9d423)",
-              borderRadius: 12,
-            }}
-            disabled={uploading}
-          >
+        <form onSubmit={handleUpload} className="caption-form d-flex">
+          <input type="text" placeholder="Write a caption..." value={caption} onChange={(e) => setCaption(e.target.value)} maxLength={500} className="caption-input" />
+          <button type="submit" className="btn btn-primary post-btn" disabled={uploading || !file || !caption.trim()}>
             {uploading ? `Uploading... (${progress}%)` : "Post"}
           </button>
         </form>
+
+        {uploading && <div className="progress mobile-progress"><div className="progress-bar progress-bar-striped progress-bar-animated" style={{ width: `${progress}%` }}>{progress}%</div></div>}
       </div>
 
-      <ToastContainer />
+      <ToastContainer position="bottom-right" autoClose={3000} />
     </section>
   );
 }
