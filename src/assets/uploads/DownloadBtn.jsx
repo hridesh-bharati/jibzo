@@ -13,13 +13,28 @@ export default function DownloadBtn({ link }) {
     }
   };
 
-const handleDownload = () => {
-  const a = document.createElement("a");
-  a.href = link;
-  a.download = getFileName(link);
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+const handleDownload = async () => {
+  try {
+    const response = await fetch(link, {
+      mode: "cors",
+    });
+
+    if (!response.ok) throw new Error("Network response was not ok");
+
+    const blob = await response.blob();
+    const blobUrl = window.URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = getFileName(link);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(blobUrl);
+  } catch (err) {
+    console.error("Download failed:", err);
+    alert("⚠️ Download failed. Try again.");
+  }
 };
 
 

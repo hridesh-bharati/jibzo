@@ -878,7 +878,15 @@ export default function GetPost({ showFilter = true, uid }) {
 
               return (
                 <div key={post.id} className="card  border-light mb-4">
-                  <div className="card-header d-flex align-items-center bg-white border-0">
+                  <div className="card-header custom-white d-flex  align-items-center border-0">
+                    <style>
+                      {`
+                      .card-header.custom-white {
+  background: white !important;
+  color: black !important;
+}
+                      `}
+                    </style>
                     <img
                       src={post.userPic || "icons/avatar.jpg"}
                       alt="profile"
