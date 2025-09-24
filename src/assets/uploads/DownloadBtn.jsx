@@ -6,36 +6,40 @@ export default function DownloadBtn({ link }) {
   // Dynamically get filename from URL
   const getFileName = (url) => {
     try {
-      const parts = url.split("/").pop().split("?")[0];  
+      const parts = url.split("/").pop().split("?")[0];
       return parts || "file";
     } catch {
       return "file";
     }
   };
 
-const handleDownload = async () => {
-  try {
-    const response = await fetch(link, {
-      mode: "cors",
-    });
+  const handleDownload = async () => {
+    try {
+      const response = await fetch(link, { mode: "cors" });
+      const blob = await response.blob();
+      const urlBlob = window.URL.createObjectURL(blob);
 
-    if (!response.ok) throw new Error("Network response was not ok");
+      const a = document.createElement("a");
+      a.href = urlBlob;
+      a.download = getFileName(link);
 
-    const blob = await response.blob();
-    const blobUrl = window.URL.createObjectURL(blob);
+      // ✅ Mobile fallback
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      if (isMobile) {
+        window.open(urlBlob, "_blank"); // open in new tab
+      } else {
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
 
-    const a = document.createElement("a");
-    a.href = blobUrl;
-    a.download = getFileName(link);
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(blobUrl);
-  } catch (err) {
-    console.error("Download failed:", err);
-    alert("⚠️ Download failed. Try again.");
-  }
-};
+      window.URL.revokeObjectURL(urlBlob);
+    } catch (err) {
+      console.error("Download failed:", err);
+      alert("⚠️ Download failed. Try again.");
+    }
+  };
+
 
 
   return (
