@@ -619,7 +619,7 @@ function PdfPreview({ url, name }) {
 /* -----------------------
    Main GetPost component
 ----------------------- */
-export default function GetPost({ showFilter = true, uid }) {
+export default function  GetPost({ showFilter = true, uid, shuffle = false }){
   const [posts, setPosts] = useState([]);
   const [filter, setFilter] = useState("all");
   const [commentText, setCommentText] = useState("");
@@ -633,6 +633,20 @@ export default function GetPost({ showFilter = true, uid }) {
   const [commentsPost, setCommentsPost] = useState(null);
 
   const videoRefs = useRef({});
+// Shuffle function (Fisher-Yates)
+function shuffleArray(array) {
+  let currentIndex = array.length, randomIndex;
+
+  while (currentIndex !== 0) {
+    randomIndex = Math.floor(Math.random() * currentIndex);
+    currentIndex--;
+
+    [array[currentIndex], array[randomIndex]] = [
+      array[randomIndex], array[currentIndex]];
+  }
+
+  return array;
+}
 
   useEffect(() => {
     let id = localStorage.getItem("guestId");
@@ -656,9 +670,14 @@ export default function GetPost({ showFilter = true, uid }) {
 
       let arr = Object.entries(data).map(([id, v]) => ({ id, ...v }));
 
-      // 🔀 Shuffle dynamically instead of sorting only by timestamp
-      arr = arr.sort((a, b) => b.timestamp - a.timestamp);
-      setPosts(arr);
+if (shuffle) {
+  arr = shuffleArray(arr); // 🔀 shuffle if prop is true
+} else {
+  arr = arr.sort((a, b) => b.timestamp - a.timestamp); // default sort
+}
+
+setPosts(arr);
+
     });
   }, []);
 

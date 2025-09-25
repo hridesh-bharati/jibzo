@@ -1,5 +1,4 @@
-// src\assets\Status\UploadStatus.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { ref as dbRef, push, set } from "firebase/database";
 import { db, auth } from "../../assets/utils/firebaseConfig";
 import axios from "axios";
@@ -13,8 +12,24 @@ const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
 export default function UploadStatusUnique() {
   const [file, setFile] = useState(null);
-  const [uploading, setUploading] = useState(false);
   const [uploadType, setUploadType] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [dustArray, setDustArray] = useState([]);
+  const [done, setDone] = useState(false);
+  const [rocketFlying, setRocketFlying] = useState(false);
+
+  // Dust creation
+  const createDust = () => {
+    const dusts = [];
+    for (let i = 0; i < 7; i++) {
+      dusts.push({
+        id: i,
+        left: Math.random() * 60 - 30,
+        delay: Math.random() * 0.5,
+      });
+    }
+    setDustArray(dusts);
+  };
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files?.[0];
@@ -45,6 +60,8 @@ export default function UploadStatusUnique() {
   const handleUpload = async () => {
     if (!file) return toast.error("Select a file first!");
     setUploading(true);
+    createDust();
+    setRocketFlying(true);
 
     try {
       const formData = new FormData();
@@ -59,9 +76,8 @@ export default function UploadStatusUnique() {
 
       const url = res.data.secure_url;
       const uid = auth.currentUser?.uid;
-      if (!uid) return toast.error("Not logged in!");
+      if (!uid) throw new Error("Not logged in!");
 
-      // Update usersData
       await set(dbRef(db, `usersData/${uid}`), {
         username:
           auth.currentUser.displayName ||
@@ -70,7 +86,6 @@ export default function UploadStatusUnique() {
         photoURL: auth.currentUser.photoURL || "icons/avatar.jpg",
       });
 
-      // Save status
       const statusRef = push(dbRef(db, `statuses/${uid}`));
       await set(statusRef, {
         mediaURL: url,
@@ -85,47 +100,59 @@ export default function UploadStatusUnique() {
         viewers: {},
       });
 
-      toast.success("Status uploaded!");
+      setUploading(false);
+      setDustArray([]);
       setFile(null);
       setUploadType(null);
+      setRocketFlying(false);
+      setDone(true);
+
+      setTimeout(() => setDone(false), 2000);
     } catch (err) {
       console.error(err);
       toast.error("Upload failed: " + err.message);
-    } finally {
       setUploading(false);
+      setDustArray([]);
+      setRocketFlying(false);
     }
   };
 
   return (
     <div className="unique-wrapper">
-      {!file && (
-        <div className="text-center text-white">
-          <label htmlFor="unique-file" className="unique-circle-btn mb -2">
-            <i class="bi bi-cloud-upload-fill text-danger"></i>
-          </label>
-          <span>Upload</span>
-        </div>
-      )}
-      <input
-        type="file"
-        id="unique-file"
-        accept="image/*,video/*"
-        onChange={handleFileChange}
-        className="hidden-file-input"
-      />
+      {/* Rocket */}
+      <div className={`rocket-container ${rocketFlying ? "fly" : ""}`}>
+        <i className="bi bi-rocket-fill rocket-icon"></i>
+      </div>
 
-      {file && (
+      {/* File select */}
+      {!file && !done && (
+        <>
+          <label htmlFor="unique-file" className="unique-circle-btn mb-2">
+            <span>Select File</span>
+          </label>
+          <input
+            type="file"
+            id="unique-file"
+            accept="image/*,video/*"
+            onChange={handleFileChange}
+            className="hidden-file-input"
+          />
+        </>
+      )}
+
+      {/* Preview */}
+      {file && !done && (
         <div className="unique-preview">
           {uploadType === "image" ? (
             <img
               src={URL.createObjectURL(file)}
               alt="preview"
-              className="unique-media"
+              className={`unique-media ${uploading ? "shrink" : ""}`}
             />
           ) : (
             <video
               src={URL.createObjectURL(file)}
-              className="unique-media"
+              className={`unique-media ${uploading ? "shrink" : ""}`}
               controls
               autoPlay
             />
@@ -138,8 +165,29 @@ export default function UploadStatusUnique() {
           >
             {uploading ? "Uploading..." : "Post Status"}
           </button>
+
+          {/* Dust while uploading */}
+          {uploading && (
+            <div className="dust-container">
+              {dustArray.map((d) => (
+                <img
+                  key={d.id}
+                  src={URL.createObjectURL(file)}
+                  alt="dust"
+                  className="dust-media"
+                  style={{
+                    left: `${d.left}px`,
+                    animationDelay: `${d.delay}s`,
+                  }}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
+
+      {/* Done message */}
+      {done && <div className="upload-done zoom-fade">Done</div>}
 
       <ToastContainer />
     </div>

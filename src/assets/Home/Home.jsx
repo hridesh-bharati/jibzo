@@ -125,8 +125,7 @@ const Home = () => {
         />
 
         <div className="mb-5 pb-4">
-        <GetPost showFilter={false} />
-
+       <GetPost showFilter={false} shuffle={true} />
         </div>
       </div>
     </>

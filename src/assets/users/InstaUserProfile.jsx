@@ -1,3 +1,5 @@
+// src\assets\users\InstaUserProfile.jsx
+
 import React, { useEffect, useState } from "react";
 import { db, auth } from "../../assets/utils/firebaseConfig";
 import { ref, onValue, update } from "firebase/database";

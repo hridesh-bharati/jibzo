@@ -208,7 +208,7 @@ export default function UploadPost() {
               />
             </label>
             {file && uploadType === "image" && (
-              <button className="tool-btn" type="button" onClick={openCropModal}>
+              <button className="tool-btn crop-btn" type="button" onClick={openCropModal}>
                 <BiCrop />
               </button>
             )}

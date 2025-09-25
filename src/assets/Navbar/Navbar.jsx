@@ -221,20 +221,60 @@ const Navbar = () => {
     setIsNotifOpen(false);
   };
 
+  // Delete chat completely
+  const deleteChat = async (chat) => {
+    if (!currentUid) return;
+    try {
+      await update(ref(db, `chats/${chat.chatId}`), null);
+      setChatHistory(prev => prev.filter(c => c.chatId !== chat.chatId));
+      toast.success("Chat deleted ✅");
+    } catch {
+      toast.error("Failed to delete chat ❌");
+    }
+  };
+
+  // Delete notification completely
+  const deleteNotif = async (notif) => {
+    if (!currentUid) return;
+    try {
+      await update(ref(db, `notifications/${currentUid}/${notif.id}`), null);
+      setNotifications(prev => prev.filter(n => n.id !== notif.id));
+      toast.success("Notification deleted ✅");
+    } catch {
+      toast.error("Failed to delete notification ❌");
+    }
+  };
+
+  // WhatsApp/Instagram style timestamp
+  const formatTimestamp = (timestamp) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    const yesterday = new Date();
+    yesterday.setDate(now.getDate() - 1);
+    const isYesterday = date.toDateString() === yesterday.toDateString();
+
+    const pad = (n) => n.toString().padStart(2, "0");
+    const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+
+    if (isToday) return time;
+    if (isYesterday) return `Yesterday ${time}`;
+    return `${pad(date.getDate())}/${pad(date.getMonth()+1)}/${date.getFullYear()} ${time}`;
+  };
+
   return (
     <nav className="navbar shadow-sm p-2 d-flex align-items-center justify-content-between">
-      {/* Logo */}
       <Link to="/home" className="d-flex align-items-center">
         <img src="icons/logo.png" width={100} alt="logo" />
       </Link>
+
       <div className="d-flex align-items-center gap-1">
+
         {/* Friend Requests */}
         <div className="position-relative">
           <button className="icon-btn" onClick={() => setIsFriendReqOpen(prev => !prev)}>
             <i className="bi bi-person-plus-fill fs-4 text-success"></i>
-            {friendRequests.length > 0 && (
-              <span className="badge">{friendRequests.length > 99 ? "99+" : friendRequests.length}</span>
-            )}
+            {friendRequests.length > 0 && <span className="badge">{friendRequests.length > 99 ? "99+" : friendRequests.length}</span>}
           </button>
 
           {isFriendReqOpen && (
@@ -268,9 +308,7 @@ const Navbar = () => {
           {isInboxOpen && (
             <div className="dropdown-card">
               <h6>Messages</h6>
-              {chatHistory.length === 0 ? (
-                <p className="text-muted">No chats yet</p>
-              ) : (
+              {chatHistory.length === 0 ? <p className="text-muted">No chats yet</p> :
                 chatHistory.map(chat => (
                   <div key={chat.chatId} className="d-flex align-items-center gap-2 mb-2">
                     <img src={`https://ui-avatars.com/api/?name=${chat.username}&background=random`} className="avatar-sm" alt={chat.username} />
@@ -278,30 +316,14 @@ const Navbar = () => {
                       <strong>{chat.username}</strong>
                       {chat.messages.length > 0 && (
                         <div className="text-muted small">
-                          {chat.messages[chat.messages.length - 1].text || "Image/Media"} • {chat.unreadCount > 0 ? `${chat.unreadCount} unread` : "read"}
+                          {chat.messages[chat.messages.length - 1].text || "Image/Media"} • {chat.unreadCount > 0 ? `${chat.unreadCount} unread` : "read"} • {formatTimestamp(chat.messages[chat.messages.length - 1].timestamp)}
                         </div>
                       )}
                     </div>
-
-                    {/* Delete button */}
-                    <button className="btn btn-sm btn-outline-danger p-1"
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        if (!currentUid) return;
-
-                        await update(ref(db, `userChats/${currentUid}/${chat.chatId}`), {
-                          deletedBy: currentUid,
-                          deletedAt: Date.now()
-                        });
-
-                        setChatHistory(prev => prev.filter(c => c.chatId !== chat.chatId));
-                      }}
-                    >
-                      🗑
-                    </button>
+                    <button className="btn btn-sm btn-outline-danger p-1" onClick={() => deleteChat(chat)}>🗑</button>
                   </div>
                 ))
-              )}
+              }
             </div>
           )}
         </div>
@@ -317,9 +339,14 @@ const Navbar = () => {
               <h6>Likes</h6>
               {notifications.length === 0 ? <p className="text-muted">No likes yet</p> :
                 notifications.map(n => (
-                  <div key={n.id} className="d-flex align-items-center justify-content-between mb-2 cursor-pointer" onClick={() => openPost(n.postId)}>
-                    <div>❤️ <strong>{n.likerName}</strong> liked <span>{n.postCaption}</span></div>
-                    <small className="text-muted">{new Date(n.timestamp).toLocaleTimeString()}</small>
+                  <div key={n.id} className="d-flex align-items-center justify-content-between mb-2 cursor-pointer">
+                    <div onClick={() => openPost(n.postId)}>
+                      ❤️ <strong>{n.likerName}</strong> liked <span>{n.postCaption}</span>
+                    </div>
+                    <div className="d-flex gap-1 align-items-center">
+                      <small className="text-muted">{formatTimestamp(n.timestamp)}</small>
+                      <button className="btn btn-sm btn-outline-danger p-1" onClick={() => deleteNotif(n)}>🗑</button>
+                    </div>
                   </div>
                 ))
               }
@@ -331,4 +358,5 @@ const Navbar = () => {
     </nav>
   );
 };
+
 export default Navbar;

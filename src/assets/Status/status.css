@@ -1,4 +1,3 @@
-/* src\assets\Status\UploadStatus.css */
 .unique-wrapper {
   position: relative;
   width: 100vw;
@@ -11,47 +10,45 @@
   flex-direction: column;
 }
 
-.unique-circle-btn {
-  width: 120px;
-  height: 120px;
-  border-radius: 50%;
-  background: #fff;
-  color: #2575fc;
-  font-size: 50px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  cursor: pointer;
-  transition: transform 0.3s, box-shadow 0.3s;
-  box-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+/* Rocket */
+.rocket-container {
+  position: absolute;
+  bottom: 50px;
+  font-size: 80px;
+  color: #fff;
+  z-index: 100;
+  transition: transform 2s ease-in-out;
+}
+.rocket-container.fly {
+  transform: translateY(-400px) scale(1.2);
 }
 
-.unique-circle-btn:hover {
-  transform: scale(1.1);
-  box-shadow: 0 0 30px rgba(255, 255, 255, 0.7);
-}
-
-.hidden-file-input {
-  display: none;
-}
-
+/* Preview */
 .unique-preview {
   display: flex;
   flex-direction: column;
   align-items: center;
-  animation: fadeIn 0.5s ease;
+  position: relative;
+  z-index: 90;
 }
 
+/* Media */
 .unique-media {
-  width: 250px;
-  max-height: 400px;
+  width: 200px;
+  max-height: 300px;
   object-fit: cover;
   border-radius: 20px;
   margin-bottom: 20px;
   border: 4px solid #fff;
   box-shadow: 0 0 25px rgba(255, 255, 255, 0.5);
+  transition: transform 1.8s ease-in-out, opacity 0.5s ease;
+}
+.shrink {
+  transform: scale(0.2) translateY(-200px);
+  opacity: 0.6;
 }
 
+/* Upload button */
 .unique-upload-btn {
   padding: 12px 35px;
   border: none;
@@ -62,14 +59,74 @@
   cursor: pointer;
   font-size: 16px;
   box-shadow: 0 0 20px rgba(255, 255, 255, 0.6);
-  transition: transform 0.2s;
 }
-
 .unique-upload-btn:hover {
   transform: scale(1.05);
 }
 
-@keyframes fadeIn {
-  from {opacity: 0; transform: scale(0.8);}
-  to {opacity: 1; transform: scale(1);}
+/* Dust container */
+.dust-container {
+  position: absolute;
+  bottom: 50px;
+  z-index: 80;
+}
+.dust-media {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  opacity: 0.8;
+  animation: dust-fly 1.8s forwards;
+}
+@keyframes dust-fly {
+  0% { transform: translate(0,0) scale(1); opacity:1; }
+  100% { transform: translate(calc(-50px + 100px), -250px) scale(0); opacity:0; }
+}
+
+/* Done message */
+.upload-done {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #fff;
+  font-size: 48px;
+  font-weight: bold;
+  text-shadow: 0 0 20px #fff;
+}
+
+/* Zoom + fade */
+.zoom-fade {
+  animation: zoomFade 1.5s forwards;
+}
+@keyframes zoomFade {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+  50% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.5); }
+}
+
+/* File input */
+.hidden-file-input {
+  display: none;
+}
+
+/* Rocket button */
+.unique-circle-btn {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: #fff;
+  color: #2575fc;
+  font-size: 18px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+  transition: transform 0.3s, box-shadow 0.3s;
+}
+.unique-circle-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 0 30px rgba(255, 255, 255, 0.7);
 }
