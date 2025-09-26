@@ -1,4 +1,3 @@
-// src/components/Messages/Messages.jsx
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { db, auth } from "../../assets/utils/firebaseConfig";
@@ -81,7 +80,7 @@ export default function Messages() {
         last_changed: serverTimestamp(),
         hide: privacyHide,
         guest: currentUid.startsWith("guest_"),
-      });
+      }).catch(console.warn);
     };
     updateStatus("online");
     window.addEventListener("focus", () => updateStatus("online"));
@@ -204,23 +203,43 @@ export default function Messages() {
       timestamp: serverTimestamp(),
       deletedFor: [],
       status: "sent",
+      read: false,
     };
 
-    if (editingMsgId) {
-      await update(
-        dbRef(db, `chats/${chatId}/messages/${editingMsgId}`),
-        { text }
-      );
-      setEditingMsgId(null);
-    } else {
-      await push(dbRef(db, `chats/${chatId}/messages`), msgPayload);
-    }
+    try {
+      if (editingMsgId) {
+        await update(
+          dbRef(db, `chats/${chatId}/messages/${editingMsgId}`),
+          { text }
+        );
+        setEditingMsgId(null);
+      } else {
+        const pushed = await push(dbRef(db, `chats/${chatId}/messages`), msgPayload);
+        // AFTER sending message, create a notification for the recipient
+        // only if recipient is not a guest
+        const recipientUid = uid;
+        if (recipientUid && !recipientUid.startsWith("guest_")) {
+          const notifRef = push(dbRef(db, `notifications/${recipientUid}`));
+          const notifObj = {
+            type: "message",
+            fromId: currentUid,
+            chatId,
+            text: (text || (opts.imageURL ? "Image" : "")).slice(0, 200),
+            timestamp: serverTimestamp(),
+            seen: false
+          };
+          await set(notifRef, notifObj);
+        }
+      }
 
-    setInput("");
-    setReplyTo(null);
-    setPreviewImage(null);
-    setIsTyping(false);
-    setTyping(false);
+      setInput("");
+      setReplyTo(null);
+      setPreviewImage(null);
+      setIsTyping(false);
+      setTyping(false);
+    } catch (err) {
+      console.error("sendMessage error:", err);
+    }
   };
 
   // ---------- Cloudinary Upload ----------
@@ -245,13 +264,13 @@ export default function Messages() {
           headers: { "Content-Type": "multipart/form-data" },
           onUploadProgress: (progressEvent) => {
             const percent = Math.round(
-              (progressEvent.loaded * 100) / progressEvent.total
+              (progressEvent.loaded * 100) / (progressEvent.total || 1)
             );
             setUploadProgress(percent);
           },
         }
       );
-      sendMessage({ imageURL: res.data.secure_url });
+      await sendMessage({ imageURL: res.data.secure_url });
       setPreviewImage(null);
     } catch (err) {
       console.error(err);
@@ -304,6 +323,7 @@ export default function Messages() {
     msgs.forEach((m) => {
       if (m.sender === currentUid) return;
       updates[`chats/${chatId}/messages/${m.id}/status`] = "seen";
+      updates[`chats/${chatId}/messages/${m.id}/read`] = true;
     });
     if (Object.keys(updates).length) await update(dbRef(db), updates);
   };
@@ -482,7 +502,6 @@ export default function Messages() {
         <div ref={messagesEndRef}></div>
       </div>
 
-      {/* Input */}
       {/* Input */}
       <div className="p-2 position-relative" style={{ background: "#ccf" }}>
         {previewImage && (

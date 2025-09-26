@@ -1,5 +1,5 @@
 // src/assets/uploads/UploadPost.jsx
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import { ref as dbRef, push } from "firebase/database";
 import { db, auth } from "../../assets/utils/firebaseConfig";
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -32,6 +32,15 @@ export default function UploadPost() {
   const fileInputRef = useRef();
   const currentUser = auth.currentUser;
   const storage = getStorage();
+
+  // Cleanup object URLs to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (file) {
+        URL.revokeObjectURL(URL.createObjectURL(file));
+      }
+    };
+  }, [file]);
 
   const handleFileChange = (e, type) => {
     const selectedFile = e.target.files?.[0];
@@ -66,7 +75,6 @@ export default function UploadPost() {
       });
       setFile(croppedFile);
       setCropModalOpen(false);
-      // toast.success("Crop applied successfully!");
     } catch (error) {
       console.error(error);
       toast.error("Failed to apply crop");
@@ -85,25 +93,19 @@ export default function UploadPost() {
 
     try {
       if (uploadType === "pdf") {
-        try {
-          const formData = new FormData();
-          formData.append("file", file);
-          formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-          formData.append("folder", "pdfs");
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+        formData.append("folder", "pdfs");
 
-          const res = await axios.post(
-            `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/raw/upload`,
-            formData,
-            {
-              onUploadProgress: (e) => setProgress(Math.round((e.loaded * 100) / e.total)),
-            }
-          );
-          fileUrl = res.data.secure_url;
-        } catch {
-          const fileRef = storageRef(storage, `pdfs/${Date.now()}_${file.name}`);
-          await uploadBytes(fileRef, file);
-          fileUrl = await getDownloadURL(fileRef);
-        }
+        const res = await axios.post(
+          `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/raw/upload`,
+          formData,
+          {
+            onUploadProgress: (e) => setProgress(Math.round((e.loaded * 100) / e.total)),
+          }
+        );
+        fileUrl = res.data.secure_url;
       } else {
         const formData = new FormData();
         formData.append("file", file);
@@ -127,6 +129,7 @@ export default function UploadPost() {
         type: uploadType,
         user: currentUser?.displayName || currentUser?.email?.split("@")[0] || "Guest",
         userId: currentUser?.uid || "guest_" + Date.now(),
+        userEmail: currentUser?.email || "",
         userPic: currentUser?.photoURL || "icons/avatar.jpg",
       });
 
@@ -171,6 +174,7 @@ export default function UploadPost() {
             <div
               className="placeholder d-flex flex-column align-items-center justify-content-center"
               onClick={() => fileInputRef.current?.click()}
+              style={{ cursor: 'pointer' }}
             >
               <BsUpload size={50} className="mb-2" />
               <p className="placeholder-text">Click to choose media</p>
@@ -179,7 +183,7 @@ export default function UploadPost() {
 
           {/* Right-side buttons */}
           <div className="tools-bar d-flex flex-column">
-            <label className="tool-btn mb-2">
+            <label className="tool-btn mb-2" aria-label="Upload image">
               <BsImage />
               <input
                 type="file"
@@ -189,7 +193,7 @@ export default function UploadPost() {
                 ref={fileInputRef}
               />
             </label>
-            <label className="tool-btn mb-2">
+            <label className="tool-btn mb-2" aria-label="Upload video">
               <BsCameraVideo />
               <input
                 type="file"
@@ -198,7 +202,7 @@ export default function UploadPost() {
                 className="d-none"
               />
             </label>
-            <label className="tool-btn mb-2">
+            <label className="tool-btn mb-2" aria-label="Upload PDF">
               <BsFileEarmarkPdf />
               <input
                 type="file"
@@ -208,7 +212,7 @@ export default function UploadPost() {
               />
             </label>
             {file && uploadType === "image" && (
-              <button className="tool-btn crop-btn" type="button" onClick={openCropModal}>
+              <button className="tool-btn crop-btn" type="button" onClick={openCropModal} aria-label="Crop image">
                 <BiCrop />
               </button>
             )}
@@ -265,7 +269,7 @@ export default function UploadPost() {
         </Modal>
 
         {/* Caption & Post */}
-        <form onSubmit={handleUpload} className="caption-form d-fl">
+        <form onSubmit={handleUpload} className="caption-form d-flex">
           <input
             type="text"
             placeholder="Write a caption..."
