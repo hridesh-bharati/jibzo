@@ -571,8 +571,8 @@ function ReelsPlayer({
               >
                 {/* Like button */}
                 <div className="d-flex flex-column align-items-center">
-                  <button 
-                    className="btn btn-light rounded-4 px-2" 
+                  <button
+                    className="btn btn-light rounded-4 px-2"
                     onClick={(e) => { e.stopPropagation(); toggleLike(post.id); }}
                     aria-label="Like post"
                   >
@@ -583,8 +583,8 @@ function ReelsPlayer({
 
                 {/* Comments button */}
                 <div className="d-flex flex-column align-items-center">
-                  <button 
-                    className="btn btn-light rounded-4 px-2" 
+                  <button
+                    className="btn btn-light rounded-4 px-2"
                     onClick={() => openComments(post)}
                     aria-label="Open comments"
                   >
@@ -974,11 +974,9 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
                         className="rounded-circle me-2"
                         style={{ width: 40, height: 40, objectFit: "cover" }}
                       />
-                      <div className="d-flex flex-column">
+                      <div className="d-flex flex-column w-100 text-start">
                         <strong>{post.user || "Guest"}</strong>
-                        <small className="text-muted">
-                          {post.timestamp ? new Date(post.timestamp).toLocaleDateString() : ""}
-                        </small>
+                        {post.caption}
                       </div>
                       <button
                         className="btn btn-sm border ms-auto"
@@ -987,12 +985,12 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
                         onClick={() => setOffcanvasPost(post)}
                         aria-label="Post options"
                       >
-                        <i className="bi bi-three-dots"></i>
+                        <i className="bi bi-list"></i>
                       </button>
                     </div>
 
                     <div className="p-2 text-center">{renderPreview(post)}</div>
-                    <div className="card-body p-2">
+                    <div className="card-body">
                       <div className="d-flex align-items-center justify-content-between mb-2">
                         <div className="d-flex align-items-center">
                           <Heart
@@ -1031,9 +1029,9 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
                         )}
                       </div>
 
-                      <p>
-                        <strong>{post.user}</strong> {post.caption}
-                      </p>
+                      {/* <p>
+                        <strong>{post.user}</strong> 
+                      </p> */}
 
                       {commentCount > 0 && (
                         <div
@@ -1058,13 +1056,22 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
           data-bs-backdrop="false"
           style={{ height: "40vh", zIndex: 1000 }}
         >
-          <div className="offcanvas-header">
-            <h5>Options</h5>
+          <div className="offcanvas-header bg-primary-subtle">
+            {/* <h5>Options</h5> */}
             <button className="btn-close" data-bs-dismiss="offcanvas" aria-label="Close options" />
           </div>
           <div className="offcanvas-body">
+
             {offcanvasPost && (
               <>
+
+                <h5 className="text-muted">
+                  Post Name: <small> {offcanvasPost?.caption}</small>
+                </h5>
+                <small className="text-muted">
+               Date: {offcanvasPost?.timestamp ? new Date(offcanvasPost.timestamp).toLocaleDateString() : ""}
+                </small>
+
                 <button
                   className="btn btn-outline-primary w-100 mb-2"
                   onClick={() =>
