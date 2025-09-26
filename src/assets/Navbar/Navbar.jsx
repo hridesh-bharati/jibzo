@@ -1,14 +1,13 @@
 // src/assets/Navbar/Navbar.jsx
-import React, { useEffect, useState, useCallback ,useRef} from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { auth, db } from "../../assets/utils/firebaseConfig";
 import { ref, onValue, get, update, remove } from "firebase/database";
 import { onAuthStateChanged } from "firebase/auth";
 import { toast } from "react-toastify";
-import { initOneSignal, sendPushNotification, showLocalNotification } from "../utils/NotificationService";
-
 import "./Navbar.css";
 
+// Custom hook for dropdown state management
 const useDropdownState = () => {
   const [states, setStates] = useState({
     friendReq: false,
@@ -77,14 +76,17 @@ const Navbar = () => {
   // Notifications state
   const [notifications, setNotifications] = useState([]);
   const [unreadLikes, setUnreadLikes] = useState(0);
-  const notifiedRequests = useRef(new Set());
 
+  // Friend Requests
   useEffect(() => {
     if (!currentUid) return;
 
     const reqRef = ref(db, `usersData/${currentUid}/followRequests/received`);
     const unsub = onValue(reqRef, async (snap) => {
-      if (!snap.exists()) return setFriendRequests([]);
+      if (!snap.exists()) {
+        setFriendRequests([]);
+        return;
+      }
 
       const requests = Object.entries(snap.val());
       const detailedRequests = await Promise.all(
@@ -92,21 +94,10 @@ const Navbar = () => {
           try {
             const userSnap = await get(ref(db, `usersData/${uid}`));
             const userData = userSnap.val();
-
-            if (!notifiedRequests.current.has(uid)) {
-              await sendPushNotification(
-                "New Friend Request",
-                `${userData?.username || "Someone"} sent you a friend request`,
-                { type: "friend_request" },
-                currentUid
-              );
-              notifiedRequests.current.add(uid);
-            }
-
             return {
               uid,
               username: userData?.username || "Someone",
-              photoURL: userData?.photoURL || `https://ui-avatars.com/api/?name=${userData?.username || "U"}`,
+              photoURL: userData?.photoURL || `https://ui-avatars.com/api/?name=${userData?.username || "U"}`
             };
           } catch {
             return { uid, username: "Someone", photoURL: "" };
@@ -291,11 +282,6 @@ const Navbar = () => {
     });
 
     return () => unsub();
-  }, [currentUid]);
-  // Init OneSignal after login
-  useEffect(() => {
-    if (!currentUid) return;
-    initOneSignal(currentUid);
   }, [currentUid]);
 
   const handleNotificationToggle = async () => {
