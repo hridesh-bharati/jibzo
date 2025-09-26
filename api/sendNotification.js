@@ -3,14 +3,14 @@ import fetch from "node-fetch";
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
-  const { appId, authKey, title, message, data = {}, targetUserId } = req.body;
+  const { title, message, data = {}, targetUserId } = req.body;
 
-  if (!appId || !authKey || !title || !message) {
+  if (!title || !message) {
     return res.status(400).json({ error: "Missing parameters" });
   }
 
   const payload = {
-    app_id: appId,
+    app_id: process.env.NOTIFY_APP_ID,       // Vercel env variable
     headings: { en: title },
     contents: { en: message },
     data,
@@ -19,7 +19,7 @@ export default async function handler(req, res) {
   if (targetUserId) {
     payload.include_external_user_ids = [targetUserId];
   } else {
-    payload.included_segments = ["All"]; 
+    payload.included_segments = ["All"]; // All subscribed users (make sure segment exists)
   }
 
   try {
@@ -27,7 +27,7 @@ export default async function handler(req, res) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Basic ${authKey}`,
+        Authorization: `Basic ${process.env.NOTIFY_AUTH_ID}`, // Vercel env variable
       },
       body: JSON.stringify(payload),
     });
