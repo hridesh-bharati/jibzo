@@ -1,4 +1,3 @@
-// Example for Vercel Serverless Function
 import fetch from "node-fetch";
 
 export default async function handler(req, res) {

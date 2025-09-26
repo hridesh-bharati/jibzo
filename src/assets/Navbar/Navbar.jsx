@@ -9,7 +9,6 @@ import { initOneSignal, sendPushNotification, showLocalNotification } from "../u
 
 import "./Navbar.css";
 
-// Custom hook for dropdown state management
 const useDropdownState = () => {
   const [states, setStates] = useState({
     friendReq: false,

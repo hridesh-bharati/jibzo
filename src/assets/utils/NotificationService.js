@@ -13,14 +13,12 @@ export function initOneSignal(currentUid) {
     });
 
     if (currentUid) OneSignal.setExternalUserId(currentUid);
-
     OneSignal.showSlidedownPrompt();
   });
 
   oneSignalInitialized = true;
 }
 
-// Local foreground notification
 export function showLocalNotification(title, message, data = {}) {
   if (typeof window === "undefined" || !window.OneSignal) return;
   const OneSignal = window.OneSignal || [];
@@ -29,7 +27,6 @@ export function showLocalNotification(title, message, data = {}) {
   });
 }
 
-// Call serverless function for safe push
 export async function sendPushNotification(title, message, data = {}, targetUserId = null) {
   try {
     const res = await fetch("/api/sendNotification", {
