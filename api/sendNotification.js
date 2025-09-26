@@ -16,8 +16,11 @@ export default async function handler(req, res) {
     data,
   };
 
-  if (targetUserId) payload.include_external_user_ids = [targetUserId];
-  else payload.included_segments = ["Subscribed Users"];
+  if (targetUserId) {
+    payload.include_external_user_ids = [targetUserId];
+  } else {
+    payload.included_segments = ["All"]; 
+  }
 
   try {
     const response = await fetch("https://onesignal.com/api/v1/notifications", {
