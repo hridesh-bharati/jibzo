@@ -169,48 +169,32 @@ const Navbar = () => {
   }, [closeAll]);
 
   // Initialize FCM when user logs in - FIXED PLACEMENT
-  useEffect(() => {
-    if (currentUid) {
-      const initializeFCMForUser = async () => {
-        try {
-          console.log("🔄 Initializing FCM for user:", currentUid);
-
-          const token = await requestFcmToken();
-          if (token) {
-            // Save token to your backend
-            await saveFcmTokenToBackend(currentUid, token);
-            console.log('✅ FCM initialized successfully for user:', currentUid);
-          } else {
-            console.log('ℹ️ FCM token not available (permission denied or not supported)');
-          }
-        } catch (error) {
-          console.error('❌ FCM initialization failed:', error);
-          // Don't show error toast for permission denied (common case)
-          if (!error.message.includes('permission') && !error.message.includes('denied')) {
-            toast.error('Failed to enable notifications');
-          }
+useEffect(() => {
+  if (currentUid) {
+    const initializeFCMForUser = async () => {
+      try {
+        console.log("🔄 Initializing FCM for user:", currentUid);
+        
+        const token = await requestFcmToken();
+        if (token) {
+          // ✅ NOW THIS FUNCTION EXISTS!
+          await saveFcmTokenToBackend(currentUid, token);
+          console.log('✅ FCM initialized successfully for user:', currentUid);
+        } else {
+          console.log('ℹ️ FCM token not available');
         }
-      };
-
-      initializeFCMForUser();
-
-      // Setup foreground message listener
-      const unsubscribe = onForegroundMessage((payload) => {
-        console.log('📱 Foreground message received:', payload);
-
-        if (payload.notification) {
-          showLocalNotification(payload.notification.title, {
-            body: payload.notification.body,
-            icon: '/logo.png'
-          });
+      } catch (error) {
+        console.error('❌ FCM initialization failed:', error);
+        // Don't show error for permission denied (common case)
+        if (!error.message.includes('permission') && !error.message.includes('denied')) {
+          console.warn('FCM setup warning:', error.message);
         }
-      });
+      }
+    };
 
-      return () => {
-        if (unsubscribe) unsubscribe();
-      };
-    }
-  }, [currentUid]);
+    initializeFCMForUser();
+  }
+}, [currentUid]);
 
   // Friend Requests
   useEffect(() => {

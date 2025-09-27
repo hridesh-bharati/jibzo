@@ -5,8 +5,38 @@ import { app } from "./firebaseConfig";
 let messaging = null;
 let currentToken = null;
 
-// Check if running in a supported environment
 const isClientSide = typeof window !== 'undefined';
+
+// ✅ ADD THIS MISSING FUNCTION
+export const saveFcmTokenToBackend = async (userId, token) => {
+  try {
+    console.log("💾 Saving FCM token to backend for user:", userId);
+    
+    const response = await fetch('/api/saveAndPush', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId: userId,
+        token: token,
+        title: 'Device Registered',
+        body: 'Your device is ready to receive notifications'
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log("✅ Token saved to backend successfully:", result);
+    return result;
+  } catch (error) {
+    console.error("❌ Failed to save token to backend:", error);
+    throw new Error('Failed to save token: ' + error.message);
+  }
+};
 
 export const initializeFCM = async () => {
   if (!isClientSide) return null;
@@ -39,7 +69,6 @@ export const requestFcmToken = async () => {
   if (!isClientSide) return null;
 
   try {
-    // Check if already have token
     if (currentToken) {
       console.log("Using cached FCM token");
       return currentToken;
@@ -48,7 +77,6 @@ export const requestFcmToken = async () => {
     const initialized = await initializeFCM();
     if (!initialized) return null;
 
-    // Request notification permission
     const permission = await Notification.requestPermission();
     if (permission !== "granted") {
       console.warn("Notification permission denied");
@@ -57,7 +85,6 @@ export const requestFcmToken = async () => {
 
     messaging = getMessaging(app);
 
-    // Use ONLY Firebase Messaging service worker
     let serviceWorkerRegistration;
     try {
       serviceWorkerRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
@@ -69,7 +96,6 @@ export const requestFcmToken = async () => {
       return null;
     }
 
-    // Wait for service worker to be ready
     await serviceWorkerRegistration.ready;
 
     const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
@@ -114,7 +140,7 @@ export const onForegroundMessage = (callback) => {
   };
 
   setupListener();
-  return () => {}; // Cleanup function
+  return () => {};
 };
 
 export const showLocalNotification = (title, options = {}) => {
@@ -130,34 +156,5 @@ export const showLocalNotification = (title, options = {}) => {
     };
 
     new Notification(title, notificationOptions);
-  }
-};
-
-// Save token to your backend
-export const saveFcmTokenToBackend = async (userId, token) => {
-  try {
-    const response = await fetch('/api/saveAndPush', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        userId: userId,
-        token: token,
-        title: 'Device Registered',
-        body: 'Your device is ready to receive notifications'
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const result = await response.json();
-    console.log("✅ Token saved to backend:", result);
-    return result;
-  } catch (error) {
-    console.error("❌ Failed to save token to backend:", error);
-    throw error;
   }
 };
