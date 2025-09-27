@@ -37,4 +37,4 @@ setPersistence(auth, browserLocalPersistence).catch((err) =>
   console.error("Auth persistence error:", err)
 );
 
-export { db, storage, auth, firestore, ref, set, get };
+export { app, db, storage, auth, firestore, ref, set, get };
