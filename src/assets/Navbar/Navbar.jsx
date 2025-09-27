@@ -3,11 +3,11 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { auth, db } from "../../assets/utils/firebaseConfig";
 import { ref, onValue, get, update, remove, push, set } from "firebase/database";
-import { requestFcmToken, onForegroundMessage, showLocalNotification } from "../utils/fcmClient";
+import { requestFcmToken, onForegroundMessage, showLocalNotification } from "../../utils/fcmClient"; // Fixed import path
 import { onAuthStateChanged } from "firebase/auth";
 import { toast } from "react-toastify";
 import "./Navbar.css";
-import EnableNotifications from "./EnableNotifications"; 
+import EnableNotifications from "../../components/EnableNotifications"; // Fixed import path
 
 // ✅ ADD THIS MISSING FUNCTION AT THE TOP
 const saveFcmTokenToBackend = async (userId, token) => {
@@ -179,32 +179,11 @@ const Navbar = () => {
     return () => document.removeEventListener('click', handleClickOutside);
   }, [closeAll]);
 
-  // Initialize FCM when user logs in - FIXED
+  // ✅ FIXED: REMOVE AUTOMATIC FCM INITIALIZATION
+  // Only setup message listener, don't automatically request permissions
   useEffect(() => {
     if (currentUid) {
-      const initializeFCMForUser = async () => {
-        try {
-          console.log("🔄 Initializing FCM for user:", currentUid);
-
-          const token = await requestFcmToken();
-          if (token) {
-            // ✅ NOW USING THE LOCAL FUNCTION
-            await saveFcmTokenToBackend(currentUid, token);
-            console.log('✅ FCM initialized successfully for user:', currentUid);
-          } else {
-            console.log('ℹ️ FCM token not available');
-          }
-        } catch (error) {
-          console.error('❌ FCM initialization failed:', error);
-          if (!error.message.includes('permission') && !error.message.includes('denied')) {
-            console.warn('FCM setup warning:', error.message);
-          }
-        }
-      };
-
-      initializeFCMForUser();
-
-      // Setup foreground message listener
+      // Setup foreground message listener ONLY
       const unsubscribe = onForegroundMessage((payload) => {
         console.log('📱 Foreground message received:', payload);
 
@@ -724,7 +703,7 @@ const Navbar = () => {
       </Link>
 
       <div className="d-flex align-items-center gap-3">
-        {/* Enable Notifications Button */}
+        {/* Enable Notifications Button - User manually clicks this */}
         <EnableNotifications userId={currentUid} onEnabled={() => {
           toast.success("🔔 Notifications ready!");
         }} />

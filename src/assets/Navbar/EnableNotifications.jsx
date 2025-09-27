@@ -1,9 +1,9 @@
-// src/components/EnableNotifications.jsx - TEMPORARY FIX
+// src/components/EnableNotifications.jsx - IMPROVED VERSION
 import React, { useState } from 'react';
 import { toast } from 'react-toastify';
 import { requestFcmToken } from '../utils/fcmClient';
 
-// ✅ TEMPORARY: Add the missing function directly here
+// Temporary function - same as before
 const saveFcmTokenToBackend = async (userId, token) => {
   try {
     console.log("💾 Saving FCM token to backend for user:", userId);
@@ -36,48 +36,88 @@ const saveFcmTokenToBackend = async (userId, token) => {
 
 const EnableNotifications = ({ userId, onEnabled }) => {
   const [isLoading, setIsLoading] = useState(false);
+  const [isEnabled, setIsEnabled] = useState(false);
 
   const enableNotifications = async () => {
     if (!userId) {
-      toast.error("User not logged in");
+      toast.error("Please login first");
       return;
     }
 
     setIsLoading(true);
     
     try {
-      console.log("🔄 Requesting FCM token...");
-      const token = await requestFcmToken();
+      console.log("🔔 Requesting notification permission...");
       
-      if (token) {
-        console.log("💾 Saving token to backend...");
-        await saveFcmTokenToBackend(userId, token);
-        toast.success("🔔 Notifications enabled successfully!");
+      // First check current permission
+      if (Notification.permission === "granted") {
+        toast.info("🔔 Notifications are already enabled!");
+        setIsEnabled(true);
         if (onEnabled) onEnabled();
-      } else {
-        toast.info("Please allow notifications when prompted");
+        return;
       }
+
+      if (Notification.permission === "denied") {
+        toast.info(
+          "📵 Notifications blocked. Please enable them in your browser settings",
+          { autoClose: 5000 }
+        );
+        return;
+      }
+
+      // Request permission
+      const permission = await Notification.requestPermission();
+      
+      if (permission === "granted") {
+        console.log("✅ Permission granted, getting FCM token...");
+        const token = await requestFcmToken();
+        
+        if (token) {
+          await saveFcmTokenToBackend(userId, token);
+          toast.success("🎉 Notifications enabled successfully!");
+          setIsEnabled(true);
+          if (onEnabled) onEnabled();
+        } else {
+          toast.info("⚠️ Could not get device token. Please try again.");
+        }
+      } else if (permission === "denied") {
+        toast.info(
+          "🔕 Notifications blocked. You can enable them later in settings",
+          { autoClose: 4000 }
+        );
+      } else {
+        toast.info("💡 You can enable notifications anytime from settings");
+      }
+      
     } catch (error) {
-      console.error("Failed to enable notifications:", error);
+      console.error("❌ Failed to enable notifications:", error);
       
       if (error.message.includes('permission') || error.message.includes('denied')) {
-        toast.info("🔕 Notifications blocked. Please enable them in browser settings");
-      } else if (error.message.includes('Failed to save token')) {
-        toast.error("⚠️ Failed to save device settings. Please try again.");
+        toast.info("🔕 Please allow notifications in browser settings");
       } else {
-        toast.error("❌ Failed to enable notifications");
+        toast.error("❌ Failed to enable notifications. Please try again.");
       }
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Check current status on component mount
+  React.useEffect(() => {
+    if (Notification.permission === "granted") {
+      setIsEnabled(true);
+    }
+  }, []);
+
   return (
     <button 
       onClick={enableNotifications}
-      disabled={isLoading}
-      className="btn btn-primary d-flex align-items-center gap-2"
-      style={{minWidth: '180px'}}
+      disabled={isLoading || isEnabled}
+      className={`btn d-flex align-items-center gap-2 ${
+        isEnabled ? "btn-success" : "btn-primary"
+      }`}
+      style={{minWidth: '200px'}}
+      title={isEnabled ? "Notifications are enabled" : "Click to enable notifications"}
     >
       {isLoading ? (
         <>
@@ -85,6 +125,11 @@ const EnableNotifications = ({ userId, onEnabled }) => {
             <span className="visually-hidden">Loading...</span>
           </div>
           Enabling...
+        </>
+      ) : isEnabled ? (
+        <>
+          <i className="bi bi-bell-fill"></i>
+          Notifications Enabled ✅
         </>
       ) : (
         <>
