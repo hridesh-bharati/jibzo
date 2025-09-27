@@ -7,6 +7,7 @@ import { requestFcmToken, onForegroundMessage, showLocalNotification } from "../
 import { onAuthStateChanged } from "firebase/auth";
 import { toast } from "react-toastify";
 import "./Navbar.css";
+import EnableNotifications from "./EnableNotifications";
 
 // Custom hook for dropdown state management
 const useDropdownState = () => {
@@ -707,9 +708,12 @@ const Navbar = () => {
 
   return (
     <nav className="navbar shadow-sm p-2 d-flex align-items-center border justify-content-between">
-      <Link to="/home" className="d-flex align-items-center navbar-brand">
-        <img src="icons/logo.png" width={100} alt="logo" />
-      </Link>
+      <div className="d-flex align-items-center gap-3">
+        {/* Notifications Enable Button */}
+        <EnableNotifications userId={currentUid} onEnabled={() => {
+          toast.success("Notifications ready!");
+        }} />
+      </div>
 
       <div className="d-flex align-items-center gap-3">
         {/* Friend Requests */}
