@@ -1,4 +1,4 @@
-// api/saveAndPush.js
+// api/saveAndPush.js - FIXED VERSION
 import admin from "firebase-admin";
 
 // Firebase Admin initialization with robust error handling
@@ -278,6 +278,7 @@ const checkRateLimit = (ip) => {
 
 // Main API handler
 export default async function handler(req, res) {
+  // ✅ FIXED: Declare missing variables at the top
   const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   const startTime = Date.now();
 
@@ -294,11 +295,12 @@ export default async function handler(req, res) {
 
   // Method validation
   if (req.method !== 'POST') {
-    return res.json({
+    // ✅ FIXED: Consistent response format
+    return res.status(405).json({
       success: false,
       error: 'METHOD_NOT_ALLOWED',
       message: 'Only POST requests are allowed'
-    }, 405);
+    });
   }
 
   try {
@@ -312,21 +314,23 @@ export default async function handler(req, res) {
 
     if (!checkRateLimit(clientIP)) {
       console.warn(`⏰ [${requestId}] Rate limit exceeded for IP: ${clientIP}`);
-      return res.json({
+      // ✅ FIXED: Consistent response format
+      return res.status(429).json({
         success: false,
         error: 'RATE_LIMIT_EXCEEDED',
         message: 'Too many requests. Please try again later.'
-      }, 429);
+      });
     }
 
     // Content type validation
     const contentType = req.headers['content-type'];
     if (!contentType || !contentType.includes('application/json')) {
-      return res.json({
+      // ✅ FIXED: Consistent response format
+      return res.status(400).json({
         success: false,
         error: 'INVALID_CONTENT_TYPE',
         message: 'Content-Type must be application/json'
-      }, 400);
+      });
     }
 
     // Parse request body
@@ -334,11 +338,12 @@ export default async function handler(req, res) {
     try {
       requestBody = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
     } catch (parseError) {
-      return res.json({
+      // ✅ FIXED: Consistent response format
+      return res.status(400).json({
         success: false,
         error: 'INVALID_JSON',
         message: 'Invalid JSON format in request body'
-      }, 400);
+      });
     }
 
     const { userId, token, title, body } = requestBody;
@@ -347,14 +352,16 @@ export default async function handler(req, res) {
     try {
       validateRequest({ userId, token, title, body });
     } catch (validationError) {
-      return res.json({
+      // ✅ FIXED: Consistent response format
+      return res.status(400).json({
         success: false,
         error: 'VALIDATION_ERROR',
         message: validationError.message
-      }, 400);
+      });
     }
 
     // Initialize Firebase
+    console.log(`⚡ [${requestId}] Initializing Firebase...`);
     await initializeFirebase();
 
     // Manage user tokens
@@ -364,11 +371,12 @@ export default async function handler(req, res) {
     });
 
     if (tokenManagement.totalTokens === 0) {
-      return res.json({
+      // ✅ FIXED: Consistent response format
+      return res.status(400).json({
         success: false,
         error: 'NO_VALID_TOKENS',
         message: 'No valid device tokens found for this user'
-      }, 400);
+      });
     }
 
     console.log(`📱 [${requestId}] Sending to ${tokenManagement.totalTokens} devices`);
@@ -424,10 +432,10 @@ export default async function handler(req, res) {
       const cleanupPromises = invalidTokens.map(async (tokenKey) => {
         try {
           await tokensRef.child(tokenKey).remove();
-          console.log(`🗑️ Removed invalid token: ${tokenKey}`);
+          console.log(`🗑️ [${requestId}] Removed invalid token: ${tokenKey}`);
           return tokenKey;
         } catch (error) {
-          console.error('Failed to remove token:', error);
+          console.error(`[${requestId}] Failed to remove token:`, error);
           return null;
         }
       });
@@ -440,7 +448,7 @@ export default async function handler(req, res) {
     console.log(`✅ [${requestId}] Request completed in ${responseTime}ms: ${successful} successful, ${failed} failed`);
 
     // Success response
-    return res.json({
+    return res.status(200).json({
       success: true,
       data: {
         sentCount: successful,
@@ -452,7 +460,7 @@ export default async function handler(req, res) {
         requestId: requestId
       },
       message: `Notifications delivered to ${successful} device(s)`
-    }, 200);
+    });
 
   } catch (error) {
     const responseTime = Date.now() - startTime;
@@ -473,12 +481,13 @@ export default async function handler(req, res) {
 
     const errorInfo = matchedError ? matchedError[1] : { status: 500, code: 'INTERNAL_ERROR' };
 
-    return res.json({
+    // ✅ FIXED: Consistent error response format
+    return res.status(errorInfo.status).json({
       success: false,
       error: errorInfo.code,
       message: error.message || 'An unexpected error occurred',
       requestId: requestId,
       responseTime: `${responseTime}ms`
-    }, errorInfo.status);
+    });
   }
 }

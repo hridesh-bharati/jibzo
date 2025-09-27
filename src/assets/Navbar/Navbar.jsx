@@ -42,7 +42,7 @@ const useAuthAndFCM = () => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUid(user?.uid || null);
-      
+
       if (user) {
         // Fetch user data
         try {
@@ -67,7 +67,7 @@ const useAuthAndFCM = () => {
 // Utility functions
 const formatTimestamp = (timestamp) => {
   if (!timestamp) return "Just now";
-  
+
   const date = new Date(timestamp);
   const now = new Date();
   const diffMs = now - date;
@@ -79,7 +79,7 @@ const formatTimestamp = (timestamp) => {
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
-  
+
   return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
 };
 
@@ -116,16 +116,16 @@ const sendPushNotification = async (userId, title, body) => {
 const saveFcmTokenToDatabase = async (userId, token) => {
   try {
     if (!userId || !token) return;
-    
+
     const tokenRef = ref(db, `fcmTokens/${userId}`);
     const newTokenKey = push(tokenRef).key;
-    
+
     await set(ref(db, `fcmTokens/${userId}/${newTokenKey}`), {
       token: token,
       createdAt: Date.now(),
       platform: 'web'
     });
-    
+
     console.log('✅ FCM token saved to database');
   } catch (error) {
     console.error('Error saving FCM token to database:', error);
@@ -135,13 +135,13 @@ const saveFcmTokenToDatabase = async (userId, token) => {
 const Navbar = () => {
   const navigate = useNavigate();
   const { currentUid, userData } = useAuthAndFCM();
-  const { 
-    friendReq: isFriendReqOpen, 
-    inbox: isInboxOpen, 
-    notifications: isNotifOpen, 
+  const {
+    friendReq: isFriendReqOpen,
+    inbox: isInboxOpen,
+    notifications: isNotifOpen,
     userProfile: isUserProfileOpen,
-    toggleDropdown, 
-    closeAll 
+    toggleDropdown,
+    closeAll
   } = useDropdownState();
 
   // Friend requests state
@@ -172,13 +172,22 @@ const Navbar = () => {
     if (currentUid) {
       const initializeFCMForUser = async () => {
         try {
+          console.log("🔄 Initializing FCM for user:", currentUid);
+
           const token = await requestFcmToken();
           if (token) {
-            await saveFcmTokenToDatabase(currentUid, token);
-            console.log('✅ FCM initialized successfully');
+            // Save token to your backend
+            await saveFcmTokenToBackend(currentUid, token);
+            console.log('✅ FCM initialized successfully for user:', currentUid);
+          } else {
+            console.log('ℹ️ FCM token not available (permission denied or not supported)');
           }
         } catch (error) {
           console.error('❌ FCM initialization failed:', error);
+          // Don't show error toast for permission denied (common case)
+          if (!error.message.includes('permission') && !error.message.includes('denied')) {
+            toast.error('Failed to enable notifications');
+          }
         }
       };
 
@@ -187,7 +196,7 @@ const Navbar = () => {
       // Setup foreground message listener
       const unsubscribe = onForegroundMessage((payload) => {
         console.log('📱 Foreground message received:', payload);
-        
+
         if (payload.notification) {
           showLocalNotification(payload.notification.title, {
             body: payload.notification.body,
@@ -219,16 +228,16 @@ const Navbar = () => {
           try {
             const userSnap = await get(ref(db, `usersData/${uid}`));
             const userData = userSnap.val();
-            
+
             // Send push notification for new friend request
             if (requestData.timestamp > Date.now() - 10000) {
               await sendPushNotification(
-                currentUid, 
-                "New Friend Request", 
+                currentUid,
+                "New Friend Request",
                 `${userData?.username || "Someone"} sent you a friend request!`
               );
             }
-            
+
             return {
               uid,
               username: userData?.username || "Someone",
@@ -236,11 +245,11 @@ const Navbar = () => {
               timestamp: requestData.timestamp
             };
           } catch {
-            return { 
-              uid, 
-              username: "Someone", 
+            return {
+              uid,
+              username: "Someone",
               photoURL: "https://ui-avatars.com/api/?name=U&background=ccc",
-              timestamp: Date.now() 
+              timestamp: Date.now()
             };
           }
         })
@@ -264,7 +273,7 @@ const Navbar = () => {
     if (action === 'accept') {
       updates[`usersData/${currentUid}/friends/${uid}`] = true;
       updates[`usersData/${uid}/friends/${currentUid}`] = true;
-      
+
       await sendPushNotification(
         uid,
         "Friend Request Accepted",
@@ -308,11 +317,11 @@ const Navbar = () => {
 
         const otherUserId = chatSnap.key.split("_").find(uid => uid !== currentUid);
         const lastMessage = messages[0];
-        
-        chats.push({ 
-          chatId: chatSnap.key, 
-          otherUserId, 
-          messages, 
+
+        chats.push({
+          chatId: chatSnap.key,
+          otherUserId,
+          messages,
           unreadCount: unreadMsgs.length,
           lastMessage: lastMessage?.text || "Media message",
           lastTimestamp: lastMessage?.timestamp
@@ -325,11 +334,11 @@ const Navbar = () => {
           const userData = snap.val();
           chat.username = userData?.username || "Someone";
           chat.userPhoto = userData?.photoURL || `https://ui-avatars.com/api/?name=${chat.username}&background=random`;
-          
-          const newMessages = chat.messages.filter(msg => 
+
+          const newMessages = chat.messages.filter(msg =>
             !msg.read && msg.sender !== currentUid && msg.timestamp > Date.now() - 10000
           );
-          
+
           if (newMessages.length > 0) {
             await sendPushNotification(
               currentUid,
@@ -447,7 +456,7 @@ const Navbar = () => {
           if (notif.timestamp > Date.now() - 10000 && !notif.seen) {
             let title = "New Notification";
             let body = "";
-            
+
             if (notification.type === "like") {
               title = "New Like";
               body = `${actorName} liked your post`;
@@ -458,7 +467,7 @@ const Navbar = () => {
               title = "New Comment";
               body = `${actorName} commented on your post`;
             }
-            
+
             await sendPushNotification(currentUid, title, body);
           }
         } catch {
@@ -621,9 +630,9 @@ const Navbar = () => {
                     <span className="notification-text">
                       {n.type === "message" ? "💬" : n.type === "comment" ? "💭" : "❤️"}{" "}
                       <strong>{n.likerName}</strong>{" "}
-                      {n.type === "message" ? `sent a message` : 
-                       n.type === "comment" ? `commented on ${n.postCaption}` : 
-                       `liked ${n.postCaption}`}
+                      {n.type === "message" ? `sent a message` :
+                        n.type === "comment" ? `commented on ${n.postCaption}` :
+                          `liked ${n.postCaption}`}
                     </span>
                     <button className="btn btn-sm btn-outline-danger delete-btn" onClick={(e) => deleteNotification(n, e)}>
                       ×
@@ -660,18 +669,18 @@ const Navbar = () => {
   const UserProfileDropdown = () => (
     <div className="dropdown-card user-profile-dropdown" onClick={(e) => e.stopPropagation()}>
       <div className="user-info">
-        <img src={userData?.photoURL || "https://ui-avatars.com/api/?name=User&background=007bff"} 
-             className="avatar-md" alt="Profile" />
+        <img src={userData?.photoURL || "https://ui-avatars.com/api/?name=User&background=007bff"}
+          className="avatar-md" alt="Profile" />
         <div>
           <div className="username">{userData?.username || "User"}</div>
           <small className="text-muted">{userData?.email || ""}</small>
         </div>
       </div>
       <div className="dropdown-menu">
-        <button className="dropdown-item" onClick={() => {navigate('/profile'); closeAll();}}>
+        <button className="dropdown-item" onClick={() => { navigate('/profile'); closeAll(); }}>
           <i className="bi bi-person me-2"></i>Profile
         </button>
-        <button className="dropdown-item" onClick={() => {navigate('/settings'); closeAll();}}>
+        <button className="dropdown-item" onClick={() => { navigate('/settings'); closeAll(); }}>
           <i className="bi bi-gear me-2"></i>Settings
         </button>
         <hr />
@@ -741,14 +750,14 @@ const Navbar = () => {
 
         {/* User Profile */}
         <div className="position-relative">
-          <button 
+          <button
             className="user-avatar-btn"
             onClick={handleUserProfileToggle}
           >
-            <img 
-              src={userData?.photoURL || "https://ui-avatars.com/api/?name=User&background=007bff"} 
-              className="avatar-sm" 
-              alt="Profile" 
+            <img
+              src={userData?.photoURL || "https://ui-avatars.com/api/?name=User&background=007bff"}
+              className="avatar-sm"
+              alt="Profile"
             />
           </button>
           {isUserProfileOpen && <UserProfileDropdown />}

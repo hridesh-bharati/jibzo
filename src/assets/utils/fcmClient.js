@@ -3,83 +3,79 @@ import { getMessaging, getToken, onMessage, isSupported } from "firebase/messagi
 import { app } from "./firebaseConfig";
 
 let messaging = null;
+let currentToken = null;
 
-// Check if running in a supported environment (browser, not SSR)
+// Check if running in a supported environment
 const isClientSide = typeof window !== 'undefined';
 
 export const initializeFCM = async () => {
-  // Skip if not in browser environment (SSR safety)
-  if (!isClientSide) {
-    return null;
-  }
+  if (!isClientSide) return null;
 
   try {
     const supported = await isSupported();
-    
     if (!supported) {
-      console.warn("🔥 FCM is not supported in this browser.");
+      console.warn("FCM not supported in this browser");
       return null;
     }
 
-    // Check for service worker support
     if (!('serviceWorker' in navigator)) {
-      console.warn("🔕 Service Worker not supported");
+      console.warn("Service Worker not supported");
       return null;
     }
 
     if (!("Notification" in window)) {
-      console.warn("🔕 Notifications not supported by browser");
-      return null;
-    }
-
-    // Request notification permission
-    const permission = await Notification.requestPermission();
-    if (permission !== "granted") {
-      console.warn("❌ Notifications not allowed by user");
+      console.warn("Notifications not supported");
       return null;
     }
 
     return true;
   } catch (error) {
-    console.error("❌ Error initializing FCM:", error);
+    console.error("FCM initialization error:", error);
     return null;
   }
 };
 
 export const requestFcmToken = async () => {
-  // Skip if not in browser environment
-  if (!isClientSide) {
-    return null;
-  }
+  if (!isClientSide) return null;
 
   try {
-    // Initialize FCM first
+    // Check if already have token
+    if (currentToken) {
+      console.log("Using cached FCM token");
+      return currentToken;
+    }
+
     const initialized = await initializeFCM();
-    if (!initialized) {
+    if (!initialized) return null;
+
+    // Request notification permission
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      console.warn("Notification permission denied");
       return null;
     }
 
     messaging = getMessaging(app);
 
-    // Check if VAPID key is available
-    const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
-    if (!vapidKey) {
-      console.error("❌ VAPID key not found in environment variables");
+    // Use ONLY Firebase Messaging service worker
+    let serviceWorkerRegistration;
+    try {
+      serviceWorkerRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+        scope: '/'
+      });
+      console.log("✅ Firebase Messaging Service Worker registered");
+    } catch (error) {
+      console.error("Failed to register FCM service worker:", error);
       return null;
     }
 
-    // Register service worker with error handling
-    let serviceWorkerRegistration;
-    try {
-      serviceWorkerRegistration = await navigator.serviceWorker.register("/firebase-messaging-sw.js", {
-        scope: "/"
-      });
-      console.log("✅ Service Worker registered successfully");
-    } catch (swError) {
-      console.warn("⚠️ Custom service worker registration failed, using default:", swError);
-      
-      // Try to use existing service worker
-      serviceWorkerRegistration = await navigator.serviceWorker.ready;
+    // Wait for service worker to be ready
+    await serviceWorkerRegistration.ready;
+
+    const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
+    if (!vapidKey) {
+      console.error("VAPID key missing");
+      return null;
     }
 
     const token = await getToken(messaging, {
@@ -88,92 +84,80 @@ export const requestFcmToken = async () => {
     });
 
     if (!token) {
-      console.warn("❌ No FCM token received");
-      return null;
+      throw new Error("No token received from FCM");
     }
 
-    console.log("✅ FCM Token obtained successfully");
+    console.log("✅ FCM Token obtained:", token.substring(0, 20) + "...");
+    currentToken = token;
     return token;
+
   } catch (error) {
     console.error("❌ Error getting FCM token:", error);
-    
-    // More specific error handling
-    if (error.code === 'messaging/failed-service-worker-registration') {
-      console.error("Service Worker registration failed - check file path and scope");
-    } else if (error.code === 'messaging/invalid-vapid-key') {
-      console.error("Invalid VAPID key - check environment variable");
-    }
-    
+    currentToken = null;
     return null;
   }
 };
 
 export const onForegroundMessage = (callback) => {
-  // Skip if not in browser environment
-  if (!isClientSide) {
-    return () => {}; // Return empty cleanup function
-  }
+  if (!isClientSide) return () => {};
 
-  const setupForegroundListener = async () => {
+  const setupListener = async () => {
     try {
-      const supported = await isSupported();
-      if (!supported) return;
-
       if (!messaging) {
         messaging = getMessaging(app);
       }
 
       return onMessage(messaging, callback);
     } catch (error) {
-      console.error("❌ Error setting up foreground message listener:", error);
+      console.error("Error setting up message listener:", error);
     }
   };
 
-  // Setup listener and return cleanup function
-  let unsubscribe;
-  setupForegroundListener().then(unsub => {
-    unsubscribe = unsub;
-  });
-
-  return () => {
-    if (unsubscribe) {
-      unsubscribe();
-    }
-  };
+  setupListener();
+  return () => {}; // Cleanup function
 };
 
-// Utility function to check FCM support
-export const checkFcmSupport = async () => {
-  if (!isClientSide) return false;
-  
-  try {
-    const supported = await isSupported();
-    if (!supported) return false;
-
-    if (!('serviceWorker' in navigator)) return false;
-    if (!('Notification' in window)) return false;
-
-    return true;
-  } catch (error) {
-    return false;
-  }
-};
-
-// Function to manually show local notification
 export const showLocalNotification = (title, options = {}) => {
   if (!isClientSide) return;
 
-  if ('Notification' in window && Notification.permission === 'granted') {
+  if (Notification.permission === "granted") {
     const notificationOptions = {
       icon: options.icon || '/logo.png',
       badge: options.badge || '/logo.png',
-      image: options.image,
       body: options.body,
-      tag: options.tag,
-      requireInteraction: options.requireInteraction || false,
+      tag: options.tag || 'general',
       ...options
     };
 
     new Notification(title, notificationOptions);
+  }
+};
+
+// Save token to your backend
+export const saveFcmTokenToBackend = async (userId, token) => {
+  try {
+    const response = await fetch('/api/saveAndPush', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId: userId,
+        token: token,
+        title: 'Device Registered',
+        body: 'Your device is ready to receive notifications'
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log("✅ Token saved to backend:", result);
+    return result;
+  } catch (error) {
+    console.error("❌ Failed to save token to backend:", error);
+    throw error;
   }
 };
