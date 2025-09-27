@@ -7,7 +7,38 @@ import { requestFcmToken, onForegroundMessage, showLocalNotification } from "../
 import { onAuthStateChanged } from "firebase/auth";
 import { toast } from "react-toastify";
 import "./Navbar.css";
-import EnableNotifications from "./EnableNotifications";
+import EnableNotifications from "./EnableNotifications"; 
+
+// ✅ ADD THIS MISSING FUNCTION AT THE TOP
+const saveFcmTokenToBackend = async (userId, token) => {
+  try {
+    console.log("💾 Saving FCM token to backend for user:", userId);
+
+    const response = await fetch('/api/saveAndPush', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId: userId,
+        token: token,
+        title: 'Device Registered',
+        body: 'Your device is ready to receive notifications'
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log("✅ Token saved to backend successfully:", result);
+    return result;
+  } catch (error) {
+    console.error("❌ Failed to save token to backend:", error);
+    throw new Error('Failed to save token: ' + error.message);
+  }
+};
 
 // Custom hook for dropdown state management
 const useDropdownState = () => {
@@ -113,26 +144,6 @@ const sendPushNotification = async (userId, title, body) => {
   }
 };
 
-// Save FCM token to database
-const saveFcmTokenToDatabase = async (userId, token) => {
-  try {
-    if (!userId || !token) return;
-
-    const tokenRef = ref(db, `fcmTokens/${userId}`);
-    const newTokenKey = push(tokenRef).key;
-
-    await set(ref(db, `fcmTokens/${userId}/${newTokenKey}`), {
-      token: token,
-      createdAt: Date.now(),
-      platform: 'web'
-    });
-
-    console.log('✅ FCM token saved to database');
-  } catch (error) {
-    console.error('Error saving FCM token to database:', error);
-  }
-};
-
 const Navbar = () => {
   const navigate = useNavigate();
   const { currentUid, userData } = useAuthAndFCM();
@@ -168,33 +179,48 @@ const Navbar = () => {
     return () => document.removeEventListener('click', handleClickOutside);
   }, [closeAll]);
 
-  // Initialize FCM when user logs in - FIXED PLACEMENT
-useEffect(() => {
-  if (currentUid) {
-    const initializeFCMForUser = async () => {
-      try {
-        console.log("🔄 Initializing FCM for user:", currentUid);
-        
-        const token = await requestFcmToken();
-        if (token) {
-          // ✅ NOW THIS FUNCTION EXISTS!
-          await saveFcmTokenToBackend(currentUid, token);
-          console.log('✅ FCM initialized successfully for user:', currentUid);
-        } else {
-          console.log('ℹ️ FCM token not available');
-        }
-      } catch (error) {
-        console.error('❌ FCM initialization failed:', error);
-        // Don't show error for permission denied (common case)
-        if (!error.message.includes('permission') && !error.message.includes('denied')) {
-          console.warn('FCM setup warning:', error.message);
-        }
-      }
-    };
+  // Initialize FCM when user logs in - FIXED
+  useEffect(() => {
+    if (currentUid) {
+      const initializeFCMForUser = async () => {
+        try {
+          console.log("🔄 Initializing FCM for user:", currentUid);
 
-    initializeFCMForUser();
-  }
-}, [currentUid]);
+          const token = await requestFcmToken();
+          if (token) {
+            // ✅ NOW USING THE LOCAL FUNCTION
+            await saveFcmTokenToBackend(currentUid, token);
+            console.log('✅ FCM initialized successfully for user:', currentUid);
+          } else {
+            console.log('ℹ️ FCM token not available');
+          }
+        } catch (error) {
+          console.error('❌ FCM initialization failed:', error);
+          if (!error.message.includes('permission') && !error.message.includes('denied')) {
+            console.warn('FCM setup warning:', error.message);
+          }
+        }
+      };
+
+      initializeFCMForUser();
+
+      // Setup foreground message listener
+      const unsubscribe = onForegroundMessage((payload) => {
+        console.log('📱 Foreground message received:', payload);
+
+        if (payload.notification) {
+          showLocalNotification(payload.notification.title, {
+            body: payload.notification.body,
+            icon: '/logo.png'
+          });
+        }
+      });
+
+      return () => {
+        if (unsubscribe) unsubscribe();
+      };
+    }
+  }, [currentUid]);
 
   // Friend Requests
   useEffect(() => {
@@ -692,14 +718,17 @@ useEffect(() => {
 
   return (
     <nav className="navbar shadow-sm p-2 d-flex align-items-center border justify-content-between">
-      <div className="d-flex align-items-center gap-3">
-        {/* Notifications Enable Button */}
-        <EnableNotifications userId={currentUid} onEnabled={() => {
-          toast.success("Notifications ready!");
-        }} />
-      </div>
+      {/* Logo on left */}
+      <Link to="/home" className="d-flex align-items-center navbar-brand">
+        <img src="icons/logo.png" width={100} alt="logo" />
+      </Link>
 
       <div className="d-flex align-items-center gap-3">
+        {/* Enable Notifications Button */}
+        <EnableNotifications userId={currentUid} onEnabled={() => {
+          toast.success("🔔 Notifications ready!");
+        }} />
+
         {/* Friend Requests */}
         <div className="position-relative">
           <IconButton

@@ -1,4 +1,4 @@
-// src/utils/fcmClient.js
+// src/utils/fcmClient.js - 
 import { getMessaging, getToken, onMessage, isSupported } from "firebase/messaging";
 import { app } from "./firebaseConfig";
 
@@ -7,7 +7,7 @@ let currentToken = null;
 
 const isClientSide = typeof window !== 'undefined';
 
-// ✅ ADD THIS MISSING FUNCTION
+// ✅ EXPORT THIS FUNCTION PROPERLY
 export const saveFcmTokenToBackend = async (userId, token) => {
   try {
     console.log("💾 Saving FCM token to backend for user:", userId);

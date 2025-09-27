@@ -1,7 +1,38 @@
-// src/components/EnableNotifications.jsx - UPDATED
+// src/components/EnableNotifications.jsx - TEMPORARY FIX
 import React, { useState } from 'react';
 import { toast } from 'react-toastify';
-import { requestFcmToken, saveFcmTokenToBackend } from '../utils/fcmClient';
+import { requestFcmToken } from '../utils/fcmClient';
+
+// ✅ TEMPORARY: Add the missing function directly here
+const saveFcmTokenToBackend = async (userId, token) => {
+  try {
+    console.log("💾 Saving FCM token to backend for user:", userId);
+    
+    const response = await fetch('/api/saveAndPush', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId: userId,
+        token: token,
+        title: 'Device Registered',
+        body: 'Your device is ready to receive notifications'
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log("✅ Token saved to backend successfully:", result);
+    return result;
+  } catch (error) {
+    console.error("❌ Failed to save token to backend:", error);
+    throw new Error('Failed to save token: ' + error.message);
+  }
+};
 
 const EnableNotifications = ({ userId, onEnabled }) => {
   const [isLoading, setIsLoading] = useState(false);
