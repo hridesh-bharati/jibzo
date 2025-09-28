@@ -1,3 +1,4 @@
+// src\assets\messages\Messages.jsx
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { db, auth } from "../../assets/utils/firebaseConfig";
@@ -189,59 +190,71 @@ export default function Messages() {
   };
 
   // ---------- Send Message ----------
-  const sendMessage = async (opts = {}) => {
-    if (!currentUid || !chatId) return;
-    const text = opts.text ?? input.trim();
-    if (!text && !opts.imageURL) return;
+ // Messages component mein sendMessage function update karein
+const sendMessage = async (opts = {}) => {
+  if (!currentUid || !chatId) return;
+  const text = opts.text ?? input.trim();
+  if (!text && !opts.imageURL) return;
 
-    const msgPayload = {
-      sender: currentUid,
-      text: text || "",
-      imageURL: opts.imageURL || null,
-      replyTo: opts.replyTo || replyTo?.id || null,
-      reactions: {},
-      timestamp: serverTimestamp(),
-      deletedFor: [],
-      status: "sent",
-      read: false,
-    };
-
-    try {
-      if (editingMsgId) {
-        await update(
-          dbRef(db, `chats/${chatId}/messages/${editingMsgId}`),
-          { text }
-        );
-        setEditingMsgId(null);
-      } else {
-        const pushed = await push(dbRef(db, `chats/${chatId}/messages`), msgPayload);
-        // AFTER sending message, create a notification for the recipient
-        // only if recipient is not a guest
-        const recipientUid = uid;
-        if (recipientUid && !recipientUid.startsWith("guest_")) {
-          const notifRef = push(dbRef(db, `notifications/${recipientUid}`));
-          const notifObj = {
-            type: "message",
-            fromId: currentUid,
-            chatId,
-            text: (text || (opts.imageURL ? "Image" : "")).slice(0, 200),
-            timestamp: serverTimestamp(),
-            seen: false
-          };
-          await set(notifRef, notifObj);
-        }
-      }
-
-      setInput("");
-      setReplyTo(null);
-      setPreviewImage(null);
-      setIsTyping(false);
-      setTyping(false);
-    } catch (err) {
-      console.error("sendMessage error:", err);
-    }
+  const msgPayload = {
+    sender: currentUid,
+    text: text || "",
+    imageURL: opts.imageURL || null,
+    replyTo: opts.replyTo || replyTo?.id || null,
+    reactions: {},
+    timestamp: serverTimestamp(),
+    deletedFor: [],
+    status: "sent",
+    read: false,
   };
 
+  try {
+    if (editingMsgId) {
+      await update(
+        dbRef(db, `chats/${chatId}/messages/${editingMsgId}`),
+        { text }
+      );
+      setEditingMsgId(null);
+    } else {
+      const pushed = await push(dbRef(db, `chats/${chatId}/messages`), msgPayload);
+      
+      // ✅ FIXED: Floating notification for new messages
+      const recipientUid = uid;
+      if (recipientUid && !recipientUid.startsWith("guest_")) {
+        // Floating notification trigger
+        const floatingEvent = new CustomEvent('showFloatingNotification', {
+          detail: {
+            title: "New Message",
+            body: `${userData?.username || "Someone"}: ${text || "Sent an image"}`,
+            image: userData?.photoURL || '/logo.png',
+            url: `/messages/${currentUid}`
+          }
+        });
+        window.dispatchEvent(floatingEvent);
+
+        // Existing notification save
+        const notifRef = push(dbRef(db, `notifications/${recipientUid}`));
+        const notifObj = {
+          type: "message",
+          fromId: currentUid,
+          chatId,
+          text: (text || (opts.imageURL ? "Image" : "")).slice(0, 200),
+          timestamp: serverTimestamp(),
+          seen: false
+        };
+        await set(notifRef, notifObj);
+      }
+    }
+
+    setInput("");
+    setReplyTo(null);
+    setPreviewImage(null);
+    setIsTyping(false);
+    setTyping(false);
+  } catch (err) {
+    console.error("sendMessage error:", err);
+  }
+};
   // ---------- Cloudinary Upload ----------
   const handleImageUpload = async (file) => {
     if (!file) return;

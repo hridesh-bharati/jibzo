@@ -8,6 +8,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { toast } from "react-toastify";
 import "./Navbar.css";
 import EnableNotifications from "./EnableNotifications";
+import FloatingNotifications from "../messages/FloatingNotifications";
 
 // ✅ FIXED: saveFcmTokenToBackend function
 const saveFcmTokenToBackend = async (userId, token) => {
@@ -49,11 +50,25 @@ const saveFcmTokenToBackend = async (userId, token) => {
   }
 };
 
-// ✅ FIXED: sendPushNotification function with better error handling
-const sendPushNotification = async (userId, title, body) => {
-  try {
-    console.log("📤 Sending push notification:", { userId, title: title.substring(0, 50), body: body.substring(0, 50) });
+// Navbar.jsx mein yeh changes karein
 
+// ✅ FIXED: sendPushNotification function ko update karein
+const sendPushNotification = async (userId, title, body, image = null, url = null) => {
+  try {
+    console.log("📤 Sending push notification:", { userId, title, body });
+
+    // Floating notification trigger karein
+    const floatingEvent = new CustomEvent('showFloatingNotification', {
+      detail: {
+        title,
+        body,
+        image,
+        url
+      }
+    });
+    window.dispatchEvent(floatingEvent);
+
+    // Existing backend call
     const payload = {
       userId: userId,
       token: null,
@@ -69,17 +84,8 @@ const sendPushNotification = async (userId, title, body) => {
       body: JSON.stringify(payload)
     });
 
-    console.log("📥 Response status:", response.status);
-    
     if (!response.ok) {
-      let errorMessage = `HTTP error! status: ${response.status}`;
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.message || errorMessage;
-      } catch (e) {
-        // Ignore JSON parse error for error response
-      }
-      throw new Error(errorMessage);
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
 
     const result = await response.json();
@@ -87,10 +93,64 @@ const sendPushNotification = async (userId, title, body) => {
     return result;
   } catch (error) {
     console.error('❌ Error sending push notification:', error);
-    // Don't throw error - just log it and continue
     return { success: false, error: error.message };
   }
 };
+
+// Friend request notification mein update karein
+useEffect(() => {
+  if (!currentUid) return;
+
+  const reqRef = ref(db, `usersData/${currentUid}/followRequests/received`);
+  const unsub = onValue(reqRef, async (snap) => {
+    if (!snap.exists()) {
+      setFriendRequests([]);
+      return;
+    }
+
+    const requests = Object.entries(snap.val());
+    const detailedRequests = await Promise.all(
+      requests.map(async ([uid, requestData]) => {
+        try {
+          const userSnap = await get(ref(db, `usersData/${uid}`));
+          const userData = userSnap.val();
+
+          // ✅ FIXED: Floating notification with better details
+          if (requestData.timestamp > Date.now() - 10000) {
+            sendPushNotification(
+              currentUid,
+              "New Friend Request",
+              `${userData?.username || "Someone"} sent you a friend request!`,
+              userData?.photoURL || '/logo.png',
+              `/user-profile/${uid}`
+            ).catch(error => {
+              console.warn("Failed to send push notification for friend request:", error);
+            });
+          }
+
+          return {
+            uid,
+            username: userData?.username || "Someone",
+            photoURL: userData?.photoURL || `https://ui-avatars.com/api/?name=${userData?.username || "U"}&background=random`,
+            timestamp: requestData.timestamp
+          };
+        } catch {
+          return {
+            uid,
+            username: "Someone",
+            photoURL: "https://ui-avatars.com/api/?name=U&background=ccc",
+            timestamp: Date.now()
+          };
+        }
+      })
+    );
+
+    detailedRequests.sort((a, b) => b.timestamp - a.timestamp);
+    setFriendRequests(detailedRequests);
+  });
+
+  return () => unsub();
+}, [currentUid]);
 
 // Custom hook for dropdown state management
 const useDropdownState = () => {

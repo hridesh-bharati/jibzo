@@ -129,7 +129,7 @@ const EnableNotifications = ({ userId, onEnabled }) => {
       ) : isEnabled ? (
         <>
           <i className="bi bi-bell-fill"></i>
-          Notifications Enabled ✅
+          Enabled ✅
         </>
       ) : (
         <>

@@ -8,6 +8,7 @@ import Loader from "./assets/Loader/Loader";
 import BottomFooter from "./assets/Navbar/BottomFotter";
 import { useAuth } from "./hooks/useAuth";
 import { useFCM } from "./hooks/useFCM";
+import FloatingNotifications from "./assets/messages/FloatingNotifications";
 
 // Lazy-loaded pages
 const UserRegister = React.lazy(() => import("./assets/users/UserRegister"));
@@ -44,8 +45,9 @@ const App = () => {
 
   return (
     <>
+    <FloatingNotifications/>
       <Suspense fallback={<Loader />}>
-        <Routes>
+      <Routes>
           <Route path="/" element={<Navigate to={user ? "/home" : "/login"} />} />
           <Route path="/register" element={user ? <Navigate to="/home" /> : <UserRegister />} />
           <Route path="/login" element={user ? <Navigate to="/home" /> : <Login />} />
