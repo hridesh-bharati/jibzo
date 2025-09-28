@@ -1,9 +1,9 @@
 // src/assets/Navbar/Navbar.jsx - FIXED VERSION
 import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { auth, db } from "../../assets/utils/firebaseConfig";
+import { auth, db } from "../utils/firebaseConfig";
 import { ref, onValue, get, update, remove } from "firebase/database";
-import { requestFcmToken, onForegroundMessage, showLocalNotification } from "../../utils/fcmClient";
+import { requestFcmToken, onForegroundMessage, showLocalNotification } from "../utils/fcmClient";
 import { onAuthStateChanged } from "firebase/auth";
 import { toast } from "react-toastify";
 import "./Navbar.css";

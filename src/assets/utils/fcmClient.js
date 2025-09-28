@@ -1,4 +1,4 @@
-// src/utils/fcmClient.js - 
+// src\assets\utils\fcmClient.js
 import { getMessaging, getToken, onMessage, isSupported } from "firebase/messaging";
 import { app } from "./firebaseConfig";
 
