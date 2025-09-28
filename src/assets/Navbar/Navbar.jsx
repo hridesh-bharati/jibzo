@@ -7,7 +7,7 @@ import { requestFcmToken, onForegroundMessage, showLocalNotification } from "../
 import { onAuthStateChanged } from "firebase/auth";
 import { toast } from "react-toastify";
 import "./Navbar.css";
-import EnableNotifications from "../../components/EnableNotifications";
+import EnableNotifications from "./EnableNotifications";
 
 // ✅ FIXED: saveFcmTokenToBackend function
 const saveFcmTokenToBackend = async (userId, token) => {
