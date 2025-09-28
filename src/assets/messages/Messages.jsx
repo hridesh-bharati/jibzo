@@ -46,6 +46,7 @@ export default function Messages() {
   const messagesEndRef = useRef(null);
   const longPressTimerRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const inputRef = useRef(null);
 
   const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_NAME;
   const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
@@ -69,6 +70,16 @@ export default function Messages() {
       localStorage.setItem("guestUid", guestId);
     }
     setCurrentUid(auth.currentUser?.uid || guestId);
+  }, []);
+
+  // ---------- Auto focus input on mount ----------
+  useEffect(() => {
+    // Focus input when component mounts
+    if (inputRef.current) {
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 500);
+    }
   }, []);
 
   // ---------- Presence ----------
@@ -144,10 +155,7 @@ export default function Messages() {
           .map(([id, msg]) => ({
             id,
             ...msg,
-            timestamp:
-              typeof msg.timestamp === "number"
-                ? msg.timestamp
-                : msg.timestamp?.toMillis?.() || Date.now(),
+            timestamp: msg.timestamp || Date.now(),
           }))
           .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
         : [];
@@ -170,9 +178,15 @@ export default function Messages() {
   const setTyping = useCallback(
     (typing) => {
       if (!chatId || !currentUid) return;
-      set(dbRef(db, `chats/${chatId}/typing/${currentUid}`), typing).catch(
-        console.warn
-      );
+      if (typing) {
+        set(dbRef(db, `chats/${chatId}/typing/${currentUid}`), true).catch(
+          console.warn
+        );
+      } else {
+        remove(dbRef(db, `chats/${chatId}/typing/${currentUid}`)).catch(
+          console.warn
+        );
+      }
     },
     [chatId, currentUid]
   );
@@ -180,8 +194,12 @@ export default function Messages() {
   const handleInputChange = (text) => {
     setInput(text);
     if (!chatId || !currentUid) return;
-    setIsTyping(true);
-    setTyping(true);
+
+    if (!isTyping && text) {
+      setIsTyping(true);
+      setTyping(true);
+    }
+
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {
       setIsTyping(false);
@@ -189,72 +207,80 @@ export default function Messages() {
     }, 1500);
   };
 
-  // ---------- Send Message ----------
- // Messages component mein sendMessage function update karein
-const sendMessage = async (opts = {}) => {
-  if (!currentUid || !chatId) return;
-  const text = opts.text ?? input.trim();
-  if (!text && !opts.imageURL) return;
+  // ---------- Send Message (FIXED: Immediate input clear) ----------
+  const sendMessage = async (opts = {}) => {
+    if (!currentUid || !chatId) return;
+    const text = opts.text ?? input.trim();
+    if (!text && !opts.imageURL) return;
 
-  const msgPayload = {
-    sender: currentUid,
-    text: text || "",
-    imageURL: opts.imageURL || null,
-    replyTo: opts.replyTo || replyTo?.id || null,
-    reactions: {},
-    timestamp: serverTimestamp(),
-    deletedFor: [],
-    status: "sent",
-    read: false,
-  };
-
-  try {
-    if (editingMsgId) {
-      await update(
-        dbRef(db, `chats/${chatId}/messages/${editingMsgId}`),
-        { text }
-      );
-      setEditingMsgId(null);
-    } else {
-      const pushed = await push(dbRef(db, `chats/${chatId}/messages`), msgPayload);
-      
-      // ✅ FIXED: Floating notification for new messages
-      const recipientUid = uid;
-      if (recipientUid && !recipientUid.startsWith("guest_")) {
-        // Floating notification trigger
-        const floatingEvent = new CustomEvent('showFloatingNotification', {
-          detail: {
-            title: "New Message",
-            body: `${userData?.username || "Someone"}: ${text || "Sent an image"}`,
-            image: userData?.photoURL || '/logo.png',
-            url: `/messages/${currentUid}`
-          }
-        });
-        window.dispatchEvent(floatingEvent);
-
-        // Existing notification save
-        const notifRef = push(dbRef(db, `notifications/${recipientUid}`));
-        const notifObj = {
-          type: "message",
-          fromId: currentUid,
-          chatId,
-          text: (text || (opts.imageURL ? "Image" : "")).slice(0, 200),
-          timestamp: serverTimestamp(),
-          seen: false
-        };
-        await set(notifRef, notifObj);
-      }
-    }
-
+    // ✅ IMMEDIATELY clear input and states
     setInput("");
     setReplyTo(null);
     setPreviewImage(null);
+    setEditingMsgId(null);
+
+    // Clear typing when sending
     setIsTyping(false);
     setTyping(false);
-  } catch (err) {
-    console.error("sendMessage error:", err);
-  }
-};
+
+    const msgPayload = {
+      sender: currentUid,
+      text: text || "",
+      imageURL: opts.imageURL || null,
+      replyTo: opts.replyTo || replyTo?.id || null,
+      reactions: {},
+      timestamp: serverTimestamp(),
+      deletedFor: [],
+      status: "sent",
+      read: false,
+    };
+
+    try {
+      if (editingMsgId) {
+        await update(
+          dbRef(db, `chats/${chatId}/messages/${editingMsgId}`),
+          { text }
+        );
+      } else {
+        const pushed = await push(dbRef(db, `chats/${chatId}/messages`), msgPayload);
+
+        // ✅ FIXED: Floating notification for new messages
+        const recipientUid = uid;
+        if (recipientUid && !recipientUid.startsWith("guest_")) {
+          // Floating notification trigger
+          const floatingEvent = new CustomEvent('showFloatingNotification', {
+            detail: {
+              title: "New Message",
+              body: `${chatUser?.username || "Someone"}: ${text || "Sent an image"}`,
+              image: chatUser?.photoURL || '/logo.png',
+              url: `/messages/${currentUid}`
+            }
+          });
+          window.dispatchEvent(floatingEvent);
+
+          // Existing notification save
+          const notifRef = push(dbRef(db, `notifications/${recipientUid}`));
+          const notifObj = {
+            type: "message",
+            fromId: currentUid,
+            chatId,
+            text: (text || (opts.imageURL ? "Image" : "")).slice(0, 200),
+            timestamp: serverTimestamp(),
+            seen: false
+          };
+          await set(notifRef, notifObj);
+        }
+      }
+
+      // Refocus input after sending
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+    } catch (err) {
+      console.error("sendMessage error:", err);
+    }
+  };
+
   // ---------- Cloudinary Upload ----------
   const handleImageUpload = async (file) => {
     if (!file) return;
@@ -347,17 +373,113 @@ const sendMessage = async (opts = {}) => {
     return s === "sent" ? "✓" : s === "delivered" ? "✓✓" : "✓✓ (seen)";
   };
 
-  const formatTime = (ts) =>
-    ts
-      ? new Date(ts).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: true,
-      })
-      : "";
+  const formatTime = (ts) => {
+    if (!ts) return "";
 
-  const addEmoji = (emoji) => setInput((prev) => prev + emoji.emoji);
+    let date;
+    if (typeof ts === 'number') {
+      date = new Date(ts);
+    } else if (ts.toDate) {
+      // Firebase timestamp
+      date = ts.toDate();
+    } else if (ts.seconds) {
+      // Firebase timestamp with seconds
+      date = new Date(ts.seconds * 1000);
+    } else {
+      date = new Date(ts);
+    }
+
+    return date.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
+
+  const addEmoji = (emoji) => {
+    setInput((prev) => prev + emoji.emoji);
+    // Focus input after adding emoji
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
+  };
+
+  // ---------- Handle emoji picker visibility (FIXED for mobile) ----------
+  const toggleEmojiPicker = () => {
+    setShowEmojiPicker(prev => !prev);
+    // On mobile, we want to focus input but not show emoji picker that blocks keyboard
+    if (window.innerWidth <= 768) {
+      // On mobile, don't show emoji picker that blocks the keyboard
+      setShowEmojiPicker(false);
+      inputRef.current?.focus();
+    }
+  };
+
+  // ---------- Reply Logic ----------
+  const renderReplyPreview = (msg) => {
+    if (!msg.replyTo) return null;
+
+    const originalMsg = messages.find(m => m.id === msg.replyTo);
+    if (!originalMsg) {
+      return (
+        <div className="border-start border-3 ps-2 mt-1" style={{ borderColor: '#6c757d !important' }}>
+          <small className="text-muted fst-italic">
+            Original message deleted
+          </small>
+        </div>
+      );
+    }
+
+    const isOriginalDeleted = originalMsg.deletedFor?.includes(currentUid);
+    if (isOriginalDeleted) {
+      return (
+        <div className="border-start border-3 ps-2 mt-1" style={{ borderColor: '#6c757d !important' }}>
+          <small className="text-muted fst-italic">
+            Original message deleted
+          </small>
+        </div>
+      );
+    }
+
+    const userName = originalMsg.sender === currentUid ? "You" : chatUser?.username || "User";
+
+    return (
+      <div className="border-start border-3 ps-2 mt-1" style={{ borderColor: '#6c757d !important' }}>
+        <small className="text-muted d-block">
+          <strong>Reply to {userName}</strong>
+        </small>
+        <small className="text-muted">
+          {originalMsg.text || (originalMsg.imageURL ? "📷 Image" : "Message")}
+        </small>
+      </div>
+    );
+  };
+
+  // ---------- Typing Indicator ----------
+  const renderTypingIndicator = () => {
+    const typingUserIds = Object.keys(typingUsers).filter(
+      (userId) => typingUsers[userId] && userId !== currentUid
+    );
+
+    if (typingUserIds.length === 0) return null;
+
+    return (
+      <div className="d-flex justify-content-start mb-2">
+        <div className="p-2 rounded bg-light text-dark">
+          <div className="d-flex align-items-center">
+            <div className="typing-dots">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <small className="ms-2 text-muted">
+              {typingUserIds.length > 1 ? 'Several people are typing...' : `${chatUser?.username || 'Someone'} is typing...`}
+            </small>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // ---------- Render ----------
   if (!currentUid) return <p className="text-center mt-5">Please login</p>;
@@ -369,8 +491,9 @@ const sendMessage = async (opts = {}) => {
     >
       {/* Header */}
       <div className="d-flex justify-content-between align-items-center bg-success text-white p-2">
+
         <Link
-          to={`/user-profile/${chatUser?.uid}`}
+          to={`/user-profile/${uid}`}
           className="d-flex align-items-center text-white text-decoration-none"
         >
           <img
@@ -390,13 +513,7 @@ const sendMessage = async (opts = {}) => {
                   : partnerStatus?.state === "online"
                     ? "online"
                     : partnerStatus?.last_changed
-                      ? "last seen " +
-                      new Date(partnerStatus.last_changed).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        second: "2-digit",
-                        hour12: true,
-                      })
+                      ? formatLastSeen(partnerStatus.last_changed)
                       : "offline"}
               </small>
             )}
@@ -444,6 +561,7 @@ const sendMessage = async (opts = {}) => {
         {messages.length === 0 && (
           <div className="text-center text-muted mt-2">No messages yet 👋</div>
         )}
+
         {messages.map((msg) =>
           msg.deletedFor?.includes(currentUid) ? null : (
             <div
@@ -461,32 +579,32 @@ const sendMessage = async (opts = {}) => {
                 className={`p-2 rounded ${msg.sender === currentUid ? "bg-success text-white" : "bg-white text-dark"}`}
                 style={{ maxWidth: "75%" }}
               >
-                {msg.text}
+                {/* Reply Preview */}
+                {renderReplyPreview(msg)}
+
+                {/* Message Content */}
+                {msg.text && <div>{msg.text}</div>}
                 {msg.imageURL && (
                   <img
                     src={msg.imageURL}
                     alt="sent"
                     className="img-fluid rounded mt-1"
+                    style={{ maxHeight: "200px" }}
                   />
                 )}
-                {msg.replyTo &&
-                  (() => {
-                    const original = messages.find((m) => m.id === msg.replyTo);
-                    const userName = original?.sender === currentUid ? "You" : chatUser?.username || "User";
-                    return (
-                      <div className="border-start ps-2 mt-1">
-                        <small className="text-muted">
-                          Reply to <strong>{userName}:</strong> {original?.text || "Message deleted"}
-                        </small>
-                      </div>
-                    );
-                  })()}
+
+                {/* Timestamp and Status */}
                 <div className="d-flex justify-content-between align-items-center mt-1">
-                  <small>{formatTime(msg.timestamp)}</small>
-                  {msg.sender === currentUid && <small className="ms-1">{renderStatus(msg)}</small>}
+                  <small className={msg.sender === currentUid ? "text-white-50" : "text-muted"}>
+                    {formatTime(msg.timestamp)}
+                  </small>
+                  {msg.sender === currentUid && (
+                    <small className="ms-2">{renderStatus(msg)}</small>
+                  )}
                 </div>
               </div>
 
+              {/* Message Actions Menu */}
               {selectedMsgId === msg.id && (
                 <div
                   className="position-absolute bg-white border shadow rounded p-1 small d-flex flex-column"
@@ -502,21 +620,43 @@ const sendMessage = async (opts = {}) => {
                   <button className="btn btn-sm btn-danger" onClick={() => removeForMe(msg.id)}>Delete for me</button>
                   {msg.sender === currentUid && (
                     <>
-                      <button className="btn btn-sm btn-secondary" onClick={() => { setEditingMsgId(msg.id); setInput(msg.text || ""); setSelectedMsgId(null); }}>Edit</button>
+                      <button className="btn btn-sm btn-secondary" onClick={() => { setEditingMsgId(msg.id); setInput(msg.text || ""); setSelectedMsgId(null); inputRef.current?.focus(); }}>Edit</button>
                       <button className="btn btn-sm btn-outline-danger" onClick={() => deleteForEveryone(msg.id)}>Delete for everyone</button>
                     </>
                   )}
-                  <button className="btn btn-sm btn-success" onClick={() => { setReplyTo(msg); setSelectedMsgId(null); }}>Reply</button>
+                  <button className="btn btn-sm btn-success" onClick={() => { setReplyTo(msg); setSelectedMsgId(null); inputRef.current?.focus(); }}>Reply</button>
                 </div>
               )}
             </div>
           )
         )}
+
+        {/* Typing Indicator */}
+        {renderTypingIndicator()}
+
         <div ref={messagesEndRef}></div>
       </div>
 
-      {/* Input */}
-      <div className="p-2 position-relative" style={{ background: "#ccf" }}>
+      {/* Reply Preview */}
+      {replyTo && (
+        <div className="p-2 border-top bg-light">
+          <div className="d-flex justify-content-between align-items-center">
+            <div>
+              <small className="text-muted">Replying to:</small>
+              <div className="small">{replyTo.text || "Image"}</div>
+            </div>
+            <button
+              className="btn btn-sm btn-outline-secondary"
+              onClick={() => setReplyTo(null)}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Input Area - FIXED for mobile keyboard */}
+      <div className="p-2 mb-5 pb-3" style={{ background: "#ccf" }}>
         {previewImage && (
           <div
             className="d-inline-block p-2 mb-2 border rounded shadow-sm position-relative"
@@ -551,17 +691,23 @@ const sendMessage = async (opts = {}) => {
             </button>
           </div>
         )}
+
         <div className="d-flex align-items-center gap-2">
+          {/* Emoji Button - Fixed for mobile */}
           <button
             className="btn btn-light"
-            onClick={() => setShowEmojiPicker((prev) => !prev)}
+            onClick={toggleEmojiPicker}
+            type="button"
           >
             😀
           </button>
+
+          {/* Input Field - FIXED: Proper mobile keyboard */}
           <input
+            ref={inputRef}
             type="text"
             className="form-control"
-            placeholder="Type a message"
+            placeholder={editingMsgId ? "Editing message..." : replyTo ? "Type a reply..." : "Type a message..."}
             value={input}
             onChange={(e) => handleInputChange(e.target.value)}
             onKeyDown={(e) => {
@@ -570,7 +716,13 @@ const sendMessage = async (opts = {}) => {
                 sendMessage();
               }
             }}
+            // Mobile optimizations
+            inputMode="text"
+            autoComplete="off"
+            autoCorrect="on"
+            autoCapitalize="sentences"
           />
+
           <label className="btn btn-light mb-0">
             📎
             <input
@@ -580,13 +732,18 @@ const sendMessage = async (opts = {}) => {
               onChange={(e) => handleImageUpload(e.target.files[0])}
             />
           </label>
-          <button className="btn btn-primary" onClick={() => sendMessage()}>
-            ➤
+
+          <button
+            className="btn btn-primary"
+            onClick={() => sendMessage()}
+            disabled={!input.trim() && !previewImage}
+          >
+            {editingMsgId ? "Update" : "➤"}
           </button>
         </div>
 
-        {/* Emoji Picker */}
-        {showEmojiPicker && (
+        {/* Emoji Picker - FIXED: Only show on desktop, not on mobile */}
+        {showEmojiPicker && window.innerWidth > 768 && (
           <div
             className="position-absolute"
             style={{ bottom: "100%", left: 0, zIndex: 999 }}
@@ -595,6 +752,39 @@ const sendMessage = async (opts = {}) => {
           </div>
         )}
       </div>
+
+      {/* CSS for typing dots */}
+      <style>
+        {`
+          .typing-dots {
+            display: inline-flex;
+            gap: 2px;
+          }
+          .typing-dots span {
+            height: 6px;
+            width: 6px;
+            border-radius: 50%;
+            background-color: #6c757d;
+            animation: typing 1.4s infinite ease-in-out;
+          }
+          .typing-dots span:nth-child(1) { animation-delay: -0.32s; }
+          .typing-dots span:nth-child(2) { animation-delay: -0.16s; }
+          @keyframes typing {
+            0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
+            40% { transform: scale(1); opacity: 1; }
+          }
+          
+          /* Mobile optimizations */
+          @media (max-width: 768px) {
+            .container {
+              height: 100vh !important;
+            }
+            input.form-control {
+              font-size: 16px; /* Prevents zoom on iOS */
+            }
+          }
+        `}
+      </style>
     </div>
   );
 }
@@ -603,28 +793,27 @@ const sendMessage = async (opts = {}) => {
 const formatLastSeen = (timestamp) => {
   if (!timestamp) return "offline";
 
-  const lastSeenDate = new Date(timestamp);
+  let lastSeenDate;
+  if (typeof timestamp === 'number') {
+    lastSeenDate = new Date(timestamp);
+  } else if (timestamp.toDate) {
+    lastSeenDate = timestamp.toDate();
+  } else if (timestamp.seconds) {
+    lastSeenDate = new Date(timestamp.seconds * 1000);
+  } else {
+    lastSeenDate = new Date(timestamp);
+  }
+
   const now = new Date();
+  const diffMs = now - lastSeenDate;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
 
-  const isToday = lastSeenDate.toDateString() === now.toDateString();
-  const isYesterday =
-    lastSeenDate.toDateString() ===
-    new Date(new Date().setDate(now.getDate() - 1)).toDateString();
+  if (diffMins < 1) return "last seen just now";
+  if (diffMins < 60) return `last seen ${diffMins} min ago`;
+  if (diffHours < 24) return `last seen ${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+  if (diffDays < 7) return `last seen ${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
 
-  const timeString = lastSeenDate.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
-
-  if (isToday) return `last seen today at ${timeString}`;
-  if (isYesterday) return `last seen yesterday at ${timeString}`;
-
-  const dateString = lastSeenDate.toLocaleDateString([], {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-
-  return `last seen ${dateString} at ${timeString}`;
+  return `last seen ${lastSeenDate.toLocaleDateString()}`;
 };

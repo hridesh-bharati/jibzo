@@ -254,7 +254,7 @@ function CommentsOffcanvas({
           aria-label="Close comments"
         ></button>
       </div>
-      <div className="d-flex flex-column h-100">
+      <div className="d-flex flex-column  h-100">
         <div className="flex-grow-1 overflow-auto p-3">
           {comments.length === 0 ? (
             <div className="text-center text-muted py-4">
@@ -958,7 +958,7 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
                 const commentCount = post.comments ? Object.keys(post.comments).length : 0;
 
                 return (
-                  <div key={post.id} className="card border-light mb-4">
+                  <div key={post.id} className="card border-light mb-5">
                     <div className="card-header custom-white d-flex align-items-center border-0">
                       <style>
                         {`

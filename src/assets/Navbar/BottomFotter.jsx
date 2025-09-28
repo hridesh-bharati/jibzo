@@ -1,17 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
-import {
-  FaHome,
-  FaFileImage,
-  FaCamera,
-  FaUsers,
-  FaRegImage,
-  FaRegCircle, // using this as status icon
-} from "react-icons/fa";
-import { auth, db } from "../../assets/utils/firebaseConfig";
-import { ref, onValue } from "firebase/database";
-import { IoMdPhotos } from "react-icons/io";
+import { FaHome, FaCamera, FaUsers, FaRegImage } from "react-icons/fa";
 import { HiOutlineStatusOnline } from "react-icons/hi";
+
 const buttonStyle = (isActive) => ({
   width: 50,
   height: 50,
@@ -35,19 +26,9 @@ const buttonStyle = (isActive) => ({
 export default function BottomFooter() {
   const location = useLocation();
   const [activeTab, setActiveTab] = useState(location.pathname);
-  const [photoURL, setPhotoURL] = useState(null);
 
   useEffect(() => {
     setActiveTab(location.pathname);
-
-    const uid = auth.currentUser?.uid;
-    if (uid) {
-      const userRef = ref(db, `usersData/${uid}`);
-      onValue(userRef, (snapshot) => {
-        const data = snapshot.val();
-        if (data?.photoURL) setPhotoURL(data.photoURL);
-      });
-    }
   }, [location]);
 
   const navItems = [
@@ -56,31 +37,6 @@ export default function BottomFooter() {
     { path: "/user/new/post", label: "Upload", icon: <FaCamera size={24} /> },
     { path: "/all-insta-users", label: "Users", icon: <FaUsers size={24} /> },
     { path: "/status", label: "Story", icon: <HiOutlineStatusOnline size={24} /> },
-    {
-      path: "/admin-profile",
-      label: "Profile",
-      icon: photoURL ? (
-        <img
-          src={photoURL}
-          alt="Profile"
-          style={{
-            width: 24,
-            height: 24,
-            borderRadius: "50%",
-            objectFit: "cover",
-          }}
-        />
-      ) : (
-        <div
-          style={{
-            width: 24,
-            height: 24,
-            borderRadius: "50%",
-            background: "#ccc",
-          }}
-        />
-      ),
-    },
   ];
 
   return (
@@ -94,14 +50,12 @@ export default function BottomFooter() {
         height: 60,
         background: "rgba(255, 255, 255, 0.85)",
         backdropFilter: "blur(12px)",
-        // borderRadius: 40,
         boxShadow: "0 12px 30px rgba(0,0,0,0.15)",
         display: "flex",
         justifyContent: "space-around",
         alignItems: "center",
         padding: "0 1px",
         zIndex: 1000,
-        // fontFamily:          "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif",
       }}
     >
       {navItems.map(({ path, label, icon }) => {

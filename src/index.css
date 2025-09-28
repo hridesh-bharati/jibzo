@@ -122,3 +122,107 @@ input {
 .selection-none{
   user-select: none !important;
 }
+
+
+/* Add to your main CSS file */
+.hover-shadow {
+  transition: all 0.3s ease;
+}
+
+.hover-shadow:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1) !important;
+}
+
+.stats-card {
+  transition: all 0.3s ease;
+  padding: 1rem 0.5rem;
+}
+
+.stats-card:hover {
+  transform: translateY(-3px);
+}
+
+.action-btn {
+  min-width: 100px;
+  transition: all 0.2s ease;
+}
+
+.bg-gradient-primary {
+  background: linear-gradient(135deg, #007bff 0%, #0056b3 100%) !important;
+}
+
+.skeleton-wallpaper {
+  height: 170px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+}
+
+.skeleton-avatar {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: #f0f0f0;
+  animation: loading 1.5s infinite;
+}
+
+.skeleton-text {
+  height: 16px;
+  background: #f0f0f0;
+  border-radius: 4px;
+  margin: 8px 0;
+  animation: loading 1.5s infinite;
+}
+
+.skeleton-text.short {
+  width: 60%;
+}
+
+@keyframes loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.profile-wallpaper {
+  transition: background-image 0.3s ease;
+}
+
+.profile-avatar {
+  transition: transform 0.3s ease;
+}
+
+.profile-avatar:hover {
+  transform: scale(1.05);
+}
+
+.user-info-container:hover .user-avatar {
+  transform: scale(1.1);
+}
+
+.user-avatar {
+  transition: transform 0.3s ease;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .user-card .d-flex {
+    flex-direction: column;
+    align-items: flex-start !important;
+  }
+  
+  .user-card .justify-content-end {
+    justify-content: flex-start !important;
+    margin-top: 1rem;
+    width: 100%;
+  }
+  
+  .action-btn {
+    min-width: auto;
+    flex: 1;
+  }
+}

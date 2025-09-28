@@ -1,164 +1,18 @@
-// src/assets/Navbar/Navbar.jsx - FIXED VERSION
+// src/assets/Navbar/Navbar.jsx
 import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { auth, db } from "../utils/firebaseConfig";
+import { auth, db } from "../../assets/utils/firebaseConfig";
 import { ref, onValue, get, update, remove } from "firebase/database";
-import { requestFcmToken, onForegroundMessage, showLocalNotification } from "../utils/fcmClient";
 import { onAuthStateChanged } from "firebase/auth";
 import { toast } from "react-toastify";
 import "./Navbar.css";
-import EnableNotifications from "./EnableNotifications";
-import FloatingNotifications from "../messages/FloatingNotifications";
-
-// ✅ FIXED: saveFcmTokenToBackend function
-const saveFcmTokenToBackend = async (userId, token) => {
-  try {
-    console.log("💾 Saving FCM token to backend for user:", userId);
-    console.log("🔑 Token to save:", token ? `${token.substring(0, 20)}...` : 'null');
-
-    const payload = {
-      userId: userId,
-      token: token, // This can be null for regular notifications
-      title: 'Device Registered',
-      body: 'Your device is ready to receive notifications'
-    };
-
-    console.log("📦 Payload:", payload);
-
-    const response = await fetch('/api/saveAndPush', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload)
-    });
-
-    console.log("📥 Response status:", response.status);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("❌ API Error response:", errorText);
-      throw new Error(`HTTP error! status: ${response.status}, response: ${errorText}`);
-    }
-
-    const result = await response.json();
-    console.log("✅ Token saved to backend successfully:", result);
-    return result;
-  } catch (error) {
-    console.error("❌ Failed to save token to backend:", error);
-    throw new Error('Failed to save token: ' + error.message);
-  }
-};
-
-// Navbar.jsx mein yeh changes karein
-
-// ✅ FIXED: sendPushNotification function ko update karein
-const sendPushNotification = async (userId, title, body, image = null, url = null) => {
-  try {
-    console.log("📤 Sending push notification:", { userId, title, body });
-
-    // Floating notification trigger karein
-    const floatingEvent = new CustomEvent('showFloatingNotification', {
-      detail: {
-        title,
-        body,
-        image,
-        url
-      }
-    });
-    window.dispatchEvent(floatingEvent);
-
-    // Existing backend call
-    const payload = {
-      userId: userId,
-      token: null,
-      title: title,
-      body: body
-    };
-
-    const response = await fetch('/api/saveAndPush', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const result = await response.json();
-    console.log('✅ Push notification sent successfully');
-    return result;
-  } catch (error) {
-    console.error('❌ Error sending push notification:', error);
-    return { success: false, error: error.message };
-  }
-};
-
-// Friend request notification mein update karein
-useEffect(() => {
-  if (!currentUid) return;
-
-  const reqRef = ref(db, `usersData/${currentUid}/followRequests/received`);
-  const unsub = onValue(reqRef, async (snap) => {
-    if (!snap.exists()) {
-      setFriendRequests([]);
-      return;
-    }
-
-    const requests = Object.entries(snap.val());
-    const detailedRequests = await Promise.all(
-      requests.map(async ([uid, requestData]) => {
-        try {
-          const userSnap = await get(ref(db, `usersData/${uid}`));
-          const userData = userSnap.val();
-
-          // ✅ FIXED: Floating notification with better details
-          if (requestData.timestamp > Date.now() - 10000) {
-            sendPushNotification(
-              currentUid,
-              "New Friend Request",
-              `${userData?.username || "Someone"} sent you a friend request!`,
-              userData?.photoURL || '/logo.png',
-              `/user-profile/${uid}`
-            ).catch(error => {
-              console.warn("Failed to send push notification for friend request:", error);
-            });
-          }
-
-          return {
-            uid,
-            username: userData?.username || "Someone",
-            photoURL: userData?.photoURL || `https://ui-avatars.com/api/?name=${userData?.username || "U"}&background=random`,
-            timestamp: requestData.timestamp
-          };
-        } catch {
-          return {
-            uid,
-            username: "Someone",
-            photoURL: "https://ui-avatars.com/api/?name=U&background=ccc",
-            timestamp: Date.now()
-          };
-        }
-      })
-    );
-
-    detailedRequests.sort((a, b) => b.timestamp - a.timestamp);
-    setFriendRequests(detailedRequests);
-  });
-
-  return () => unsub();
-}, [currentUid]);
 
 // Custom hook for dropdown state management
 const useDropdownState = () => {
   const [states, setStates] = useState({
     friendReq: false,
     inbox: false,
-    notifications: false,
-    userProfile: false
+    notifications: false
   });
 
   const toggleDropdown = useCallback((dropdown) => {
@@ -166,79 +20,51 @@ const useDropdownState = () => {
       friendReq: false,
       inbox: false,
       notifications: false,
-      userProfile: false,
       [dropdown]: !prev[dropdown]
     }));
   }, []);
 
   const closeAll = useCallback(() => {
-    setStates({ friendReq: false, inbox: false, notifications: false, userProfile: false });
+    setStates({ friendReq: false, inbox: false, notifications: false });
   }, []);
 
   return { ...states, toggleDropdown, closeAll };
 };
 
-// Custom hook for user authentication and FCM
-const useAuthAndFCM = () => {
+// Custom hook for user authentication
+const useAuth = () => {
   const [currentUid, setCurrentUid] = useState(null);
-  const [userData, setUserData] = useState(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUid(user?.uid || null);
-
-      if (user) {
-        try {
-          const userSnap = await get(ref(db, `usersData/${user.uid}`));
-          if (userSnap.exists()) {
-            setUserData(userSnap.val());
-          }
-        } catch (error) {
-          console.error('Error fetching user data:', error);
-        }
-      } else {
-        setUserData(null);
-      }
     });
-
     return () => unsubscribe();
   }, []);
 
-  return { currentUid, userData };
+  return currentUid;
 };
 
 // Utility functions
 const formatTimestamp = (timestamp) => {
-  if (!timestamp) return "Just now";
-
   const date = new Date(timestamp);
   const now = new Date();
-  const diffMs = now - date;
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
+  const isToday = date.toDateString() === now.toDateString();
+  const isYesterday = new Date(now.setDate(now.getDate() - 1)).toDateString() === date.toDateString();
 
-  if (diffMins < 1) return "Just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
+  const time = `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
 
-  return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
+  if (isToday) return time;
+  if (isYesterday) return `Yesterday ${time}`;
+  return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()} ${time}`;
 };
 
 const getChatId = (a, b) => a && b ? [a, b].sort().join("_") : null;
 
 const Navbar = () => {
   const navigate = useNavigate();
-  const { currentUid, userData } = useAuthAndFCM();
-  const {
-    friendReq: isFriendReqOpen,
-    inbox: isInboxOpen,
-    notifications: isNotifOpen,
-    userProfile: isUserProfileOpen,
-    toggleDropdown,
-    closeAll
-  } = useDropdownState();
+  const currentUid = useAuth();
+  const { friendReq: isFriendReqOpen, inbox: isInboxOpen, notifications: isNotifOpen, toggleDropdown, closeAll } = useDropdownState();
 
   // Friend requests state
   const [friendRequests, setFriendRequests] = useState([]);
@@ -251,39 +77,31 @@ const Navbar = () => {
   const [notifications, setNotifications] = useState([]);
   const [unreadLikes, setUnreadLikes] = useState(0);
 
-  // Close dropdowns when clicking outside
+  // User profile state
+  const [userProfile, setUserProfile] = useState({
+    photoURL: null,
+    username: ""
+  });
+
+  // Fetch user profile data
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (!event.target.closest('.dropdown-card') && !event.target.closest('.icon-btn') && !event.target.closest('.user-avatar-btn')) {
-        closeAll();
+    if (!currentUid) return;
+
+    const userRef = ref(db, `usersData/${currentUid}`);
+    const unsub = onValue(userRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        setUserProfile({
+          photoURL: data.photoURL || null,
+          username: data.username || "User"
+        });
       }
-    };
+    });
 
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, [closeAll]);
-
-  // FCM message listener
-  useEffect(() => {
-    if (currentUid) {
-      const unsubscribe = onForegroundMessage((payload) => {
-        console.log('📱 Foreground message received:', payload);
-
-        if (payload.notification) {
-          showLocalNotification(payload.notification.title, {
-            body: payload.notification.body,
-            icon: '/logo.png'
-          });
-        }
-      });
-
-      return () => {
-        if (unsubscribe) unsubscribe();
-      };
-    }
+    return () => unsub();
   }, [currentUid]);
 
-  // ✅ FIXED: Friend Requests with better error handling
+  // Friend Requests
   useEffect(() => {
     if (!currentUid) return;
 
@@ -296,40 +114,21 @@ const Navbar = () => {
 
       const requests = Object.entries(snap.val());
       const detailedRequests = await Promise.all(
-        requests.map(async ([uid, requestData]) => {
+        requests.map(async ([uid]) => {
           try {
             const userSnap = await get(ref(db, `usersData/${uid}`));
             const userData = userSnap.val();
-
-            // Send push notification for new friend request (non-blocking)
-            if (requestData.timestamp > Date.now() - 10000) {
-              sendPushNotification(
-                currentUid,
-                "New Friend Request",
-                `${userData?.username || "Someone"} sent you a friend request!`
-              ).catch(error => {
-                console.warn("Failed to send push notification for friend request:", error);
-              });
-            }
-
             return {
               uid,
               username: userData?.username || "Someone",
-              photoURL: userData?.photoURL || `https://ui-avatars.com/api/?name=${userData?.username || "U"}&background=random`,
-              timestamp: requestData.timestamp
+              photoURL: userData?.photoURL || `https://ui-avatars.com/api/?name=${userData?.username || "U"}`
             };
           } catch {
-            return {
-              uid,
-              username: "Someone",
-              photoURL: "https://ui-avatars.com/api/?name=U&background=ccc",
-              timestamp: Date.now()
-            };
+            return { uid, username: "Someone", photoURL: "" };
           }
         })
       );
 
-      detailedRequests.sort((a, b) => b.timestamp - a.timestamp);
       setFriendRequests(detailedRequests);
     });
 
@@ -347,15 +146,6 @@ const Navbar = () => {
     if (action === 'accept') {
       updates[`usersData/${currentUid}/friends/${uid}`] = true;
       updates[`usersData/${uid}/friends/${currentUid}`] = true;
-
-      // Non-blocking notification
-      sendPushNotification(
-        uid,
-        "Friend Request Accepted",
-        `${userData?.username || "Someone"} accepted your friend request!`
-      ).catch(error => {
-        console.warn("Failed to send acceptance notification:", error);
-      });
     }
 
     try {
@@ -366,18 +156,12 @@ const Navbar = () => {
     }
   };
 
-  // ✅ FIXED: Messages with better error handling
+  // Messages
   useEffect(() => {
     if (!currentUid) return;
 
     const messagesRef = ref(db, `chats`);
     const unsub = onValue(messagesRef, async (snapshot) => {
-      if (!snapshot.exists()) {
-        setChatHistory([]);
-        setUnreadCount(0);
-        return;
-      }
-
       let totalUnread = 0;
       const chats = [];
 
@@ -385,54 +169,24 @@ const Navbar = () => {
         const chatData = chatSnap.val();
         if (!chatData?.messages) return;
 
-        const messages = Object.entries(chatData.messages)
-          .map(([id, msg]) => ({ id, ...msg }))
-          .sort((a, b) => b.timestamp - a.timestamp);
-
+        const messages = Object.entries(chatData.messages).map(([id, msg]) => ({ id, ...msg }));
         const unreadMsgs = messages.filter(msg => !msg.read && msg.sender !== currentUid);
         totalUnread += unreadMsgs.length;
 
         const otherUserId = chatSnap.key.split("_").find(uid => uid !== currentUid);
-        const lastMessage = messages[0];
-
-        chats.push({
-          chatId: chatSnap.key,
-          otherUserId,
-          messages,
-          unreadCount: unreadMsgs.length,
-          lastMessage: lastMessage?.text || "Media message",
-          lastTimestamp: lastMessage?.timestamp
-        });
+        chats.push({ chatId: chatSnap.key, otherUserId, messages, unreadCount: unreadMsgs.length });
       });
 
-      // Process chats without blocking
-      chats.forEach(async (chat) => {
+      // Fetch usernames
+      await Promise.all(chats.map(async (chat) => {
         try {
           const snap = await get(ref(db, `usersData/${chat.otherUserId}`));
-          const userData = snap.val();
-          chat.username = userData?.username || "Someone";
-          chat.userPhoto = userData?.photoURL || `https://ui-avatars.com/api/?name=${chat.username}&background=random`;
-
-          const newMessages = chat.messages.filter(msg =>
-            !msg.read && msg.sender !== currentUid && msg.timestamp > Date.now() - 10000
-          );
-
-          if (newMessages.length > 0) {
-            sendPushNotification(
-              currentUid,
-              "New Message",
-              `New message from ${chat.username}`
-            ).catch(error => {
-              console.warn("Failed to send message notification:", error);
-            });
-          }
+          chat.username = snap.val()?.username || "Someone";
         } catch {
           chat.username = "Someone";
-          chat.userPhoto = "https://ui-avatars.com/api/?name=U&background=ccc";
         }
-      });
+      }));
 
-      chats.sort((a, b) => (b.lastTimestamp || 0) - (a.lastTimestamp || 0));
       setChatHistory(chats);
       setUnreadCount(totalUnread);
     });
@@ -465,29 +219,25 @@ const Navbar = () => {
     }
   };
 
-  const handleInboxToggle = async (e) => {
-    e.stopPropagation();
+  const handleInboxToggle = async () => {
     toggleDropdown('inbox');
 
     if (!isInboxOpen && unreadCount > 0) {
-      try {
-        await Promise.all(chatHistory.map(async (chat) => {
-          const updates = {};
-          chat.messages.forEach(msg => {
-            if (!msg.read && msg.sender !== currentUid) {
-              updates[`${msg.id}/read`] = true;
-            }
-          });
-
-          if (Object.keys(updates).length) {
-            await update(ref(db, `chats/${chat.chatId}/messages`), updates);
+      // Mark all messages as read
+      await Promise.all(chatHistory.map(async (chat) => {
+        const updates = {};
+        chat.messages.forEach(msg => {
+          if (!msg.read && msg.sender !== currentUid) {
+            updates[`${msg.id}/read`] = true;
           }
-        }));
+        });
 
-        setUnreadCount(0);
-      } catch (error) {
-        console.warn("Failed to mark messages as read:", error);
-      }
+        if (Object.keys(updates).length) {
+          await update(ref(db, `chats/${chat.chatId}/messages`), updates);
+        }
+      }));
+
+      setUnreadCount(0);
     }
   };
 
@@ -497,7 +247,7 @@ const Navbar = () => {
     closeAll();
   };
 
-  // ✅ FIXED: Notifications with better error handling
+  // Notifications
   useEffect(() => {
     if (!currentUid) return;
 
@@ -511,13 +261,10 @@ const Navbar = () => {
         try {
           const actorId = notif.likerId || notif.fromId;
           let actorName = "Someone";
-          let actorPhoto = "https://ui-avatars.com/api/?name=U&background=ccc";
 
           if (actorId) {
             const userSnap = await get(ref(db, `usersData/${actorId}`));
-            const userData = userSnap.val();
-            actorName = userData?.username || "Someone";
-            actorPhoto = userData?.photoURL || `https://ui-avatars.com/api/?name=${actorName}&background=random`;
+            actorName = userSnap.val()?.username || "Someone";
           }
 
           const notification = {
@@ -525,7 +272,6 @@ const Navbar = () => {
             type: notif.type || "like",
             likerId: actorId,
             likerName: actorName,
-            likerPhoto: actorPhoto,
             postCaption: notif.postCaption || "your post",
             postId: notif.postId || null,
             text: notif.text || null,
@@ -536,34 +282,13 @@ const Navbar = () => {
 
           notifList.push(notification);
           if (!notification.seen) unread++;
-
-          // Non-blocking notification
-          if (notif.timestamp > Date.now() - 10000 && !notif.seen) {
-            let title = "New Notification";
-            let body = "";
-
-            if (notification.type === "like") {
-              title = "New Like";
-              body = `${actorName} liked your post`;
-            } else if (notification.type === "message") {
-              title = "New Message";
-              body = `Message from ${actorName}`;
-            } else if (notification.type === "comment") {
-              title = "New Comment";
-              body = `${actorName} commented on your post`;
-            }
-
-            sendPushNotification(currentUid, title, body).catch(error => {
-              console.warn("Failed to send notification:", error);
-            });
-          }
         } catch {
+          // Fallback for error case
           notifList.push({
             id,
             type: notif.type || "like",
             likerId: notif.likerId || notif.fromId || null,
             likerName: "Someone",
-            likerPhoto: "https://ui-avatars.com/api/?name=U&background=ccc",
             postCaption: notif.postCaption || "your post",
             postId: notif.postId || null,
             text: notif.text || null,
@@ -583,29 +308,20 @@ const Navbar = () => {
     return () => unsub();
   }, [currentUid]);
 
-  const handleNotificationToggle = async (e) => {
-    e.stopPropagation();
+  const handleNotificationToggle = async () => {
     toggleDropdown('notifications');
 
     if (!isNotifOpen && unreadLikes > 0) {
-      try {
-        await Promise.all(notifications.map(async (n) => {
-          if (!n.seen) {
-            await update(ref(db, `notifications/${currentUid}/${n.id}`), { seen: true });
-          }
-        }));
+      // Mark all notifications as seen
+      await Promise.all(notifications.map(async (n) => {
+        if (!n.seen) {
+          await update(ref(db, `notifications/${currentUid}/${n.id}`), { seen: true });
+        }
+      }));
 
-        setUnreadLikes(0);
-        setNotifications(prev => prev.map(n => ({ ...n, seen: true })));
-      } catch (error) {
-        console.warn("Failed to mark notifications as seen:", error);
-      }
+      setUnreadLikes(0);
+      setNotifications(prev => prev.map(n => ({ ...n, seen: true })));
     }
-  };
-
-  const handleUserProfileToggle = (e) => {
-    e.stopPropagation();
-    toggleDropdown('userProfile');
   };
 
   const openPost = (postId) => {
@@ -617,136 +333,71 @@ const Navbar = () => {
     closeAll();
   };
 
-  const deleteNotification = async (notif, e) => {
-    e.stopPropagation();
+  const deleteNotification = async (notif) => {
     if (!currentUid) return;
 
     try {
       await remove(ref(db, `notifications/${currentUid}/${notif.id}`));
       setNotifications(prev => prev.filter(n => n.id !== notif.id));
-      toast.success("Notification deleted");
     } catch {
       toast.error("Failed to delete notification ❌");
     }
   };
 
-  // Dropdown components (unchanged)
+  // Dropdown components for better organization
   const FriendRequestsDropdown = () => (
-    <div className="dropdown-card" onClick={(e) => e.stopPropagation()}>
-      <div className="dropdown-header">
-        <h6>Friend Requests</h6>
-        <span className="badge bg-primary">{friendRequests.length}</span>
-      </div>
-      <div className="dropdown-content">
-        {friendRequests.length === 0 ? (
-          <p className="text-muted no-items">No pending requests</p>
-        ) : (
-          friendRequests.map((req) => (
-            <div key={req.uid} className="friend-request-item">
-              <div className="d-flex align-items-center gap-2 mb-2">
-                <img src={req.photoURL} className="avatar-sm" alt={req.username} />
-                <div className="flex-grow-1">
-                  <div className="username">{req.username}</div>
-                  <small className="text-muted">{formatTimestamp(req.timestamp)}</small>
-                </div>
-              </div>
-              <div className="btn-group-sm d-flex gap-1">
-                <button className="btn btn-sm btn-success" onClick={() => handleFriendRequest(req.uid, 'accept')}>
-                  Accept
-                </button>
-                <button className="btn btn-sm btn-outline-secondary" onClick={() => handleFriendRequest(req.uid, 'reject')}>
-                  Reject
-                </button>
-              </div>
+    <div className="dropdown-card">
+      <h6>Friend Requests</h6>
+      {friendRequests.length === 0 ? (
+        <p className="text-muted">No requests</p>
+      ) : (
+        friendRequests.map((req) => (
+          <div key={req.uid} className="d-flex align-items-center justify-content-between mb-2">
+            <div className="d-flex align-items-center gap-2">
+              <img src={req.photoURL} className="avatar-sm" alt={req.username} />
+              <span>{req.username}</span>
             </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-
-  const InboxDropdown = () => (
-    <div className="dropdown-card" onClick={(e) => e.stopPropagation()}>
-      <div className="dropdown-header">
-        <h6>Messages</h6>
-        {unreadCount > 0 && <span className="badge bg-danger">{unreadCount}</span>}
-      </div>
-      <div className="dropdown-content">
-        {chatHistory.length === 0 ? (
-          <p className="text-muted no-items">No messages yet</p>
-        ) : (
-          chatHistory.slice(0, 5).map((chat) => (
-            <div key={chat.chatId} className="message-item" onClick={() => openChat(chat.otherUserId)}>
-              <div className="d-flex align-items-center gap-2">
-                <img src={chat.userPhoto} className="avatar-sm" alt={chat.username} />
-                <div className="flex-grow-1">
-                  <div className="d-flex justify-content-between align-items-center">
-                    <span className="username">{chat.username}</span>
-                    {chat.unreadCount > 0 && (
-                      <span className="badge bg-danger badge-sm">{chat.unreadCount}</span>
-                    )}
-                  </div>
-                  <p className="message-preview">{chat.lastMessage}</p>
-                  <small className="text-muted">{formatTimestamp(chat.lastTimestamp)}</small>
-                </div>
-              </div>
+            <div className="btn-group-sm">
+              <button className="btn btn-sm btn-primary" onClick={() => handleFriendRequest(req.uid, 'accept')}>
+                Accept
+              </button>
+              <button className="btn btn-sm btn-outline-secondary" onClick={() => handleFriendRequest(req.uid, 'reject')}>
+                Reject
+              </button>
             </div>
-          ))
-        )}
-        {chatHistory.length > 5 && (
-          <div className="view-all" onClick={() => navigate('/messages')}>
-            View all messages →
           </div>
-        )}
-      </div>
+        ))
+      )}
     </div>
   );
 
   const NotificationsDropdown = () => (
-    <div className="dropdown-card" onClick={(e) => e.stopPropagation()}>
-      <div className="dropdown-header">
-        <h6>Notifications</h6>
-        {unreadLikes > 0 && <span className="badge bg-primary">{unreadLikes}</span>}
-      </div>
-      <div className="dropdown-content">
-        {notifications.length === 0 ? (
-          <p className="text-muted no-items">No notifications yet</p>
-        ) : (
-          notifications.slice(0, 10).map((n) => (
-            <div key={n.id} className="notification-item" onClick={() => n.type === "message" ? openChat(n.likerId) : openPost(n.postId)}>
-              <div className="d-flex align-items-center gap-2">
-                <img src={n.likerPhoto} className="avatar-sm" alt={n.likerName} />
-                <div className="flex-grow-1">
-                  <div className="d-flex justify-content-between align-items-center">
-                    <span className="notification-text">
-                      {n.type === "message" ? "💬" : n.type === "comment" ? "💭" : "❤️"}{" "}
-                      <strong>{n.likerName}</strong>{" "}
-                      {n.type === "message" ? `sent a message` :
-                        n.type === "comment" ? `commented on ${n.postCaption}` :
-                          `liked ${n.postCaption}`}
-                    </span>
-                    <button className="btn btn-sm btn-outline-danger delete-btn" onClick={(e) => deleteNotification(n, e)}>
-                      ×
-                    </button>
-                  </div>
-                  <small className="text-muted">{formatTimestamp(n.timestamp)}</small>
-                </div>
-              </div>
+    <div className="dropdown-card">
+      <h6>Likes & Notifications</h6>
+      {notifications.length === 0 ? (
+        <p className="text-muted">No notifications yet</p>
+      ) : (
+        notifications.map((n) => (
+          <div key={n.id} className="d-flex align-items-center justify-content-between mb-2 cursor-pointer">
+            <div onClick={() => n.type === "message" ? openChat(n.likerId) : openPost(n.postId)}>
+              {n.type === "message" ? "💬" : "❤️"} <strong>{n.likerName}</strong>{" "}
+              {n.type === "message" ? `: ${n.text || "Message"}` : `liked ${n.postCaption}`}
             </div>
-          ))
-        )}
-        {notifications.length > 10 && (
-          <div className="view-all" onClick={() => navigate('/notifications')}>
-            View all notifications →
+            <div className="d-flex gap-1 align-items-center">
+              <small className="text-muted">{formatTimestamp(n.timestamp)}</small>
+              <button className="btn btn-sm btn-outline-danger p-1 me-1" onClick={() => deleteNotification(n)}>
+                🗑
+              </button>
+            </div>
           </div>
-        )}
-      </div>
+        ))
+      )}
     </div>
   );
 
   // Icon Button component
-  const IconButton = ({ icon, badgeCount, onClick, title, badgeClass = "nav-badge" }) => (
-    <button className="icon-btn" onClick={onClick} title={title}>
+  const IconButton = ({ icon, badgeCount, onClick, badgeClass = "badge" }) => (
+    <button className="icon-btn" onClick={onClick}>
       <i className={icon}></i>
       {badgeCount > 0 && (
         <span className={badgeClass}>
@@ -756,102 +407,62 @@ const Navbar = () => {
     </button>
   );
 
-  // User profile dropdown
-  const UserProfileDropdown = () => (
-    <div className="dropdown-card user-profile-dropdown" onClick={(e) => e.stopPropagation()}>
-      <div className="user-info">
-        <img src={userData?.photoURL || "https://ui-avatars.com/api/?name=User&background=007bff"}
-          className="avatar-md" alt="Profile" />
-        <div>
-          <div className="username">{userData?.username || "User"}</div>
-          <small className="text-muted">{userData?.email || ""}</small>
-        </div>
+  // User Profile Component
+  const UserProfileButton = () => (
+    <Link to="/admin-profile" className="text-decoration-none">
+      <div className="d-flex align-items-center gap-2 cursor-pointer p-2 rounded hover-bg">
+        {userProfile.photoURL ? (
+          <img 
+            src={userProfile.photoURL} 
+            alt="Profile" 
+            className="avatar-md rounded-circle border"
+            style={{ width: '40px', height: '40px', objectFit: 'cover' }}
+          />
+        ) : (
+          <div 
+            className="avatar-md rounded-circle border d-flex align-items-center justify-content-center bg-light"
+            style={{ width: '40px', height: '40px' }}
+          >
+            <i className="bi bi-person fs-5 text-muted"></i>
+          </div>
+        )}
+        <span className="text-dark fw-medium d-none d-md-block">{userProfile.username}</span>
       </div>
-      <div className="dropdown-menu">
-        <button className="dropdown-item" onClick={() => { navigate('/profile'); closeAll(); }}>
-          <i className="bi bi-person me-2"></i>Profile
-        </button>
-        <button className="dropdown-item" onClick={() => { navigate('/settings'); closeAll(); }}>
-          <i className="bi bi-gear me-2"></i>Settings
-        </button>
-        <hr />
-        <button className="dropdown-item text-danger" onClick={() => auth.signOut()}>
-          <i className="bi bi-box-arrow-right me-2"></i>Logout
-        </button>
-      </div>
-    </div>
+    </Link>
   );
 
-  if (!currentUid) {
-    return (
-      <nav className="navbar shadow-sm p-2 d-flex align-items-center border justify-content-between">
-        <Link to="/" className="d-flex align-items-center">
-          <img src="icons/logo.png" width={100} alt="logo" />
-        </Link>
-        <div>
-          <button className="btn btn-primary me-2" onClick={() => navigate('/login')}>Login</button>
-          <button className="btn btn-outline-primary" onClick={() => navigate('/signup')}>Sign Up</button>
-        </div>
-      </nav>
-    );
-  }
-
   return (
-    <nav className="navbar shadow-sm p-2 d-flex align-items-center border justify-content-between">
-      <Link to="/home" className="d-flex align-items-center navbar-brand">
+    <nav className="navbar shadow-sm p-1 d-flex align-items-center border justify-content-between">
+      <Link to="/home" className="d-flex align-items-center">
         <img src="icons/logo.png" width={100} alt="logo" />
       </Link>
 
       <div className="d-flex align-items-center gap-3">
-        <EnableNotifications userId={currentUid} onEnabled={() => {
-          toast.success("🔔 Notifications ready!");
-        }} />
-
+        {/* Friend Requests */}
         <div className="position-relative">
           <IconButton
-            icon="bi bi-person-add fs-5"
+            icon="bi bi-people-fill fs-2 text-danger"
             badgeCount={friendRequests.length}
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleDropdown('friendReq');
-            }}
-            title="Friend Requests"
+            onClick={() => toggleDropdown('friendReq')}
+            badgeClass="badge m-2"
           />
           {isFriendReqOpen && <FriendRequestsDropdown />}
         </div>
 
+        {/* Notifications */}
         <div className="position-relative">
           <IconButton
-            icon="bi bi-chat-dots fs-5"
-            badgeCount={unreadCount}
-            onClick={handleInboxToggle}
-            title="Messages"
-          />
-          {isInboxOpen && <InboxDropdown />}
-        </div>
-
-        <div className="position-relative">
-          <IconButton
-            icon="bi bi-bell fs-5"
+            icon="bi bi-bell-fill fs-3 me-3 text-primary"
             badgeCount={unreadLikes}
             onClick={handleNotificationToggle}
-            title="Notifications"
+            badgeClass="badge me-4 mt-2"
           />
           {isNotifOpen && <NotificationsDropdown />}
         </div>
 
+        {/* User Profile - Added after notifications */}
         <div className="position-relative">
-          <button
-            className="user-avatar-btn"
-            onClick={handleUserProfileToggle}
-          >
-            <img
-              src={userData?.photoURL || "https://ui-avatars.com/api/?name=User&background=007bff"}
-              className="avatar-sm"
-              alt="Profile"
-            />
-          </button>
-          {isUserProfileOpen && <UserProfileDropdown />}
+          <UserProfileButton />
         </div>
       </div>
     </nav>

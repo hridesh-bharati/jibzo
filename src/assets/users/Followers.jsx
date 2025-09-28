@@ -1,182 +1,95 @@
-// // src/assets/users/Followers.jsx
-// import React, { useEffect, useState } from "react";
-// import { db, auth } from "../../assets/utils/firebaseConfig";
-// import { ref, onValue } from "firebase/database";
-// import { useParams, useNavigate } from "react-router-dom";
-
-// export default function Followers() {
-//   const { uid: paramUid } = useParams();
-//   const currentUser = auth.currentUser;
-//   const uid = paramUid || currentUser?.uid;
-//   const [followers, setFollowers] = useState([]);
-//   const navigate = useNavigate();
-
-//   useEffect(() => {
-//     if (!uid) return;
-//     const followersRef = ref(db, `usersData/${uid}/followers`);
-//     const unsubscribe = onValue(followersRef, (snap) => {
-//       if (!snap.exists()) {
-//         setFollowers([]);
-//         return;
-//       }
-//       setFollowers(Object.keys(snap.val()));
-//     });
-//     return () => unsubscribe();
-//   }, [uid]);
-
-//   return (
-//     <div className="container mt-3">
-//       <h4>Followers</h4>
-//       {followers.length === 0 ? (
-//         <p>No followers</p>
-//       ) : (
-//         followers.map((fUid) => (
-//           <div
-//             key={fUid}
-//             className="border p-2 mb-2 d-flex align-items-center rounded shadow-sm"
-//             style={{ cursor: "pointer" }}
-//             onClick={() => navigate(`/user-profile/${fUid}`)}
-//           >
-//             <span>{fUid}</span>
-//           </div>
-//         ))
-//       )}
-//     </div>
-//   );
-// }
-
-
 // src/assets/users/Followers.jsx
-import React, { useEffect, useState } from "react";
-import { db, auth } from "../../assets/utils/firebaseConfig";
-import { ref, onValue, update, get } from "firebase/database";
-import { useNavigate, useParams, Link } from "react-router-dom";
-import { toast } from "react-toastify";
+import React from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { useUserRelations, useUserActions } from '../../hooks/useUserRelations';
+import { auth } from '../utils/firebaseConfig';
 
 export default function Followers() {
   const { uid: paramUid } = useParams();
-  const [followersList, setFollowersList] = useState([]);
-  const [following, setFollowing] = useState([]);
-  const [requests, setRequests] = useState([]);
-  const navigate = useNavigate();
   const currentUser = auth.currentUser;
   const uid = paramUid || currentUser?.uid;
+  
+  const { relations, loading } = useUserRelations(uid);
+  const userActions = useUserActions();
 
-  useEffect(() => {
-    if (!uid) return;
-
-    const followersRef = ref(db, `usersData/${uid}/followers`);
-    const followingRef = ref(db, `usersData/${uid}/following`);
-    const requestsRef = ref(db, `usersData/${uid}/followRequests/received`);
-
-    const unsubFollowers = onValue(followersRef, async (snap) => {
-      if (!snap.exists()) {
-        setFollowersList([]);
-        return;
-      }
-      const uids = Object.keys(snap.val());
-      const data = await Promise.all(
-        uids.map(async (fUid) => {
-          const userSnap = await get(ref(db, `usersData/${fUid}`));
-          return userSnap.exists() ? { uid: fUid, ...userSnap.val() } : null;
-        })
-      );
-      setFollowersList(data.filter(Boolean));
-    });
-
-    const unsubFollowing = onValue(followingRef, (snap) => {
-      setFollowing(snap.exists() ? Object.keys(snap.val()) : []);
-    });
-
-    const unsubRequests = onValue(requestsRef, (snap) => {
-      setRequests(snap.exists() ? Object.keys(snap.val()) : []);
-    });
-
-    return () => {
-      unsubFollowers();
-      unsubFollowing();
-      unsubRequests();
-    };
-  }, [uid]);
-
-  const handleRemoveFollower = async (fUid) => {
-    if (!currentUser) return toast.error("Login first!");
-    await update(ref(db), {
-      [`usersData/${uid}/followers/${fUid}`]: null,
-      [`usersData/${fUid}/following/${uid}`]: null,
-    });
-    toast.info("Removed follower ❌");
-  };
-
-  const handleFollowBack = async (fUid) => {
-    if (!currentUser) return toast.error("Login first!");
-    await update(ref(db), {
-      [`usersData/${fUid}/followers/${currentUser.uid}`]: true,
-      [`usersData/${currentUser.uid}/following/${fUid}`]: true,
-    });
-    toast.success("Followed back 👥");
-  };
-
-  const handleAccept = async (fUid) => {
-    if (!currentUser) return toast.error("Login first!");
-    await update(ref(db), {
-      [`usersData/${currentUser.uid}/friends/${fUid}`]: true,
-      [`usersData/${fUid}/friends/${currentUser.uid}`]: true,
-      [`usersData/${currentUser.uid}/followers/${fUid}`]: true,
-      [`usersData/${fUid}/following/${currentUser.uid}`]: true,
-      [`usersData/${currentUser.uid}/followRequests/received/${fUid}`]: null,
-      [`usersData/${fUid}/followRequests/sent/${currentUser.uid}`]: null,
-    });
-    toast.success("Request accepted ✅");
-  };
+  if (loading) return <div className="container mt-3">Loading followers...</div>;
 
   return (
     <div className="container mt-3">
-      <div className="d-flex justify-content-between align-items-center p-3 bg-white shadow-sm rounded-3 mb-3">
-        <h4 className="mb-0 text-primary">Followers</h4>
+      <div className="d-flex justify-content-between align-items-center p-3 bg-white shadow-sm rounded-3 mb-4">
+        <h4 className="mb-0 text-primary">Followers ({relations.followers.length})</h4>
         <Link to="/all-insta-users" className="btn btn-outline-primary btn-sm">
           View All Users
         </Link>
       </div>
-      {followersList.length === 0 ? (
-        <p>No followers</p>
+
+      {relations.followers.length === 0 ? (
+        <p className="text-muted text-center py-5">No followers yet</p>
       ) : (
-        followersList.map((f) => (
-          <div
-            key={f.uid}
-            className="border p-2 mb-2 d-flex align-items-center justify-content-between rounded shadow-sm"
-          >
-            <div
-              className="d-flex align-items-center"
-              style={{ cursor: "pointer" }}
-              onClick={() => navigate(`/user-profile/${f.uid}`)}
+        <div className="row g-3">
+          {relations.followers.map((user) => (
+            <Link 
+              to={`/user-profile/${user.uid}`} 
+              key={user.uid} 
+              className="text-decoration-none col-12 col-md-6 col-lg-4"
             >
-              <img
-                src={f.photoURL || "https://via.placeholder.com/50"}
-                alt="DP"
-                style={{ width: 40, height: 40, borderRadius: "50%", marginRight: 10 }}
-              />
-              <span>{f.username || f.uid}</span>
-            </div>
-            {currentUser?.uid !== f.uid && (
-              <div className="d-flex gap-2">
-                <button className="btn btn-sm btn-outline-danger" onClick={() => handleRemoveFollower(f.uid)}>
-                  Remove
-                </button>
-                {!following.includes(f.uid) && (
-                  <button className="btn btn-sm btn-outline-primary" onClick={() => handleFollowBack(f.uid)}>
-                    Follow Back
-                  </button>
-                )}
-                {requests.includes(f.uid) && (
-                  <button className="btn btn-sm btn-success" onClick={() => handleAccept(f.uid)}>
-                    Accept
-                  </button>
-                )}
+              <div className="bg-white shadow-sm rounded-4 p-3 d-flex flex-column hover-shadow transition">
+                <div className="row align-items-center">
+                  
+                  {/* Photo Column */}
+                  <div className="col-4 text-center">
+                    <div className="position-relative d-inline-block">
+                      <img
+                        src={user.photoURL || "/icons/avatar.jpg"}
+                        alt={user.username}
+                        className="rounded-circle border border-2 border-primary"
+                        style={{ width: 80, height: 80, objectFit: 'cover' }}
+                        onError={(e) => { e.target.src = "/icons/avatar.jpg"; }}
+                      />
+                      {user.isVerified && (
+                        <i
+                          className="bi bi-patch-check-fill text-primary position-absolute"
+                          style={{ bottom: 0, right: 0, fontSize: '1.2rem', background: 'white', borderRadius: '50%' }}
+                          title="Verified"
+                        ></i>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Info & Buttons Column */}
+                  <div className="col-8">
+                    <h6 className="fw-bold mb-1">{user.username || 'Unnamed User'}</h6>
+                    <p className="text-muted mb-2">{user.email || 'No email available'}</p>
+
+                    {currentUser && currentUser.uid !== user.uid && (
+                      <div className="d-flex gap-2">
+                        <button
+                          className="btn btn-sm btn-outline-danger flex-grow-1"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            userActions.unfollowUser(user.uid);
+                          }}
+                        >
+                          Unfollow
+                        </button>
+                        <button
+                          className="btn btn-sm btn-outline-warning flex-grow-1"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            userActions.blockUser(user.uid);
+                          }}
+                        >
+                          Block
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                </div>
               </div>
-            )}
-          </div>
-        ))
+            </Link>
+          ))}
+        </div>
       )}
     </div>
   );

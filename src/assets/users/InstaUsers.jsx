@@ -1,39 +1,38 @@
 // src/assets/users/AllUsers.jsx
 import React, { useEffect, useState } from "react";
-import { db, auth } from "../../assets/utils/firebaseConfig";
-import { ref, onValue, update, remove } from "firebase/database";
+import { db, auth } from "../utils/firebaseConfig";
+import { ref, onValue, remove } from "firebase/database";
 import { toast } from "react-toastify";
 import { onAuthStateChanged } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
+
+// Import your custom hooks
+import { useUserRelations, useUserActions } from "../../hooks/useUserRelations";
 
 const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL;
 
 export default function AllUsers() {
   const [users, setUsers] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
-  const [sentRequests, setSentRequests] = useState([]);
-  const [friends, setFriends] = useState([]);
-  const [followersCount, setFollowersCount] = useState(0);
-  const [followingCount, setFollowingCount] = useState(0);
-  const [requestedCount, setRequestedCount] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
+  // Use your custom hooks
+  const { relations, loading: relationsLoading, calculateRelationship } = useUserRelations(currentUser?.uid);
+  const {
+    followUser,
+    unfollowUser,
+    removeFollower,
+    acceptRequest,
+    blockUser,
+    unblockUser,
+    cancelFollowRequest
+  } = useUserActions();
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
-      if (user) {
-        const userRef = ref(db, `usersData/${user.uid}`);
-        onValue(userRef, (snapshot) => {
-          const data = snapshot.val();
-          setSentRequests(data?.followRequests?.sent ? Object.keys(data.followRequests.sent) : []);
-          setFriends(data?.friends ? Object.keys(data.friends) : []);
-          setFollowersCount(data?.followers ? Object.keys(data.followers).length : 0);
-          setFollowingCount(data?.following ? Object.keys(data.following).length : 0);
-          setRequestedCount(data?.followRequests?.received ? Object.keys(data.followRequests.received).length : 0);
-        });
-      }
     });
     return () => unsubscribe();
   }, []);
@@ -48,36 +47,65 @@ export default function AllUsers() {
     });
   }, []);
 
-  const sendFollowRequest = async (targetUID) => {
-    if (!currentUser?.uid) return;
-    const updates = {};
-    updates[`usersData/${targetUID}/followRequests/received/${currentUser.uid}`] = true;
-    updates[`usersData/${currentUser.uid}/followRequests/sent/${targetUID}`] = true;
-    await update(ref(db), updates);
-    toast.success("Follow request sent! 🚀");
+  // In AllUsers.jsx, update the getUserRelationship function:
+  const getUserRelationship = (targetUser) => {
+    if (!currentUser || !targetUser) {
+      return {
+        isFriend: false,
+        isFollowing: false,
+        isFollower: false,
+        isRequested: false,
+        isBlocked: false,
+        hasPendingRequest: false,
+      };
+    }
+
+    const relationship = calculateRelationship(currentUser.uid, targetUser, relations);
+
+    return {
+      isFriend: relationship.isFriend,
+      isFollowing: relationship.isFollowing,
+      isFollower: relationship.isFollower,
+      isRequested: relationship.hasReceivedRequest,
+      isBlocked: relationship.isBlocked,
+      hasPendingRequest: relationship.hasSentRequest,
+    };
+  };
+  // Unified action handler
+  const handleAction = async (actionFn, successMessage, targetUID) => {
+    try {
+      await actionFn(targetUID);
+      toast.success(successMessage);
+    } catch (error) {
+      console.error('Action error:', error);
+      toast.error(`❌ ${error.message}`);
+    }
   };
 
-  const cancelFollowRequest = async (targetUID) => {
-    if (!currentUser?.uid) return;
-    const updates = {};
-    updates[`usersData/${targetUID}/followRequests/received/${currentUser.uid}`] = null;
-    updates[`usersData/${currentUser.uid}/followRequests/sent/${targetUID}`] = null;
-    await update(ref(db), updates);
-    toast.info("Request cancelled");
-  };
+  // Action handlers
+  const handleFollow = (targetUID) =>
+    handleAction(followUser, 'Follow request sent! 🚀', targetUID);
 
-  const unfriendUser = async (targetUID) => {
-    if (!currentUser?.uid) return;
-    const updates = {};
-    updates[`usersData/${currentUser.uid}/friends/${targetUID}`] = null;
-    updates[`usersData/${targetUID}/friends/${currentUser.uid}`] = null;
-    updates[`usersData/${currentUser.uid}/followers/${targetUID}`] = null;
-    updates[`usersData/${targetUID}/followers/${currentUser.uid}`] = null;
-    updates[`usersData/${currentUser.uid}/following/${targetUID}`] = null;
-    updates[`usersData/${targetUID}/following/${currentUser.uid}`] = null;
-    await update(ref(db), updates);
-    toast.info("Unfriended");
-  };
+  const handleUnfollow = (targetUID) =>
+    handleAction(unfollowUser, 'Unfollowed successfully!', targetUID);
+
+  const handleCancelRequest = (targetUID) =>
+    handleAction(cancelFollowRequest, 'Request cancelled', targetUID);
+
+  const handleUnfriend = (targetUID) =>
+    handleAction(unfollowUser, 'Unfriended successfully', targetUID);
+
+  const handleBlock = (targetUID) =>
+    handleAction(blockUser, 'User blocked successfully!', targetUID);
+
+  const handleUnblock = (targetUID) =>
+    handleAction(unblockUser, 'User unblocked successfully!', targetUID);
+
+  const handleRemoveFollower = (targetUID) =>
+    handleAction(removeFollower, 'Follower removed!', targetUID);
+
+  const handleAcceptRequest = (targetUID) =>
+    handleAction(acceptRequest, 'Request accepted and followed back! 🤝', targetUID);
 
   const deleteUser = async (targetUID) => {
     if (!currentUser?.uid) return;
@@ -93,13 +121,93 @@ export default function AllUsers() {
     }
   };
 
-  const filteredUsers = users.filter(
-    (u) => u.uid !== currentUser?.uid &&
-      (u.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        u.email?.toLowerCase().includes(searchTerm.toLowerCase()))
+  // Optimized user filtering
+  const filteredUsers = users.filter(user =>
+    user?.uid !== currentUser?.uid &&
+    (user?.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user?.displayName?.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  if (loading) {
+  // Render action buttons based on relationship status
+  const renderActionButtons = (user) => {
+    const userRel = getUserRelationship(user);
+
+    if (userRel.isBlocked) {
+      return (
+        <button
+          className="btn btn-outline-success btn-sm"
+          onClick={() => handleUnblock(user.uid)}
+        >
+          <i className="bi bi-unlock me-1"></i>Unblock
+        </button>
+      );
+    }
+
+    if (userRel.isFriend) {
+      return (
+        <button
+          className="btn btn-outline-danger btn-sm"
+          onClick={() => handleUnfriend(user.uid)}
+        >
+          <i className="bi bi-person-dash me-1"></i>Unfriend
+        </button>
+      );
+    }
+
+    if (userRel.hasPendingRequest) {
+      return (
+        <button
+          className="btn btn-outline-warning btn-sm"
+          onClick={() => handleCancelRequest(user.uid)}
+        >
+          <i className="bi bi-clock me-1"></i>Pending
+        </button>
+      );
+    }
+
+    if (userRel.isRequested) {
+      return (
+        <div className="d-flex gap-1">
+          <button
+            className="btn btn-success btn-sm"
+            onClick={() => handleAcceptRequest(user.uid)}
+          >
+            <i className="bi bi-check-lg me-1"></i>Accept
+          </button>
+          <button
+            className="btn btn-outline-danger btn-sm"
+            onClick={() => handleRemoveFollower(user.uid)}
+          >
+            <i className="bi bi-x-lg me-1"></i>Decline
+          </button>
+        </div>
+      );
+    }
+
+    if (userRel.isFollowing) {
+      return (
+        <button
+          className="btn btn-outline-secondary btn-sm"
+          onClick={() => handleUnfollow(user.uid)}
+        >
+          <i className="bi bi-person-dash me-1"></i>Unfollow
+        </button>
+      );
+    }
+
+    return (
+      <button
+        className="btn btn-primary btn-sm"
+        onClick={() => handleFollow(user.uid)}
+      >
+        <i className="bi bi-person-plus me-1"></i>Add Friend
+      </button>
+    );
+  };
+
+  // Show loading until both users and relations are loaded
+  if (loading || relationsLoading) {
     return (
       <div className="min-vh-100 d-flex justify-content-center align-items-center">
         <div className="text-center">
@@ -131,26 +239,15 @@ export default function AllUsers() {
             color: 'white',
             backdropFilter: 'blur(8px)',
             border: '1px solid rgba(255,255,255,0.2)',
-            transition: 'all 0.3s ease',
           }}
         >
-          <h2
-            className="fw-bold mb-0"
-            style={{
-              textShadow: '0 2px 6px rgba(0,0,0,0.3)',
-              marginRight: 'auto',
-            }}
-          >
+          <h2 className="fw-bold mb-0" style={{ textShadow: '0 2px 6px rgba(0,0,0,0.3)', marginRight: 'auto' }}>
             All <span style={{ color: '#ffea00' }}>Jibzo</span> Users
           </h2>
 
           <div className="text-end">
-            <h1 className="h4 fw-bold mb-1" style={{ color: '#ffffffcc' }}>
-              Discover People
-            </h1>
-            <p className="mb-0" style={{ color: '#ffffffaa' }}>
-              Connect with Jibzo users worldwide
-            </p>
+            <h1 className="h4 fw-bold mb-1" style={{ color: '#ffffffcc' }}>Discover People</h1>
+            <p className="mb-0" style={{ color: '#ffffffaa' }}>Connect with Jibzo users worldwide</p>
           </div>
 
           <input
@@ -173,38 +270,45 @@ export default function AllUsers() {
 
         {/* Stats Cards */}
         <div className="d-flex gap-3 mb-4 flex-wrap">
-          <button
-            className="btn flex-fill text-white fw-bold shadow"
-            style={{
-              background: 'linear-gradient(135deg, #ef5350, #e53935)',
-              boxShadow: '0 6px 12px rgba(229, 57, 53, 0.4)',
-            }}
-            onClick={() => navigate(`/followers/${currentUser?.uid}`)}
-          >
-            <i className="bi bi-people-fill me-1"></i> Followers: {followersCount}
-          </button>
-
-          <button
-            className="btn flex-fill text-white fw-bold shadow"
-            style={{
-              background: 'linear-gradient(135deg, #42a5f5, #1e88e5)',
-              boxShadow: '0 6px 12px rgba(30, 136, 229, 0.4)',
-            }}
-            onClick={() => navigate(`/following/${currentUser?.uid}`)}
-          >
-            <i className="bi bi-person-check-fill me-1"></i> Following: {followingCount}
-          </button>
-
-          <button
-            className="btn flex-fill text-white fw-bold shadow"
-            style={{
-              background: 'linear-gradient(135deg, #ab47bc, #8e24aa)',
-              boxShadow: '0 6px 12px rgba(142, 36, 170, 0.4)',
-            }}
-            onClick={() => navigate(`/requested/${currentUser?.uid}`)}
-          >
-            <i className="bi bi-hourglass-split me-1"></i> Requested: {requestedCount}
-          </button>
+          {[
+            {
+              label: 'Followers',
+              count: relations.followers?.length || 0,
+              color: 'linear-gradient(135deg, #ef5350, #e53935)',
+              onClick: () => navigate(`/followers/${currentUser?.uid}`),
+              icon: 'bi-people-fill'
+            },
+            {
+              label: 'Following',
+              count: relations.following?.length || 0,
+              color: 'linear-gradient(135deg, #42a5f5, #1e88e5)',
+              onClick: () => navigate(`/following/${currentUser?.uid}`),
+              icon: 'bi-person-check-fill'
+            },
+            {
+              label: 'Requested',
+              count: relations.requested?.length || 0,
+              color: 'linear-gradient(135deg, #ab47bc, #8e24aa)',
+              onClick: () => navigate(`/requested/${currentUser?.uid}`),
+              icon: 'bi-hourglass-split'
+            },
+            {
+              label: 'Blocked',
+              count: relations.blocked?.length || 0,
+              color: 'linear-gradient(135deg, #ff9800, #f57c00)',
+              onClick: () => navigate(`/blocked/${currentUser?.uid}`),
+              icon: 'bi-person-x-fill'
+            }
+          ].map((stat, index) => (
+            <button
+              key={index}
+              className="btn flex-fill text-white fw-bold shadow"
+              style={{ background: stat.color }}
+              onClick={stat.onClick}
+            >
+              <i className={`${stat.icon} me-1`}></i> {stat.label}: {stat.count}
+            </button>
+          ))}
         </div>
 
         {/* Users List */}
@@ -217,96 +321,86 @@ export default function AllUsers() {
               </div>
             ) : (
               <div className="list-group list-group-flush">
-                {filteredUsers.map((user, index) => (
-                  <div
-                    key={user.uid}
-                    className="list-group-item border-0 p-1 hover-card"
-                    style={{
-                      borderBottom:
-                        index !== filteredUsers.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none',
-                    }}
-                  >
+                {filteredUsers.map((user, index) => {
+                  const userRel = getUserRelationship(user);
+
+                  return (
                     <div
-                      className="row align-items-center p-3 m-1 bg-light shadow-sm"
+                      key={user.uid}
+                      className="list-group-item border-0 p-1 hover-card"
                       style={{
-                        borderRadius: '14px',
-                        borderLeft: '5px solid #26c6da',
-                        transition: 'box-shadow 0.3s',
+                        borderBottom: index !== filteredUsers.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none',
                       }}
                     >
-                      {/* User Info */}
-                      <div className="col-md-6 d-flex align-items-center">
-                        <img
-                          src={user.photoURL || '/icons/avatar.jpg'}
-                          alt={user.username}
-                          className="rounded-circle me-3 shadow-sm"
-                          style={{
-                            width: 60,
-                            height: 60,
-                            objectFit: 'cover',
-                            cursor: 'pointer',
-                            border: '2px solid #fff',
-                            boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
-                          }}
-                          onClick={() => navigate(`/user-profile/${user.uid}`)}
-                        />
-                        <div>
-                          <h6
-                            className="mb-1 fw-bold cursor-pointer"
+                      <div
+                        className="row align-items-center p-3 m-1 bg-light shadow-sm"
+                        style={{
+                          borderRadius: '14px',
+                          borderLeft: '5px solid #26c6da',
+                        }}
+                      >
+                        {/* User Info */}
+                        <div className="col-md-6 d-flex align-items-center">
+                          <img
+                            src={user.photoURL || '/icons/avatar.jpg'}
+                            alt={user.username}
+                            className="rounded-circle me-3 shadow-sm cursor-pointer"
+                            style={{
+                              width: 60,
+                              height: 60,
+                              objectFit: 'cover',
+                              border: '2px solid #fff',
+                              boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
+                            }}
                             onClick={() => navigate(`/user-profile/${user.uid}`)}
-                          >
-                            {user.username || 'Unnamed User'}{' '}
-                            {user.uid === currentUser?.uid && (
-                              <span className="badge bg-success ms-2">You</span>
+                            onError={(e) => {
+                              e.target.src = '/icons/avatar.jpg';
+                            }}
+                          />
+                          <div>
+                            <h6
+                              className="mb-1 fw-bold cursor-pointer"
+                              onClick={() => navigate(`/user-profile/${user.uid}`)}
+                            >
+                              {user.username || user.displayName || 'Unnamed User'}{' '}
+                              {user.uid === currentUser?.uid && (
+                                <span className="badge bg-success ms-2">You</span>
+                              )}
+                              {user.email === ADMIN_EMAIL && (
+                                <span className="badge bg-warning text-dark ms-2">Admin</span>
+                              )}
+                              {userRel.isBlocked && (
+                                <span className="badge bg-danger ms-2">Blocked</span>
+                              )}
+                            </h6>
+                            <small className="text-muted">{user.email}</small>
+                            {user.bio && (
+                              <p className="text-muted mb-0 small mt-1">{user.bio}</p>
                             )}
-                            {user.email === ADMIN_EMAIL && (
-                              <span className="badge bg-warning text-dark ms-2">Admin</span>
-                            )}
-                          </h6>
-                          <small className="text-muted">{user.email}</small>
+                          </div>
                         </div>
-                      </div>
 
-                      {/* Action Buttons */}
-                      <div className="col-md-6 text-end">
-                        <div className="d-flex gap-2 justify-content-end flex-wrap">
-                          {friends.includes(user.uid) ? (
-                            <button
-                              className="btn btn-outline-danger btn-sm"
-                              onClick={() => unfriendUser(user.uid)}
-                            >
-                              <i className="bi bi-person-dash me-1"></i>Unfriend
-                            </button>
-                          ) : sentRequests.includes(user.uid) ? (
-                            <button
-                              className="btn btn-outline-warning btn-sm"
-                              onClick={() => cancelFollowRequest(user.uid)}
-                            >
-                              <i className="bi bi-clock me-1"></i>Pending
-                            </button>
-                          ) : (
-                            <button
-                              className="btn btn-primary btn-sm"
-                              onClick={() => sendFollowRequest(user.uid)}
-                            >
-                              <i className="bi bi-person-plus me-1"></i>Add Friend
-                            </button>
-                          )}
+                        {/* Action Buttons */}
+                        <div className="col-md-6 text-end">
+                          <div className="d-flex gap-2 justify-content-end flex-wrap">
+                            {renderActionButtons(user)}
 
-                          {currentUser?.email === ADMIN_EMAIL && (
-                            <button
-                              className="btn btn-outline-danger btn-sm"
-                              onClick={() => deleteUser(user.uid)}
-                              title="Delete User"
-                            >
-                              <i className="bi bi-trash"></i>
-                            </button>
-                          )}
+                            {/* Admin delete button */}
+                            {currentUser?.email === ADMIN_EMAIL && (
+                              <button
+                                className="btn btn-outline-danger btn-sm"
+                                onClick={() => deleteUser(user.uid)}
+                                title="Delete User"
+                              >
+                                <i className="bi bi-trash"></i>
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -315,19 +409,12 @@ export default function AllUsers() {
 
       {/* Styles */}
       <style>{`
-    .cursor-pointer {
-      cursor: pointer;
-    }
-    .btn {
-      border-radius: 25px;
-      padding: 0.5rem 1.2rem;
-      font-weight: 600;
-    }
-    .card {
-      border-radius: 20px;
-    }
-  `}</style>
+        .cursor-pointer { cursor: pointer; }
+        .btn { border-radius: 25px; padding: 0.5rem 1.2rem; font-weight: 600; }
+        .card { border-radius: 20px; }
+        .hover-card:hover { transform: translateY(-2px); transition: transform 0.2s ease; }
+        .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.875rem; }
+      `}</style>
     </div>
-
   );
 }

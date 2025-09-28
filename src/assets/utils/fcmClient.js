@@ -7,7 +7,6 @@ let currentToken = null;
 
 const isClientSide = typeof window !== 'undefined';
 
-// ✅ EXPORT THIS FUNCTION PROPERLY
 export const saveFcmTokenToBackend = async (userId, token) => {
   try {
     console.log("💾 Saving FCM token to backend for user:", userId);
