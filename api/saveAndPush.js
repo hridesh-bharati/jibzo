@@ -66,10 +66,17 @@ const initializeFirebase = async () => {
 const validateRequest = (data) => {
   const errors = [];
   
+  // Required fields
   if (!data.userId) errors.push("User ID is required");
   if (!data.title) errors.push("Title is required");
   if (!data.body) errors.push("Body is required");
   
+  // Optional token validation
+  if (data.token && (typeof data.token !== 'string' || (!data.token.startsWith('fcm') && data.token !== 'null' && data.token !== null))) {
+    errors.push("Invalid FCM token format");
+  }
+  
+  // Length validations
   if (data.userId && (typeof data.userId !== 'string' || data.userId.length > 128)) {
     errors.push("User ID must be a string (max 128 characters)");
   }
@@ -80,10 +87,6 @@ const validateRequest = (data) => {
   
   if (data.body && data.body.length > 500) {
     errors.push("Body too long (max 500 characters)");
-  }
-  
-  if (data.token && (typeof data.token !== 'string' || !data.token.startsWith('fcm'))) {
-    errors.push("Invalid FCM token format");
   }
   
   if (errors.length > 0) {
@@ -115,23 +118,19 @@ const manageUserTokens = async (userId, newToken, clientInfo) => {
         createdAt: tokenData.createdAt || 0
       }));
     
-    // Remove duplicates (keep newest)
-    const tokenMap = new Map();
-    validTokens.forEach(({ key, token, createdAt }) => {
-      if (!tokenMap.has(token) || createdAt > tokenMap.get(token).createdAt) {
-        tokenMap.set(token, { key, createdAt });
-      }
-    });
+    // If no token provided but user has existing tokens, use those
+    if ((!newToken || newToken === 'null' || newToken === null) && validTokens.length > 0) {
+      console.log(`📱 Using existing tokens for user ${userId}`);
+      return {
+        tokens: validTokens,
+        newTokenSaved: false,
+        totalTokens: validTokens.length
+      };
+    }
     
-    const uniqueTokens = Array.from(tokenMap.entries()).map(([token, data]) => ({
-      token,
-      key: data.key
-    }));
-    
-    // Save new token if provided and not exists
-    let newTokenSaved = false;
+    // If token provided, save it
     if (newToken && newToken.startsWith('fcm')) {
-      const tokenExists = uniqueTokens.some(t => t.token === newToken);
+      const tokenExists = validTokens.some(t => t.token === newToken);
       
       if (!tokenExists) {
         const newTokenKey = tokensRef.push().key;
@@ -143,15 +142,21 @@ const manageUserTokens = async (userId, newToken, clientInfo) => {
           lastUsed: Date.now(),
           platform: 'web'
         });
-        newTokenSaved = true;
         console.log(`✅ New FCM token saved for user ${userId}`);
+        
+        // Return the new token along with existing ones
+        return {
+          tokens: [...validTokens, { key: newTokenKey, token: newToken, createdAt: Date.now() }],
+          newTokenSaved: true,
+          totalTokens: validTokens.length + 1
+        };
       }
     }
     
     return {
-      tokens: uniqueTokens,
-      newTokenSaved,
-      totalTokens: uniqueTokens.length
+      tokens: validTokens,
+      newTokenSaved: false,
+      totalTokens: validTokens.length
     };
     
   } catch (error) {
@@ -481,7 +486,6 @@ export default async function handler(req, res) {
 
     const errorInfo = matchedError ? matchedError[1] : { status: 500, code: 'INTERNAL_ERROR' };
 
-    // ✅ FIXED: Consistent error response format
     return res.status(errorInfo.status).json({
       success: false,
       error: errorInfo.code,

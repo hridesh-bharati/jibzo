@@ -118,8 +118,11 @@ const formatTimestamp = (timestamp) => {
 const getChatId = (a, b) => a && b ? [a, b].sort().join("_") : null;
 
 // Function to send push notification via your API
+// FIXED: Properly formatted API call
 const sendPushNotification = async (userId, title, body) => {
   try {
+    console.log("📤 Sending push notification:", { userId, title, body });
+
     const response = await fetch('/api/saveAndPush', {
       method: 'POST',
       headers: {
@@ -127,23 +130,25 @@ const sendPushNotification = async (userId, title, body) => {
       },
       body: JSON.stringify({
         userId: userId,
+        token: null, // API expects this field even if null
         title: title,
         body: body
       })
     });
 
     if (!response.ok) {
-      throw new Error('Failed to send notification');
+      const errorData = await response.json();
+      throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
     }
 
     const result = await response.json();
-    console.log('Push notification sent:', result);
+    console.log('✅ Push notification sent:', result);
     return result;
   } catch (error) {
-    console.error('Error sending push notification:', error);
+    console.error('❌ Error sending push notification:', error);
+    throw error; // Re-throw to handle in calling functions
   }
 };
-
 const Navbar = () => {
   const navigate = useNavigate();
   const { currentUid, userData } = useAuthAndFCM();
@@ -221,13 +226,24 @@ const Navbar = () => {
 
             // Send push notification for new friend request
             if (requestData.timestamp > Date.now() - 10000) {
-              await sendPushNotification(
-                currentUid,
-                "New Friend Request",
-                `${userData?.username || "Someone"} sent you a friend request!`
-              );
+              try {
+                await sendPushNotification(
+                  currentUid,
+                  "New Friend Request",
+                  `${userData?.username || "Someone"} sent you a friend request!`
+                );
+              } catch (error) {
+                console.warn("Failed to send push notification for friend request:", error);
+              }
             }
-
+            // Add at the beginning of your API handler, after parsing the body
+            console.log(`🔍 [${requestId}] Received request:`, {
+              userId: userId,
+              token: token ? `${token.substring(0, 10)}...` : 'null',
+              title: title,
+              body: body,
+              clientIP: clientIP
+            });
             return {
               uid,
               username: userData?.username || "Someone",
