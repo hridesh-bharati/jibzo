@@ -13,22 +13,30 @@ import EnableNotifications from "../../components/EnableNotifications";
 const saveFcmTokenToBackend = async (userId, token) => {
   try {
     console.log("💾 Saving FCM token to backend for user:", userId);
+    console.log("🔑 Token to save:", token ? `${token.substring(0, 20)}...` : 'null');
+
+    const payload = {
+      userId: userId,
+      token: token, // This can be null for regular notifications
+      title: 'Device Registered',
+      body: 'Your device is ready to receive notifications'
+    };
+
+    console.log("📦 Payload:", payload);
 
     const response = await fetch('/api/saveAndPush', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        userId: userId,
-        token: token,
-        title: 'Device Registered',
-        body: 'Your device is ready to receive notifications'
-      })
+      body: JSON.stringify(payload)
     });
+
+    console.log("📥 Response status:", response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.error("❌ API Error response:", errorText);
       throw new Error(`HTTP error! status: ${response.status}, response: ${errorText}`);
     }
 
