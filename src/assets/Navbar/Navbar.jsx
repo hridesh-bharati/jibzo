@@ -1,15 +1,15 @@
-// src/assets/Navbar/Navbar.jsx
+// src/assets/Navbar/Navbar.jsx - FIXED VERSION
 import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { auth, db } from "../../assets/utils/firebaseConfig";
-import { ref, onValue, get, update, remove, push, set } from "firebase/database";
-import { requestFcmToken, onForegroundMessage, showLocalNotification } from "../../utils/fcmClient"; // Fixed import path
+import { ref, onValue, get, update, remove } from "firebase/database";
+import { requestFcmToken, onForegroundMessage, showLocalNotification } from "../../utils/fcmClient";
 import { onAuthStateChanged } from "firebase/auth";
 import { toast } from "react-toastify";
 import "./Navbar.css";
-import EnableNotifications from "../../components/EnableNotifications"; // Fixed import path
+import EnableNotifications from "../../components/EnableNotifications";
 
-// ✅ ADD THIS MISSING FUNCTION AT THE TOP
+// ✅ FIXED: saveFcmTokenToBackend function
 const saveFcmTokenToBackend = async (userId, token) => {
   try {
     console.log("💾 Saving FCM token to backend for user:", userId);
@@ -28,7 +28,8 @@ const saveFcmTokenToBackend = async (userId, token) => {
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const errorText = await response.text();
+      throw new Error(`HTTP error! status: ${response.status}, response: ${errorText}`);
     }
 
     const result = await response.json();
@@ -37,6 +38,49 @@ const saveFcmTokenToBackend = async (userId, token) => {
   } catch (error) {
     console.error("❌ Failed to save token to backend:", error);
     throw new Error('Failed to save token: ' + error.message);
+  }
+};
+
+// ✅ FIXED: sendPushNotification function with better error handling
+const sendPushNotification = async (userId, title, body) => {
+  try {
+    console.log("📤 Sending push notification:", { userId, title: title.substring(0, 50), body: body.substring(0, 50) });
+
+    const payload = {
+      userId: userId,
+      token: null,
+      title: title,
+      body: body
+    };
+
+    const response = await fetch('/api/saveAndPush', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload)
+    });
+
+    console.log("📥 Response status:", response.status);
+    
+    if (!response.ok) {
+      let errorMessage = `HTTP error! status: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorMessage;
+      } catch (e) {
+        // Ignore JSON parse error for error response
+      }
+      throw new Error(errorMessage);
+    }
+
+    const result = await response.json();
+    console.log('✅ Push notification sent successfully');
+    return result;
+  } catch (error) {
+    console.error('❌ Error sending push notification:', error);
+    // Don't throw error - just log it and continue
+    return { success: false, error: error.message };
   }
 };
 
@@ -76,7 +120,6 @@ const useAuthAndFCM = () => {
       setCurrentUid(user?.uid || null);
 
       if (user) {
-        // Fetch user data
         try {
           const userSnap = await get(ref(db, `usersData/${user.uid}`));
           if (userSnap.exists()) {
@@ -117,38 +160,6 @@ const formatTimestamp = (timestamp) => {
 
 const getChatId = (a, b) => a && b ? [a, b].sort().join("_") : null;
 
-// Function to send push notification via your API
-// FIXED: Properly formatted API call
-const sendPushNotification = async (userId, title, body) => {
-  try {
-    console.log("📤 Sending push notification:", { userId, title, body });
-
-    const response = await fetch('/api/saveAndPush', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        userId: userId,
-        token: null, // API expects this field even if null
-        title: title,
-        body: body
-      })
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
-    }
-
-    const result = await response.json();
-    console.log('✅ Push notification sent:', result);
-    return result;
-  } catch (error) {
-    console.error('❌ Error sending push notification:', error);
-    throw error; // Re-throw to handle in calling functions
-  }
-};
 const Navbar = () => {
   const navigate = useNavigate();
   const { currentUid, userData } = useAuthAndFCM();
@@ -184,11 +195,9 @@ const Navbar = () => {
     return () => document.removeEventListener('click', handleClickOutside);
   }, [closeAll]);
 
-  // ✅ FIXED: REMOVE AUTOMATIC FCM INITIALIZATION
-  // Only setup message listener, don't automatically request permissions
+  // FCM message listener
   useEffect(() => {
     if (currentUid) {
-      // Setup foreground message listener ONLY
       const unsubscribe = onForegroundMessage((payload) => {
         console.log('📱 Foreground message received:', payload);
 
@@ -206,7 +215,7 @@ const Navbar = () => {
     }
   }, [currentUid]);
 
-  // Friend Requests
+  // ✅ FIXED: Friend Requests with better error handling
   useEffect(() => {
     if (!currentUid) return;
 
@@ -224,26 +233,17 @@ const Navbar = () => {
             const userSnap = await get(ref(db, `usersData/${uid}`));
             const userData = userSnap.val();
 
-            // Send push notification for new friend request
+            // Send push notification for new friend request (non-blocking)
             if (requestData.timestamp > Date.now() - 10000) {
-              try {
-                await sendPushNotification(
-                  currentUid,
-                  "New Friend Request",
-                  `${userData?.username || "Someone"} sent you a friend request!`
-                );
-              } catch (error) {
+              sendPushNotification(
+                currentUid,
+                "New Friend Request",
+                `${userData?.username || "Someone"} sent you a friend request!`
+              ).catch(error => {
                 console.warn("Failed to send push notification for friend request:", error);
-              }
+              });
             }
-            // Add at the beginning of your API handler, after parsing the body
-            console.log(`🔍 [${requestId}] Received request:`, {
-              userId: userId,
-              token: token ? `${token.substring(0, 10)}...` : 'null',
-              title: title,
-              body: body,
-              clientIP: clientIP
-            });
+
             return {
               uid,
               username: userData?.username || "Someone",
@@ -280,11 +280,14 @@ const Navbar = () => {
       updates[`usersData/${currentUid}/friends/${uid}`] = true;
       updates[`usersData/${uid}/friends/${currentUid}`] = true;
 
-      await sendPushNotification(
+      // Non-blocking notification
+      sendPushNotification(
         uid,
         "Friend Request Accepted",
         `${userData?.username || "Someone"} accepted your friend request!`
-      );
+      ).catch(error => {
+        console.warn("Failed to send acceptance notification:", error);
+      });
     }
 
     try {
@@ -295,7 +298,7 @@ const Navbar = () => {
     }
   };
 
-  // Messages
+  // ✅ FIXED: Messages with better error handling
   useEffect(() => {
     if (!currentUid) return;
 
@@ -334,7 +337,8 @@ const Navbar = () => {
         });
       });
 
-      await Promise.all(chats.map(async (chat) => {
+      // Process chats without blocking
+      chats.forEach(async (chat) => {
         try {
           const snap = await get(ref(db, `usersData/${chat.otherUserId}`));
           const userData = snap.val();
@@ -346,17 +350,19 @@ const Navbar = () => {
           );
 
           if (newMessages.length > 0) {
-            await sendPushNotification(
+            sendPushNotification(
               currentUid,
               "New Message",
               `New message from ${chat.username}`
-            );
+            ).catch(error => {
+              console.warn("Failed to send message notification:", error);
+            });
           }
         } catch {
           chat.username = "Someone";
           chat.userPhoto = "https://ui-avatars.com/api/?name=U&background=ccc";
         }
-      }));
+      });
 
       chats.sort((a, b) => (b.lastTimestamp || 0) - (a.lastTimestamp || 0));
       setChatHistory(chats);
@@ -396,20 +402,24 @@ const Navbar = () => {
     toggleDropdown('inbox');
 
     if (!isInboxOpen && unreadCount > 0) {
-      await Promise.all(chatHistory.map(async (chat) => {
-        const updates = {};
-        chat.messages.forEach(msg => {
-          if (!msg.read && msg.sender !== currentUid) {
-            updates[`${msg.id}/read`] = true;
+      try {
+        await Promise.all(chatHistory.map(async (chat) => {
+          const updates = {};
+          chat.messages.forEach(msg => {
+            if (!msg.read && msg.sender !== currentUid) {
+              updates[`${msg.id}/read`] = true;
+            }
+          });
+
+          if (Object.keys(updates).length) {
+            await update(ref(db, `chats/${chat.chatId}/messages`), updates);
           }
-        });
+        }));
 
-        if (Object.keys(updates).length) {
-          await update(ref(db, `chats/${chat.chatId}/messages`), updates);
-        }
-      }));
-
-      setUnreadCount(0);
+        setUnreadCount(0);
+      } catch (error) {
+        console.warn("Failed to mark messages as read:", error);
+      }
     }
   };
 
@@ -419,7 +429,7 @@ const Navbar = () => {
     closeAll();
   };
 
-  // Notifications
+  // ✅ FIXED: Notifications with better error handling
   useEffect(() => {
     if (!currentUid) return;
 
@@ -459,6 +469,7 @@ const Navbar = () => {
           notifList.push(notification);
           if (!notification.seen) unread++;
 
+          // Non-blocking notification
           if (notif.timestamp > Date.now() - 10000 && !notif.seen) {
             let title = "New Notification";
             let body = "";
@@ -474,7 +485,9 @@ const Navbar = () => {
               body = `${actorName} commented on your post`;
             }
 
-            await sendPushNotification(currentUid, title, body);
+            sendPushNotification(currentUid, title, body).catch(error => {
+              console.warn("Failed to send notification:", error);
+            });
           }
         } catch {
           notifList.push({
@@ -507,14 +520,18 @@ const Navbar = () => {
     toggleDropdown('notifications');
 
     if (!isNotifOpen && unreadLikes > 0) {
-      await Promise.all(notifications.map(async (n) => {
-        if (!n.seen) {
-          await update(ref(db, `notifications/${currentUid}/${n.id}`), { seen: true });
-        }
-      }));
+      try {
+        await Promise.all(notifications.map(async (n) => {
+          if (!n.seen) {
+            await update(ref(db, `notifications/${currentUid}/${n.id}`), { seen: true });
+          }
+        }));
 
-      setUnreadLikes(0);
-      setNotifications(prev => prev.map(n => ({ ...n, seen: true })));
+        setUnreadLikes(0);
+        setNotifications(prev => prev.map(n => ({ ...n, seen: true })));
+      } catch (error) {
+        console.warn("Failed to mark notifications as seen:", error);
+      }
     }
   };
 
@@ -545,7 +562,7 @@ const Navbar = () => {
     }
   };
 
-  // Dropdown components
+  // Dropdown components (unchanged)
   const FriendRequestsDropdown = () => (
     <div className="dropdown-card" onClick={(e) => e.stopPropagation()}>
       <div className="dropdown-header">
@@ -713,18 +730,15 @@ const Navbar = () => {
 
   return (
     <nav className="navbar shadow-sm p-2 d-flex align-items-center border justify-content-between">
-      {/* Logo on left */}
       <Link to="/home" className="d-flex align-items-center navbar-brand">
         <img src="icons/logo.png" width={100} alt="logo" />
       </Link>
 
       <div className="d-flex align-items-center gap-3">
-        {/* Enable Notifications Button - User manually clicks this */}
         <EnableNotifications userId={currentUid} onEnabled={() => {
           toast.success("🔔 Notifications ready!");
         }} />
 
-        {/* Friend Requests */}
         <div className="position-relative">
           <IconButton
             icon="bi bi-person-add fs-5"
@@ -738,7 +752,6 @@ const Navbar = () => {
           {isFriendReqOpen && <FriendRequestsDropdown />}
         </div>
 
-        {/* Messages */}
         <div className="position-relative">
           <IconButton
             icon="bi bi-chat-dots fs-5"
@@ -749,7 +762,6 @@ const Navbar = () => {
           {isInboxOpen && <InboxDropdown />}
         </div>
 
-        {/* Notifications */}
         <div className="position-relative">
           <IconButton
             icon="bi bi-bell fs-5"
@@ -760,7 +772,6 @@ const Navbar = () => {
           {isNotifOpen && <NotificationsDropdown />}
         </div>
 
-        {/* User Profile */}
         <div className="position-relative">
           <button
             className="user-avatar-btn"

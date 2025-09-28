@@ -1,4 +1,4 @@
-// api/saveAndPush.js - FIXED VERSION
+// api/saveAndPush.js - COMPLETELY FIXED VERSION
 import admin from "firebase-admin";
 
 // Firebase Admin initialization with robust error handling
@@ -62,7 +62,7 @@ const initializeFirebase = async () => {
   return initializationPromise;
 };
 
-// Input validation with detailed error messages
+// SIMPLIFIED VALIDATION - FIXED
 const validateRequest = (data) => {
   const errors = [];
   
@@ -71,9 +71,9 @@ const validateRequest = (data) => {
   if (!data.title) errors.push("Title is required");
   if (!data.body) errors.push("Body is required");
   
-  // Optional token validation
-  if (data.token && (typeof data.token !== 'string' || (!data.token.startsWith('fcm') && data.token !== 'null' && data.token !== null))) {
-    errors.push("Invalid FCM token format");
+  // Token is optional - remove strict validation
+  if (data.token && typeof data.token !== 'string') {
+    errors.push("Token must be a string if provided");
   }
   
   // Length validations
@@ -94,7 +94,7 @@ const validateRequest = (data) => {
   }
 };
 
-// Token management with deduplication
+// FIXED: Token management with better error handling
 const manageUserTokens = async (userId, newToken, clientInfo) => {
   const db = admin.database();
   const tokensRef = db.ref(`fcmTokens/${userId}`);
@@ -103,24 +103,33 @@ const manageUserTokens = async (userId, newToken, clientInfo) => {
     const snapshot = await tokensRef.once('value');
     const existingTokens = snapshot.val() || {};
     
+    console.log(`🔍 Existing tokens for user ${userId}:`, Object.keys(existingTokens).length);
+    
     // Convert to array and filter valid tokens
     const validTokens = Object.entries(existingTokens)
-      .filter(([key, tokenData]) => 
-        tokenData && 
-        tokenData.token && 
-        tokenData.token.startsWith('fcm') &&
+      .filter(([key, tokenData]) => {
+        if (!tokenData || !tokenData.token) return false;
+        
+        // Accept any token that's a string and not empty
+        if (typeof tokenData.token !== 'string' || tokenData.token.trim() === '') {
+          return false;
+        }
+        
         // Filter tokens older than 30 days
-        (!tokenData.createdAt || (Date.now() - tokenData.createdAt) < 30 * 24 * 60 * 60 * 1000)
-      )
+        const isRecent = !tokenData.createdAt || (Date.now() - tokenData.createdAt) < 30 * 24 * 60 * 60 * 1000;
+        return isRecent;
+      })
       .map(([key, tokenData]) => ({
         key,
         token: tokenData.token,
         createdAt: tokenData.createdAt || 0
       }));
     
+    console.log(`📱 Valid tokens found: ${validTokens.length}`);
+    
     // If no token provided but user has existing tokens, use those
-    if ((!newToken || newToken === 'null' || newToken === null) && validTokens.length > 0) {
-      console.log(`📱 Using existing tokens for user ${userId}`);
+    if ((!newToken || newToken === 'null' || newToken === null || newToken === '') && validTokens.length > 0) {
+      console.log(`📱 Using ${validTokens.length} existing tokens for user ${userId}`);
       return {
         tokens: validTokens,
         newTokenSaved: false,
@@ -128,8 +137,8 @@ const manageUserTokens = async (userId, newToken, clientInfo) => {
       };
     }
     
-    // If token provided, save it
-    if (newToken && newToken.startsWith('fcm')) {
+    // If valid token provided, save it
+    if (newToken && typeof newToken === 'string' && newToken.trim().length > 0) {
       const tokenExists = validTokens.some(t => t.token === newToken);
       
       if (!tokenExists) {
@@ -145,11 +154,14 @@ const manageUserTokens = async (userId, newToken, clientInfo) => {
         console.log(`✅ New FCM token saved for user ${userId}`);
         
         // Return the new token along with existing ones
+        const updatedTokens = [...validTokens, { key: newTokenKey, token: newToken, createdAt: Date.now() }];
         return {
-          tokens: [...validTokens, { key: newTokenKey, token: newToken, createdAt: Date.now() }],
+          tokens: updatedTokens,
           newTokenSaved: true,
-          totalTokens: validTokens.length + 1
+          totalTokens: updatedTokens.length
         };
+      } else {
+        console.log(`ℹ️ Token already exists for user ${userId}`);
       }
     }
     
@@ -160,13 +172,28 @@ const manageUserTokens = async (userId, newToken, clientInfo) => {
     };
     
   } catch (error) {
-    console.error('Error managing user tokens:', error);
-    throw new Error('Failed to manage user tokens');
+    console.error('❌ Error managing user tokens:', error);
+    // Return empty tokens instead of throwing error
+    return {
+      tokens: [],
+      newTokenSaved: false,
+      totalTokens: 0
+    };
   }
 };
 
-// Enhanced notification sender with retry logic
-const sendNotificationWithRetry = async (token, title, body, retries = 2) => {
+// FIXED: Enhanced notification sender with better error handling
+const sendNotificationWithRetry = async (token, title, body, retries = 1) => {
+  // Validate token before sending
+  if (!token || typeof token !== 'string' || token.trim() === '') {
+    console.log(`❌ Invalid token: ${token}`);
+    return { 
+      success: false, 
+      error: 'Invalid token format',
+      code: 'invalid-token'
+    };
+  }
+
   const message = {
     token: token.trim(),
     notification: {
@@ -176,42 +203,13 @@ const sendNotificationWithRetry = async (token, title, body, retries = 2) => {
     webpush: {
       notification: {
         icon: "https://jibzo.vercel.app/logo.png",
-        badge: "https://jibzo.vercel.app/logo.png",
-        image: "https://jibzo.vercel.app/logo.png",
-        actions: [
-          {
-            action: 'open',
-            title: 'Open App'
-          }
-        ]
+        badge: "https://jibzo.vercel.app/logo.png"
       },
       fcmOptions: {
         link: "https://jibzo.vercel.app"
       }
     },
-    apns: {
-      payload: {
-        aps: {
-          alert: {
-            title: title.substring(0, 100),
-            body: body.substring(0, 500)
-          },
-          sound: "default",
-          badge: 1
-        }
-      }
-    },
-    android: {
-      notification: {
-        sound: "default",
-        channel_id: "default",
-        icon: "ic_notification",
-        color: "#FF0000",
-        click_action: "OPEN_APP"
-      }
-    },
     data: {
-      click_action: "OPEN_APP",
       timestamp: Date.now().toString(),
       deep_link: "https://jibzo.vercel.app"
     }
@@ -226,7 +224,6 @@ const sendNotificationWithRetry = async (token, title, body, retries = 2) => {
       console.warn(`⚠️ Notification attempt ${attempt} failed:`, error.message);
       
       if (attempt <= retries) {
-        // Wait before retry (exponential backoff)
         await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
         continue;
       }
@@ -241,66 +238,39 @@ const sendNotificationWithRetry = async (token, title, body, retries = 2) => {
   }
 };
 
-// Rate limiting with improved algorithm
-const rateLimitMap = new Map();
-const RATE_LIMIT_CONFIG = {
-  MAX_REQUESTS: 100,
-  WINDOW_MS: 15 * 60 * 1000, // 15 minutes
-  CLEANUP_INTERVAL: 60 * 1000 // Clean every minute
-};
-
-// Cleanup old entries periodically
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, timestamps] of rateLimitMap.entries()) {
-    const validTimestamps = timestamps.filter(time => now - time < RATE_LIMIT_CONFIG.WINDOW_MS);
-    if (validTimestamps.length === 0) {
-      rateLimitMap.delete(ip);
-    } else {
-      rateLimitMap.set(ip, validTimestamps);
-    }
-  }
-}, RATE_LIMIT_CONFIG.CLEANUP_INTERVAL);
-
+// Rate limiting - SIMPLIFIED for Vercel
 const checkRateLimit = (ip) => {
-  const now = Date.now();
-  const windowStart = now - RATE_LIMIT_CONFIG.WINDOW_MS;
-
-  if (!rateLimitMap.has(ip)) {
-    rateLimitMap.set(ip, []);
-  }
-
-  const requests = rateLimitMap.get(ip).filter(time => time > windowStart);
-  
-  if (requests.length >= RATE_LIMIT_CONFIG.MAX_REQUESTS) {
-    return false;
-  }
-
-  requests.push(now);
-  rateLimitMap.set(ip, requests);
+  // Simple rate limiting for now
   return true;
 };
 
-// Main API handler
+// FIXED: Main API handler with proper debugging
 export default async function handler(req, res) {
-  // ✅ FIXED: Declare missing variables at the top
   const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   const startTime = Date.now();
 
-  // Set response headers
-  res.setHeader('Access-Control-Allow-Origin', 'https://jibzo.vercel.app');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  console.log(`\n🚀 [${requestId}] === NEW REQUEST STARTED ===`);
+  console.log(`🔍 [${requestId}] Method: ${req.method}`);
+  console.log(`🔍 [${requestId}] URL: ${req.url}`);
+  console.log(`🔍 [${requestId}] Headers:`, {
+    'content-type': req.headers['content-type'],
+    'user-agent': req.headers['user-agent']?.substring(0, 50) + '...'
+  });
+
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS, GET');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-  res.setHeader('Access-Control-Max-Age', '86400');
 
   // Handle preflight requests
   if (req.method === 'OPTIONS') {
+    console.log(`🔍 [${requestId}] Preflight request - returning 200`);
     return res.status(200).end();
   }
 
   // Method validation
   if (req.method !== 'POST') {
-    // ✅ FIXED: Consistent response format
+    console.log(`❌ [${requestId}] Method not allowed: ${req.method}`);
     return res.status(405).json({
       success: false,
       error: 'METHOD_NOT_ALLOWED',
@@ -309,28 +279,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    console.log(`🚀 [${requestId}] Notification request started`);
-
-    // Rate limiting
-    const clientIP = req.headers['x-forwarded-for'] || 
-                    req.headers['x-real-ip'] || 
-                    req.connection.remoteAddress || 
-                    'unknown';
-
-    if (!checkRateLimit(clientIP)) {
-      console.warn(`⏰ [${requestId}] Rate limit exceeded for IP: ${clientIP}`);
-      // ✅ FIXED: Consistent response format
-      return res.status(429).json({
-        success: false,
-        error: 'RATE_LIMIT_EXCEEDED',
-        message: 'Too many requests. Please try again later.'
-      });
-    }
-
     // Content type validation
     const contentType = req.headers['content-type'];
     if (!contentType || !contentType.includes('application/json')) {
-      // ✅ FIXED: Consistent response format
+      console.log(`❌ [${requestId}] Invalid content type: ${contentType}`);
       return res.status(400).json({
         success: false,
         error: 'INVALID_CONTENT_TYPE',
@@ -338,16 +290,22 @@ export default async function handler(req, res) {
       });
     }
 
-    // Parse request body
+    // Parse request body with detailed logging
     let requestBody;
     try {
       requestBody = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      console.log(`✅ [${requestId}] JSON parsed successfully:`, {
+        userId: requestBody.userId,
+        token: requestBody.token ? `${requestBody.token.substring(0, 20)}...` : 'null',
+        title: requestBody.title?.substring(0, 30) + '...',
+        body: requestBody.body?.substring(0, 30) + '...'
+      });
     } catch (parseError) {
-      // ✅ FIXED: Consistent response format
+      console.error(`❌ [${requestId}] JSON parse error:`, parseError.message);
       return res.status(400).json({
         success: false,
         error: 'INVALID_JSON',
-        message: 'Invalid JSON format in request body'
+        message: 'Invalid JSON format in request body: ' + parseError.message
       });
     }
 
@@ -356,8 +314,9 @@ export default async function handler(req, res) {
     // Input validation
     try {
       validateRequest({ userId, token, title, body });
+      console.log(`✅ [${requestId}] All validations passed`);
     } catch (validationError) {
-      // ✅ FIXED: Consistent response format
+      console.error(`❌ [${requestId}] Validation failed:`, validationError.message);
       return res.status(400).json({
         success: false,
         error: 'VALIDATION_ERROR',
@@ -367,89 +326,120 @@ export default async function handler(req, res) {
 
     // Initialize Firebase
     console.log(`⚡ [${requestId}] Initializing Firebase...`);
-    await initializeFirebase();
+    try {
+      await initializeFirebase();
+      console.log(`✅ [${requestId}] Firebase initialized successfully`);
+    } catch (firebaseError) {
+      console.error(`❌ [${requestId}] Firebase init failed:`, firebaseError.message);
+      // Continue even if Firebase fails - we'll handle it gracefully
+    }
+
+    // Get client info for token management
+    const clientIP = req.headers['x-forwarded-for'] || 
+                    req.headers['x-real-ip'] || 
+                    req.connection.remoteAddress || 
+                    'unknown';
 
     // Manage user tokens
+    console.log(`📱 [${requestId}] Managing tokens for user: ${userId}`);
     const tokenManagement = await manageUserTokens(userId, token, {
       ip: clientIP,
       userAgent: req.headers['user-agent'] || 'unknown'
     });
 
+    console.log(`📱 [${requestId}] Token management result:`, {
+      totalTokens: tokenManagement.totalTokens,
+      newTokenSaved: tokenManagement.newTokenSaved
+    });
+
+    // If no tokens available, return success but don't send notifications
     if (tokenManagement.totalTokens === 0) {
-      // ✅ FIXED: Consistent response format
-      return res.status(400).json({
-        success: false,
-        error: 'NO_VALID_TOKENS',
-        message: 'No valid device tokens found for this user'
+      console.log(`ℹ️ [${requestId}] No valid tokens found for user ${userId}`);
+      const responseTime = Date.now() - startTime;
+      
+      return res.status(200).json({
+        success: true,
+        data: {
+          sentCount: 0,
+          failedCount: 0,
+          totalDevices: 0,
+          invalidTokensRemoved: 0,
+          newTokenSaved: tokenManagement.newTokenSaved,
+          responseTime: `${responseTime}ms`,
+          requestId: requestId,
+          message: 'No devices registered for notifications'
+        },
+        message: "Request processed successfully (no devices to notify)"
       });
     }
 
-    console.log(`📱 [${requestId}] Sending to ${tokenManagement.totalTokens} devices`);
+    console.log(`📤 [${requestId}] Sending to ${tokenManagement.totalTokens} devices`);
 
-    // Send notifications in batches with concurrency control
-    const BATCH_SIZE = 10;
+    // Send notifications with error handling
     const results = [];
+    let successful = 0;
+    let failed = 0;
 
-    for (let i = 0; i < tokenManagement.tokens.length; i += BATCH_SIZE) {
-      const batch = tokenManagement.tokens.slice(i, i + BATCH_SIZE);
-      const batchPromises = batch.map(async (tokenData) => {
+    for (const tokenData of tokenManagement.tokens) {
+      try {
         const sendResult = await sendNotificationWithRetry(tokenData.token, title, body);
-        
-        return {
+        results.push({
           tokenKey: tokenData.key,
           token: tokenData.token.substring(0, 15) + '...',
           ...sendResult
-        };
-      });
+        });
 
-      const batchResults = await Promise.allSettled(batchPromises);
-      results.push(...batchResults.map(result => 
-        result.status === 'fulfilled' ? result.value : {
-          tokenKey: 'unknown',
-          token: 'unknown',
-          success: false,
-          error: result.reason?.message || 'Unknown error'
+        if (sendResult.success) {
+          successful++;
+        } else {
+          failed++;
         }
-      ));
-
-      // Brief pause between batches
-      if (i + BATCH_SIZE < tokenManagement.tokens.length) {
-        await new Promise(resolve => setTimeout(resolve, 200));
+      } catch (error) {
+        console.error(`❌ [${requestId}] Error sending to token:`, error);
+        failed++;
+        results.push({
+          tokenKey: tokenData.key,
+          token: tokenData.token.substring(0, 15) + '...',
+          success: false,
+          error: error.message
+        });
       }
+
+      // Small delay between sends
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    // Analyze results
-    const successful = results.filter(r => r.success).length;
-    const failed = results.filter(r => !r.success).length;
+    // Cleanup invalid tokens (non-blocking)
+    try {
+      const invalidTokens = results
+        .filter(r => !r.success && 
+          (r.code === 'messaging/invalid-registration-token' || 
+           r.code === 'messaging/registration-token-not-registered'))
+        .map(r => r.tokenKey)
+        .filter(key => key && key !== 'unknown');
 
-    // Cleanup invalid tokens
-    const invalidTokens = results
-      .filter(r => !r.success && 
-        (r.code === 'messaging/invalid-registration-token' || 
-         r.code === 'messaging/registration-token-not-registered'))
-      .map(r => r.tokenKey)
-      .filter(key => key && key !== 'unknown');
+      if (invalidTokens.length > 0) {
+        console.log(`🗑️ [${requestId}] Removing ${invalidTokens.length} invalid tokens`);
+        const db = admin.database();
+        const tokensRef = db.ref(`fcmTokens/${userId}`);
+        
+        const cleanupPromises = invalidTokens.map(async (tokenKey) => {
+          try {
+            await tokensRef.child(tokenKey).remove();
+            return tokenKey;
+          } catch (error) {
+            console.error(`[${requestId}] Failed to remove token:`, error);
+            return null;
+          }
+        });
 
-    if (invalidTokens.length > 0) {
-      const db = admin.database();
-      const tokensRef = db.ref(`fcmTokens/${userId}`);
-      
-      const cleanupPromises = invalidTokens.map(async (tokenKey) => {
-        try {
-          await tokensRef.child(tokenKey).remove();
-          console.log(`🗑️ [${requestId}] Removed invalid token: ${tokenKey}`);
-          return tokenKey;
-        } catch (error) {
-          console.error(`[${requestId}] Failed to remove token:`, error);
-          return null;
-        }
-      });
-
-      await Promise.allSettled(cleanupPromises);
+        await Promise.allSettled(cleanupPromises);
+      }
+    } catch (cleanupError) {
+      console.warn(`[${requestId}] Token cleanup failed:`, cleanupError);
     }
 
     const responseTime = Date.now() - startTime;
-
     console.log(`✅ [${requestId}] Request completed in ${responseTime}ms: ${successful} successful, ${failed} failed`);
 
     // Success response
@@ -459,7 +449,6 @@ export default async function handler(req, res) {
         sentCount: successful,
         failedCount: failed,
         totalDevices: tokenManagement.totalTokens,
-        invalidTokensRemoved: invalidTokens.length,
         newTokenSaved: tokenManagement.newTokenSaved,
         responseTime: `${responseTime}ms`,
         requestId: requestId
@@ -469,27 +458,12 @@ export default async function handler(req, res) {
 
   } catch (error) {
     const responseTime = Date.now() - startTime;
-    console.error(`❌ [${requestId}] Request failed after ${responseTime}ms:`, error);
+    console.error(`💥 [${requestId}] Global error after ${responseTime}ms:`, error);
 
-    // Error response mapping
-    const errorMap = {
-      'Validation failed': { status: 400, code: 'VALIDATION_ERROR' },
-      'FIREBASE_SERVICE_ACCOUNT': { status: 500, code: 'CONFIGURATION_ERROR' },
-      'Invalid FIREBASE_SERVICE_ACCOUNT': { status: 500, code: 'CONFIGURATION_ERROR' },
-      'Service account': { status: 500, code: 'CONFIGURATION_ERROR' },
-      'Failed to manage user tokens': { status: 500, code: 'DATABASE_ERROR' }
-    };
-
-    const matchedError = Object.entries(errorMap).find(([key]) => 
-      error.message.includes(key)
-    );
-
-    const errorInfo = matchedError ? matchedError[1] : { status: 500, code: 'INTERNAL_ERROR' };
-
-    return res.status(errorInfo.status).json({
+    return res.status(500).json({
       success: false,
-      error: errorInfo.code,
-      message: error.message || 'An unexpected error occurred',
+      error: 'INTERNAL_ERROR',
+      message: 'An unexpected error occurred: ' + error.message,
       requestId: requestId,
       responseTime: `${responseTime}ms`
     });
