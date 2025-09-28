@@ -1,286 +1,428 @@
-/* UserRegister.css */
+/* UserRegister.css - Mobile App Design */
 
-/* Container */
+/* Reset and Base Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Full Screen Container */
 .register-container {
-    display: flex !important;
-    justify-content: center !important;
-    align-items: center !important;
-    min-height: 100vh !important;
-    padding: 20px !important;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+    min-height: 100vh;
+    min-height: 100dvh;
+    /* background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); */
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-/* Card with glass effect */
+/* Card with Modern Design */
 .register-card {
-    background: rgba(255, 255, 255, 0.85) !important;
-    backdrop-filter: blur(12px) !important;
-    border-radius: 20px !important;
-    border: 1px solid rgba(255, 255, 255, 0.3) !important;
-    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1) !important;
-    width: 100% !important;
-    max-width: 420px !important;
-    overflow: hidden !important;
-    transition: all 0.3s ease !important;
-    display: flex !important;
-    flex-direction: column !important;
-    max-height: 95vh !important;
+    width: 100%;
+    max-width: 400px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(20px);
+    box-shadow:
+        0 20px 40px rgba(0, 0, 0, 0.1),
+        0 0 0 1px rgba(255, 255, 255, 0.2);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    max-height: 100vh;
+    animation: cardSlideUp 0.6s ease-out;
 }
 
-.register-card:hover {
-    transform: translateY(-3px) !important;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15) !important;
-}
-
-/* Card Header */
-.card-header {
-    background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
-    color: white !important;
-    text-align: center !important;
-    padding: 25px 15px !important;
-}
-
-.logo-container i {
-    font-size: 3rem !important;
-    color: rgba(255, 255, 255, 0.9) !important;
-}
-
-.card-title {
-    margin: 10px 0 5px !important;
-    font-size: 1.7rem !important;
-    font-weight: 600 !important;
-}
-
-.card-subtitle {
-    margin: 0 !important;
-    font-size: 0.95rem !important;
-    opacity: 0.9 !important;
-}
-
-/* Card Body */
-.card-body {
-    padding: 20px 20px 15px !important;
-    overflow-y: auto !important;
-    animation: fadeIn 0.4s ease !important;
-}
-
-/* Photo Upload */
-.photo-upload-section {
-    text-align: center !important;
-    margin-bottom: 18px !important;
-}
-
-.photo-preview {
-    width: 90px !important;
-    height: 90px !important;
-    border-radius: 50% !important;
-    border: 2px dashed #6a11cb !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    margin: 0 auto 8px !important;
-    cursor: pointer !important;
-    overflow: hidden !important;
-    transition: all 0.3s ease !important;
-    background: #fff !important;
-}
-
-.photo-preview:hover {
-    border-color: #2575fc !important;
-}
-
-.photo-preview i {
-    font-size: 1.8rem !important;
-    color: #6a11cb !important;
-}
-
-.preview-image {
-    width: 100% !important;
-    height: 100% !important;
-    object-fit: cover !important;
-}
-
-.file-input {
-    display: none !important;
-}
-
-.upload-text {
-    font-size: 0.85rem !important;
-    color: #6c757d !important;
-}
-
-/* Input Groups */
-.input-group {
-    position: relative !important;
-    margin-bottom: 10px !important;
-}
-
-.input-icon {
-    position: absolute !important;
-    left: 12px !important;
-    top: 50% !important;
-    transform: translateY(-50%) !important;
-    color: #6a11cb !important;
-    font-size: 1.1rem !important;
-}
-
-.form-input {
-    width: 100% !important;
-    padding: 12px 12px 12px 40px !important;
-    border: 1.8px solid #e1e5ee !important;
-    border-radius: 8px !important;
-    font-size: 0.95rem !important;
-    transition: all 0.3s ease !important;
-    background: #fff !important;
-}
-
-.form-input:focus {
-    outline: none !important;
-    border-color: #6a11cb !important;
-    box-shadow: 0 0 6px rgba(106, 17, 203, 0.15) !important;
-}
-
-/* Status Messages */
-.status-message {
-    padding: 7px 12px !important;
-    border-radius: 5px !important;
-    margin-bottom: 12px !important;
-    font-size: 0.85rem !important;
-}
-
-.status-message.success {
-    background: rgba(40, 167, 69, 0.1) !important;
-    color: #28a745 !important;
-    border-left: 3px solid #28a745 !important;
-}
-
-.status-message.error {
-    background: rgba(220, 53, 69, 0.1) !important;
-    color: #dc3545 !important;
-    border-left: 3px solid #dc3545 !important;
-}
-
-/* Buttons */
-.btn-send-otp,
-.btn-register {
-    width: 100% !important;
-    padding: 12px !important;
-    border: none !important;
-    border-radius: 10px !important;
-    font-size: 0.95rem !important;
-    font-weight: 600 !important;
-    cursor: pointer !important;
-    transition: all 0.3s ease !important;
-    margin-bottom: 15px !important;
-    display: flex !important;
-    justify-content: center !important;
-    align-items: center !important;
-    gap: 8px !important;
-}
-
-.btn-send-otp {
-    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%) !important;
-    color: white !important;
-}
-
-.btn-send-otp:hover:not(:disabled) {
-    transform: translateY(-1px) !important;
-    box-shadow: 0 4px 12px rgba(245, 87, 108, 0.4) !important;
-}
-
-.btn-register {
-    background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%) !important;
-    color: white !important;
-}
-
-.btn-register:hover:not(:disabled) {
-    transform: translateY(-1px) !important;
-    box-shadow: 0 4px 12px rgba(67, 233, 123, 0.4) !important;
-}
-
-.btn-send-otp:disabled,
-.btn-register:disabled {
-    opacity: 0.7 !important;
-    cursor: not-allowed !important;
-    transform: none !important;
-}
-
-/* Card Footer */
-.card-footer {
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 12px !important;
-    text-align: center !important;
-}
-
-.btn-back-to-login {
-    background: transparent !important;
-    border: none !important;
-    color: #6a11cb !important;
-    font-size: 0.9rem !important;
-    cursor: pointer !important;
-    transition: color 0.3s ease !important;
-    text-align: center !important;
-    padding: 8px !important;
-    border-radius: 5px !important;
-}
-
-.btn-back-to-login:hover {
-    color: #2575fc !important;
-    background: rgba(106, 17, 203, 0.05) !important;
-}
-
-.btn-back-to-login a {
-    text-decoration: none !important;
-    color: inherit !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 5px !important;
-}
-
-.login-link {
-    margin: 0 !important;
-    font-size: 0.85rem !important;
-    color: #6c757d !important;
-}
-
-.login-link a {
-    color: #6a11cb !important;
-    text-decoration: none !important;
-    font-weight: 500 !important;
-}
-
-.login-link a:hover {
-    text-decoration: underline !important;
-}
-
-/* Animations */
-@keyframes fadeIn {
+@keyframes cardSlideUp {
     from {
-        opacity: 0 !important;
-        transform: translateY(10px) !important;
+        opacity: 0;
+        transform: translateY(30px);
     }
 
     to {
-        opacity: 1 !important;
-        transform: translateY(0) !important;
+        opacity: 1;
+        transform: translateY(0);
     }
 }
 
-/* Responsive */
-@media (max-width: 480px) {
-    .register-card {
-        max-width: 100% !important;
-        max-height: 100vh !important;
-        border-radius: 15px !important;
+/* Header Section */
+.card-header {
+    background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+    text-align: center;
+    position: relative;
+}
+
+.logo-container {
+    width: 70px;
+    height: 70px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
+    backdrop-filter: blur(10px);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Card Content */
+.card-content {
+    flex: 1;
+    padding: 32px 24px 24px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+/* Social Login Section */
+.social-section {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.social-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.social-btn {
+    padding: 14px 16px;
+    border: 2px solid #e8e8e8;
+    background: white;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    color: #333;
+}
+
+.social-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+}
+
+.social-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.google-btn:hover {
+    border-color: #4285f4;
+    background: #f8f9ff;
+}
+
+.github-btn {
+    background: #24292e;
+    color: white;
+    border-color: #24292e;
+}
+
+.github-btn:hover {
+    background: #2f363d;
+    border-color: #2f363d;
+}
+
+.social-logo {
+    width: 18px;
+    height: 18px;
+}
+
+/* Divider */
+.divider {
+    position: relative;
+    text-align: center;
+    margin: 8px 0;
+}
+
+.divider::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: #e8e8e8;
+}
+
+.divider span {
+    background: white;
+    padding: 0 16px;
+    font-size: 0.85rem;
+    color: #666;
+    font-weight: 500;
+}
+
+/* Registration Form */
+.registration-form {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+/* Photo Section */
+.photo-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.photo-upload {
+    position: relative;
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    background: #f8f9fa;
+    border: 3px dashed #6a11cb;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    overflow: hidden;
+}
+
+.photo-upload:hover {
+    border-color: #2575fc;
+    transform: scale(1.05);
+}
+
+.photo-preview {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+}
+
+.photo-placeholder {
+    font-size: 2rem;
+    color: #6a11cb;
+}
+
+.photo-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(106, 17, 203, 0.8);
+    color: white;
+    padding: 4px;
+    text-align: center;
+    font-size: 0.8rem;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.photo-upload:hover .photo-overlay {
+    opacity: 1;
+}
+
+.file-input {
+    display: none;
+}
+
+.photo-text {
+    font-size: 0.85rem;
+    color: #666;
+    text-align: center;
+}
+
+/* Form Fields */
+.form-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.input-field {
+    position: relative;
+}
+
+.input-icon {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #6a11cb;
+    font-size: 1.1rem;
+    z-index: 1;
+}
+
+.form-input {
+    width: 100%;
+    padding: 10px;
+    border: 2px solid #f0f0f0;
+    border-radius: 16px;
+    font-size: 1rem;
+    background: white;
+    transition: all 0.3s ease;
+    font-weight: 500;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: #6a11cb;
+    background: #fafbff;
+    box-shadow: 0 0 0 4px rgba(106, 17, 203, 0.1);
+}
+
+.form-input::placeholder {
+    color: #999;
+    font-weight: 400;
+}
+
+/* Status Messages */
+.status {
+    padding: 12px 16px;
+    border-radius: 12px;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 500;
+}
+
+.status.success {
+    background: rgba(40, 167, 69, 0.1);
+    color: #28a745;
+    border-left: 4px solid #28a745;
+}
+
+.status.error {
+    background: rgba(220, 53, 69, 0.1);
+    color: #dc3545;
+    border-left: 4px solid #dc3545;
+}
+
+/* Buttons */
+.otp-btn,
+.register-btn {
+    width: 100%;
+    padding: 16px 24px;
+    border: none;
+    border-radius: 16px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.otp-btn {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+}
+
+.otp-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(245, 87, 108, 0.4);
+}
+
+.register-btn {
+    background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+    color: white;
+}
+
+.register-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(67, 233, 123, 0.4);
+}
+
+.otp-btn:disabled,
+.register-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    transform: none !important;
+}
+
+/* OTP Section */
+.otp-section {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    animation: fadeIn 0.4s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
     }
 
-    .card-body {
-        padding: 15px !important;
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Footer */
+.card-footer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #f0f0f0;
+}
+
+.login-prompt {
+    font-size: 0.95rem;
+    color: #666;
+}
+
+.login-link {
+    color: #6a11cb;
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.3s ease;
+}
+
+.login-link:hover {
+    color: #2575fc;
+    text-decoration: underline;
+}
+
+.back-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #666;
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: color 0.3s ease;
+}
+
+.back-link:hover {
+    color: #6a11cb;
+}
+
+/* Toast Customization */
+.Toastify__toast-container {
+    width: auto;
+    max-width: 400px;
+}
+
+.Toastify__toast {
+    border-radius: 12px;
+    font-weight: 500;
+}
+
+/* Loading Animation */
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
     }
 
-    .card-header {
-        padding: 20px 15px !important;
+    100% {
+        transform: rotate(360deg);
     }
+}
+
+.fa-spinner {
+    animation: spin 1s linear infinite;
 }

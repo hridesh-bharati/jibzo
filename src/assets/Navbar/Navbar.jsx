@@ -344,9 +344,15 @@ const Navbar = () => {
     }
   };
 
+  // File Converter button handler
+  const handleFileConverterClick = () => {
+    navigate('/gadgets-and-tools');
+    closeAll();
+  };
+
   // Dropdown components for better organization
   const FriendRequestsDropdown = () => (
-    <div className="dropdown-card">
+    <div className="dropdown-card ms-5">
       <h6>Friend Requests</h6>
       {friendRequests.length === 0 ? (
         <p className="text-muted">No requests</p>
@@ -358,10 +364,10 @@ const Navbar = () => {
               <span>{req.username}</span>
             </div>
             <div className="btn-group-sm">
-              <button className="btn btn-sm btn-primary" onClick={() => handleFriendRequest(req.uid, 'accept')}>
+              <button className="btn btn-sm btn-primary mx-1" onClick={() => handleFriendRequest(req.uid, 'accept')}>
                 Accept
               </button>
-              <button className="btn btn-sm btn-outline-secondary" onClick={() => handleFriendRequest(req.uid, 'reject')}>
+              <button className="btn btn-sm btn-outline-secondary mx-1" onClick={() => handleFriendRequest(req.uid, 'reject')}>
                 Reject
               </button>
             </div>
@@ -407,19 +413,30 @@ const Navbar = () => {
     </button>
   );
 
+  // File Converter Button component
+  const FileConverterButton = () => (
+    <button
+      className="icon-btn"
+      onClick={handleFileConverterClick}
+      title="File Converter"
+    >
+      <i className="bi bi-magic fs-4 "></i>
+    </button>
+  );
+
   // User Profile Component
   const UserProfileButton = () => (
     <Link to="/admin-profile" className="text-decoration-none">
-      <div className="d-flex align-items-center gap-2 cursor-pointer p-2 rounded hover-bg">
+      <div className="d-flex align-items-center gap-2 cursor-pointer p-1 rounded hover-bg">
         {userProfile.photoURL ? (
-          <img 
-            src={userProfile.photoURL} 
-            alt="Profile" 
-            className="avatar-md rounded-circle border"
+          <img
+            src={userProfile.photoURL}
+            alt="Profile"
+            className="avatar-md rounded-circle border border-secondary-subtle"
             style={{ width: '40px', height: '40px', objectFit: 'cover' }}
           />
         ) : (
-          <div 
+          <div
             className="avatar-md rounded-circle border d-flex align-items-center justify-content-center bg-light"
             style={{ width: '40px', height: '40px' }}
           >
@@ -438,6 +455,11 @@ const Navbar = () => {
       </Link>
 
       <div className="d-flex align-items-center gap-3">
+        {/* File Converter Button - Added before other icons */}
+        <div className="position-relative">
+          <FileConverterButton />
+        </div>
+
         {/* Friend Requests */}
         <div className="position-relative">
           <IconButton
@@ -460,7 +482,7 @@ const Navbar = () => {
           {isNotifOpen && <NotificationsDropdown />}
         </div>
 
-        {/* User Profile - Added after notifications */}
+        {/* User Profile */}
         <div className="position-relative">
           <UserProfileButton />
         </div>

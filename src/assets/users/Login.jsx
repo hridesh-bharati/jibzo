@@ -1,26 +1,47 @@
+// src/assets/users/Login.jsx
 import React, { useState } from "react";
-import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
+import { 
+  getAuth, 
+  signInWithEmailAndPassword, 
+  signInWithPopup,
+  GoogleAuthProvider,
+  GithubAuthProvider
+} from "firebase/auth";
 import { db } from "../../assets/utils/firebaseConfig";
 import { ref, set, get } from "firebase/database";
 import axios from "axios";
 import { useNavigate, Link } from "react-router-dom";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import "./Login.css"; // We'll create this CSS file
+import "./Login.css";
 
 const Login = () => {
-  const [formData, setFormData] = useState({ email: "", password: "", otp: "", newPassword: "" });
+  const [formData, setFormData] = useState({ 
+    email: "", 
+    password: "", 
+    otp: "", 
+    newPassword: "" 
+  });
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [githubLoading, setGithubLoading] = useState(false);
   const [stage, setStage] = useState("login"); // login | forgotEmail | verifyOtp | changePassword
   const [otpSent, setOtpSent] = useState(false);
   const [verified, setVerified] = useState(false);
 
   const auth = getAuth();
   const navigate = useNavigate();
+  const googleProvider = new GoogleAuthProvider();
+  const githubProvider = new GithubAuthProvider();
+
+  // Add scopes for better user info
+  googleProvider.addScope('profile');
+  googleProvider.addScope('email');
+  githubProvider.addScope('user:email');
 
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
-  // ---------------- LOGIN ----------------
+  // ---------------- EMAIL/PASSWORD LOGIN ----------------
   const handleLogin = async (e) => {
     e.preventDefault();
     const { email, password } = formData;
@@ -29,16 +50,57 @@ const Login = () => {
     try {
       await signInWithEmailAndPassword(auth, email, password);
       toast.success("Login successful!");
-      setTimeout(() => navigate("/home"), 1000);
+      setTimeout(() => navigate("/dashboard"), 1000);
     } catch (err) {
       console.error(err);
-      toast.error(err.message);
+      if (err.code === 'auth/user-not-found') {
+        toast.error("No account found with this email. Please register.");
+      } else if (err.code === 'auth/wrong-password') {
+        toast.error("Incorrect password. Please try again.");
+      } else if (err.code === 'auth/invalid-email') {
+        toast.error("Invalid email format.");
+      } else {
+        toast.error(err.message);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  // ---------------- SEND OTP ----------------
+  // ---------------- SOCIAL LOGIN HANDLER ----------------
+  const handleSocialLogin = async (provider, providerName) => {
+    try {
+      if (providerName === 'google') setGoogleLoading(true);
+      if (providerName === 'github') setGithubLoading(true);
+
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+
+      toast.success(`Welcome back ${user.displayName || user.email}!`);
+      setTimeout(() => navigate("/dashboard"), 1000);
+
+    } catch (error) {
+      console.error(`${providerName} Login Error:`, error);
+
+      if (error.code === 'auth/popup-closed-by-user') {
+        toast.info(`${providerName} login was cancelled.`);
+      } else if (error.code === 'auth/account-exists-with-different-credential') {
+        toast.error(`An account already exists with the same email but different sign-in method.`);
+      } else if (error.code === 'auth/user-not-found') {
+        toast.error(`No account found. Please register first.`);
+      } else {
+        toast.error(`Failed to login with ${providerName}. Please try again.`);
+      }
+    } finally {
+      setGoogleLoading(false);
+      setGithubLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = () => handleSocialLogin(googleProvider, 'google');
+  const handleGitHubLogin = () => handleSocialLogin(githubProvider, 'github');
+
+  // ---------------- FORGOT PASSWORD FLOW ----------------
   const handleSendOtp = async () => {
     const { email } = formData;
     if (!email) return toast.error("Enter your email!");
@@ -46,7 +108,6 @@ const Login = () => {
     try {
       const otp = Math.floor(100000 + Math.random() * 900000);
       await set(ref(db, `otp/${email.replace(/\./g, "_")}`), { otp, createdAt: Date.now() });
-      // const res = await axios.post("http://localhost:5000/api/sendemail", { email, otp });
       const res = await axios.post("/api/sendemail", { email, otp });
 
       if (res.data.success) {
@@ -64,7 +125,6 @@ const Login = () => {
     }
   };
 
-  // ---------------- VERIFY OTP ----------------
   const handleVerifyOtp = async () => {
     const { email, otp } = formData;
     if (!otp) return toast.error("Enter OTP!");
@@ -87,13 +147,11 @@ const Login = () => {
     }
   };
 
-  // ---------------- CHANGE PASSWORD ----------------
   const handleChangePassword = async () => {
     const { email, newPassword } = formData;
     if (!newPassword) return toast.error("Enter new password!");
     setLoading(true);
     try {
-      // const res = await axios.post("http://localhost:5000/api/reset-password", { email, newPassword });
       const res = await axios.post("/api/reset-password", { email, newPassword });
       if (res.data.success) {
         toast.success("Password updated successfully!");
@@ -115,7 +173,7 @@ const Login = () => {
   // Back to Sign Up button
   const btns = (
     <button type="button" className="btn-back-to-signup">
-      <Link to="/Register" className="nav-link">
+      <Link to="/register" className="nav-link">
         <i className="fas fa-arrow-left"></i> Back to Sign Up
       </Link>
     </button>
@@ -142,6 +200,55 @@ const Login = () => {
             {stage === "changePassword" && "Create a new password"}
           </p>
         </div>
+
+        {/* ---------------- SOCIAL LOGIN BUTTONS ---------------- */}
+        {stage === "login" && (
+          <div className="social-login-section">
+            <div className="social-buttons-grid">
+              <button
+                className="btn-google"
+                onClick={handleGoogleLogin}
+                disabled={googleLoading}
+              >
+                {googleLoading ? (
+                  <>
+                    <i className="fas fa-spinner fa-spin"></i> Signing in...
+                  </>
+                ) : (
+                  <>
+                    <img
+                      src="https://developers.google.com/identity/images/g-logo.png"
+                      alt="Google"
+                      className="google-logo"
+                    />
+                    Continue with Google
+                  </>
+                )}
+              </button>
+
+              <button
+                className="btn-github"
+                onClick={handleGitHubLogin}
+                disabled={githubLoading}
+              >
+                {githubLoading ? (
+                  <>
+                    <i className="fas fa-spinner fa-spin"></i> Signing in...
+                  </>
+                ) : (
+                  <>
+                    <i className="fab fa-github github-logo"></i>
+                    Continue with GitHub
+                  </>
+                )}
+              </button>
+            </div>
+            
+            <div className="divider">
+              <span>OR</span>
+            </div>
+          </div>
+        )}
 
         {/* ---------------- LOGIN FORM ---------------- */}
         {stage === "login" && (
@@ -190,7 +297,7 @@ const Login = () => {
           </form>
         )}
 
-        {/* ---------------- ENTER EMAIL FOR OTP ---------------- */}
+        {/* ---------------- FORGOT PASSWORD FLOW ---------------- */}
         {stage === "forgotEmail" && (
           <form className="card-body">
             <div className="input-group">
@@ -225,7 +332,6 @@ const Login = () => {
           </form>
         )}
 
-        {/* ---------------- VERIFY OTP ---------------- */}
         {stage === "verifyOtp" && !verified && (
           <form className="card-body">
             <div className="input-group">
@@ -254,7 +360,6 @@ const Login = () => {
           </form>
         )}
 
-        {/* ---------------- CHANGE PASSWORD ---------------- */}
         {stage === "changePassword" && verified && (
           <form className="card-body">
             <div className="input-group">

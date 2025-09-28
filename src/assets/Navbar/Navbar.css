@@ -36,8 +36,8 @@
  .dropdown-card {
    position: absolute;
    top: 50px;
-   right: -10px;
-   width: 250px;
+   right: -100px;
+   width: 300px;
    max-height: 350px;
    overflow-y: auto;
    background: #fff;

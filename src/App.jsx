@@ -29,6 +29,10 @@ import DeleteAccount from "./assets/users/DeleteAccount";
 import Support from "./assets/users/Support";
 import Blocked from "./assets/users/Blocked";
 import { UserRelationsProvider } from "./context/UserRelationsContext";
+import GadgetsTools from "./assets/Gadgets/GadgetsTools";
+import FileConverter from "./assets/Gadgets/FileConverter";
+import ImageCompressor from "./assets/Gadgets/ImageCompressor";
+import ImageResizer from "./assets/Gadgets/ImageResizer";
 // import InstallPrompt from "./assets/Pwa/InstallApp";
 
 const App = () => {
@@ -152,6 +156,13 @@ const App = () => {
           {/* Public Routes */}
           <Route path="/status" element={<ViewStatus />} />
           <Route path="/support" element={<Support />} />
+
+          <Route path="/gadgets-and-tools" element={<GadgetsTools />}>
+            <Route index element={<h4 className="text-center mt-3">Welcome to Gadgets & Tools</h4>} />
+            <Route path="file-converter" element={<FileConverter />} />
+            <Route path="image-compression" element={<ImageCompressor />} />
+            <Route path="image-resizer" element={<ImageResizer />} />
+          </Route>
 
           {/* Catch-all route for 404 */}
           <Route path="*" element={<Navigate to="/home" />} />

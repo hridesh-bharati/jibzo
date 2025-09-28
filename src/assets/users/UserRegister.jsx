@@ -1,6 +1,13 @@
 // src/assets/users/UserRegister.jsx
 import React, { useState, useRef } from "react";
-import { getAuth, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  updateProfile,
+  signInWithPopup,
+  GoogleAuthProvider,
+  GithubAuthProvider,
+} from "firebase/auth";
 import { db } from "../../assets/utils/firebaseConfig";
 import { ref as dbRef, set, get, child } from "firebase/database";
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -9,6 +16,7 @@ import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import axios from "axios";
 import "./UserRegister.css"
+
 const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_NAME;
 const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
@@ -52,21 +60,27 @@ const UserRegister = () => {
     photo: null,
   });
 
-
-
-  
   const [usernameStatus, setUsernameStatus] = useState("");
   const [usernameSuggestion, setUsernameSuggestion] = useState("");
   const [emailTaken, setEmailTaken] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [githubLoading, setGithubLoading] = useState(false);
   const [photoPreview, setPhotoPreview] = useState(null);
 
   const fileInputRef = useRef();
   const auth = getAuth();
   const storage = getStorage();
   const navigate = useNavigate();
+  const googleProvider = new GoogleAuthProvider();
+  const githubProvider = new GithubAuthProvider();
   let typingTimeout = null;
+
+  // Add scopes for better user info
+  googleProvider.addScope('profile');
+  googleProvider.addScope('email');
+  githubProvider.addScope('user:email');
 
   const handleChange = (e) => {
     const { name, value, files } = e.target;
@@ -190,167 +204,299 @@ const UserRegister = () => {
         email,
         photoURL,
         createdAt: Date.now(),
+        authProvider: "email",
       });
 
       toast.success(`Registration successful! Your username: ${username}`);
-      setTimeout(() => navigate("/login"), 1500);
+      setTimeout(() => navigate("/dashboard"), 1500);
     } catch (error) {
       console.error(error);
-      toast.error(error.message);
+      if (error.code === 'auth/email-already-in-use') {
+        toast.error("Email already registered. Please login or use another email.");
+      } else {
+        toast.error(error.message);
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  // Common Social Sign-In Handler
+  const handleSocialSignIn = async (provider, providerName) => {
+    try {
+      if (providerName === 'google') setGoogleLoading(true);
+      if (providerName === 'github') setGithubLoading(true);
+
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+
+      // Check if user already exists in database
+      const userSnapshot = await get(dbRef(db, `usersData/${user.uid}`));
+
+      if (!userSnapshot.exists()) {
+        // New user - create record in database
+        await set(dbRef(db, `usersData/${user.uid}`), {
+          uid: user.uid,
+          username: user.displayName || user.email?.split('@')[0] || `${providerName}_${user.uid.slice(0, 8)}`,
+          email: user.email || `${user.uid}@${providerName}.com`,
+          photoURL: user.photoURL,
+          createdAt: Date.now(),
+          authProvider: providerName,
+        });
+
+        toast.success(`Welcome ${user.displayName || user.email}! Account created successfully.`);
+      } else {
+        toast.success(`Welcome back ${user.displayName || user.email}!`);
+      }
+
+      // Navigate to dashboard
+      setTimeout(() => navigate("/dashboard"), 1000);
+
+    } catch (error) {
+      console.error(`${providerName} Sign-In Error:`, error);
+
+      // Handle specific errors
+      if (error.code === 'auth/popup-closed-by-user') {
+        toast.info(`${providerName} sign-in was cancelled.`);
+      } else if (error.code === 'auth/account-exists-with-different-credential') {
+        toast.error(`An account already exists with the same email but different sign-in method. Please try login.`);
+      } else if (error.code === 'auth/unauthorized-domain') {
+        toast.error(`This domain is not authorized for ${providerName} sign-in.`);
+      } else {
+        toast.error(`Failed to sign in with ${providerName}. Please try again.`);
+      }
+    } finally {
+      setGoogleLoading(false);
+      setGithubLoading(false);
+    }
+  };
+
+  // Google Sign-In Handler
+  const handleGoogleSignIn = () => handleSocialSignIn(googleProvider, 'google');
+
+  // GitHub Sign-In Handler
+  const handleGitHubSignIn = () => handleSocialSignIn(githubProvider, 'github');
 
   const triggerFileInput = () => {
     fileInputRef.current.click();
   };
 
   return (
-    <div className="register-container ">
-      <div className="register-card">
-        <div className="card-header">
-          <div className="logo-container">
-            <i className="fas fa-user-plus"></i>
+    <div className="register-container p-0 m-0">
+      <div className="register-card p-0 m-0">
+        {/* Header Section */}
+        <div className="card-header rounded-0">
+          <div className="d-flex align-items-center m-0 p-0 gap-0">
+            <div className="logo-container overflow-hidden">
+              <img src="icons/icon-192.png" className="img-fluid" alt="" />
+            </div>
+            <div>
+              <h1 className="card-title ln-0 p-0 m-0">Create Account</h1>
+              <p className="card-subtitle  ln-0 p-0 m-0">Join our community today</p>
+            </div>
           </div>
-          <h3 className="card-title">Create Your Account</h3>
-          <p className="card-subtitle">Join our community today</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="card-body">
-          <div className="photo-upload-section">
-            <div className="photo-preview" onClick={triggerFileInput}>
-              {photoPreview ? (
-                <img src={photoPreview} alt="Profile preview" className="preview-image" />
-              ) : (
-                <i className="fas fa-camera"></i>
-              )}
+        {/* Main Content */}
+        <div className="card-content">
+          {/* Social Login Section */}
+          <div className="social-section">
+            <div className="social-buttons">
+              <button
+                className="social-btn google-btn p-0 m-0"
+                onClick={handleGoogleSignIn}
+                disabled={googleLoading}
+              >
+                {googleLoading ? (
+                  <i className="fas fa-spinner fa-spin"></i>
+                ) : (
+                  <img
+                    src="https://developers.google.com/identity/images/g-logo.png"
+                    alt="Google"
+                    className="social-logo"
+                  />)}<span>Google</span>
+              </button>
+
+              <button
+                className="social-btn github-btn"
+                onClick={handleGitHubSignIn}
+                disabled={githubLoading}
+              >
+                {githubLoading ? (
+                  <i className="bi bi-spinner fa-spin"></i>
+                ) : (
+                  <i className="bi bi-github social-logo"></i>)} <span>GitHub</span>
+              </button>
             </div>
-            <input
-              type="file"
-              name="photo"
-              accept="image/*"
-              onChange={handleChange}
-              ref={fileInputRef}
-              className="file-input"
-              required
-            />
-            <p className="upload-text">Click to upload profile photo</p>
+            <hr />
           </div>
 
-          {/* Username */}
-          <div className="input-group ">
-            <i className="fas fa-user input-icon"></i>
-            <input
-              type="text"
-              name="username"
-              placeholder="Full Name"
-              value={formData.username}
-              onChange={handleChange}
-              className="form-input"
-              required
-            />
-          </div>
-          {usernameStatus === "available" && <div className="status-message success">✔ Username available</div>}
-          {usernameStatus === "taken" && (
-            <div className="status-message error">
-              Username taken! Try <b>{usernameSuggestion}</b>
+          {/* Registration Form */}
+          <form onSubmit={handleSubmit} className="registration-form">
+            {/* Profile Photo */}
+            <div className="photo-section">
+              <div className="photo-upload" onClick={triggerFileInput}>
+                {photoPreview ? (
+                  <img src={photoPreview} alt="Profile" className="photo-preview" />
+                ) : (
+                  <div className="photo-placeholder">
+                    <i className="fas fa-camera"></i>
+                  </div>
+                )}
+                <div className="photo-overlay">
+                  <i className="fas fa-edit"></i>
+                </div>
+              </div>
+              <input
+                type="file"
+                name="photo"
+                accept="image/*"
+                onChange={handleChange}
+                ref={fileInputRef}
+                className="file-input"
+                required
+              />
+              <p className="photo-text">Tap to add profile photo</p>
             </div>
-          )}
-          {/* Email */}
-          <div className="input-group ">
-            <i className="fas fa-envelope input-icon"></i>
-            <input
-              type="email"
-              name="email"
-              placeholder="Email"
-              value={formData.email}
-              onChange={handleChange}
-              className="form-input"
-              required
-            />
-          </div>
-          {emailTaken && <div className="status-message error">Email already in use! Please login.</div>}
 
-          {/* Send OTP Button */}
-          {!otpSent && (
-            <button
-              type="button"
-              className="btn-send-otp mt-2"
-              onClick={sendOTP}
-              disabled={loading || usernameStatus === "taken" || emailTaken}
-            >
-              {loading ? (
-                <>
-                  <i className="fas fa-spinner fa-spin"></i> Sending OTP...
-                </>
-              ) : (
-                <>
-                  <i className="fas fa-paper-plane"></i> Send OTP
-                </>
-              )}
-            </button>
-          )}
-
-          {/* Conditionally show OTP, Password and Register only after OTP sent */}
-          {otpSent && (
-            <>
-              {/* OTP Field */}
-              <div className="input-group">
-                <i className="fas fa-key input-icon"></i>
+            {/* Form Fields */}
+            <div className="form-fields">
+              {/* Username */}
+              <div className="input-field">
+                <i className="fas fa-user input-icon"></i>
                 <input
                   type="text"
-                  name="otp"
-                  placeholder="Enter OTP"
-                  value={formData.otp}
+                  name="username"
+                  placeholder="Full Name"
+                  value={formData.username}
                   onChange={handleChange}
                   className="form-input"
                   required
                 />
               </div>
 
-              {/* Password Field */}
-              <div className="input-group">
-                <i className="fas fa-lock input-icon"></i>
+              {usernameStatus === "available" && (
+                <div className="status success">
+                  <i className="fas fa-check"></i> Username available
+                </div>
+              )}
+              {usernameStatus === "taken" && (
+                <div className="status error">
+                  <i className="fas fa-times"></i> Try: <strong>{usernameSuggestion}</strong>
+                </div>
+              )}
+
+              {/* Email */}
+              <div className="input-field">
+                <i className="fas fa-envelope input-icon"></i>
                 <input
-                  type="password"
-                  name="password"
-                  placeholder="Password"
-                  value={formData.password}
+                  type="email"
+                  name="email"
+                  placeholder="Email Address"
+                  value={formData.email}
                   onChange={handleChange}
                   className="form-input"
                   required
                 />
               </div>
 
-              {/* Register Button */}
-              <button className="btn-register" type="submit" disabled={loading}>
-                {loading ? (
-                  <>
-                    <i className="fas fa-spinner fa-spin"></i> Registering...
-                  </>
-                ) : (
-                  <>
-                    <i className="fas fa-user-plus"></i> Create Account
-                  </>
-                )}
-              </button>
-            </>
-          )}
+              {emailTaken && (
+                <div className="status error">
+                  <i className="fas fa-exclamation-triangle"></i> Email already registered
+                </div>
+              )}
 
+              {/* OTP Section */}
+              {!otpSent ? (
+                <button
+                  type="button"
+                  className="otp-btn"
+                  onClick={sendOTP}
+                  disabled={loading || usernameStatus === "taken" || emailTaken}
+                >
+                  {loading ? (
+                    <>
+                      <i className="fas fa-spinner fa-spin"></i>
+                      Sending OTP...
+                    </>
+                  ) : (
+                    <>
+                      <i className="fas fa-shield-alt"></i>
+                      Send Verification Code
+                    </>
+                  )}
+                </button>
+              ) : (
+                <div className="otp-section">
+                  <div className="input-field">
+                    <i className="fas fa-key input-icon"></i>
+                    <input
+                      type="text"
+                      name="otp"
+                      placeholder="Enter 6-digit OTP"
+                      value={formData.otp}
+                      onChange={handleChange}
+                      className="form-input"
+                      maxLength="6"
+                      required
+                    />
+                  </div>
+
+                  <div className="input-field">
+                    <i className="fas fa-lock input-icon"></i>
+                    <input
+                      type="password"
+                      name="password"
+                      placeholder="Create Password"
+                      value={formData.password}
+                      onChange={handleChange}
+                      className="form-input"
+                      required
+                    />
+                  </div>
+
+                  <button type="submit" className="register-btn" disabled={loading}>
+                    {loading ? (
+                      <>
+                        <i className="fas fa-spinner fa-spin"></i>
+                        Creating Account...
+                      </>
+                    ) : (
+                      <>
+                        <i className="fas fa-user-plus"></i>
+                        Create Account
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+          </form>
+
+          {/* Footer */}
           <div className="card-footer">
-            <button type="button" className="btn-back-to-login">
-              <Link to="/login" className="nav-link">
-                <i className="fas fa-arrow-left"></i> Back to Login
-              </Link>
-            </button>
-            <p className="login-link">
-              Already have an account? <Link to="/login">Login here</Link>
+            <p className="login-prompt">
+              Already have an account? <Link to="/login" className="login-link">Sign In</Link>
             </p>
+            <Link to="/login" className="back-link">
+              <i className="fas fa-arrow-left"></i>
+              Back to Login
+            </Link>
           </div>
-        </form>
+        </div>
       </div>
-      <ToastContainer />
+      <ToastContainer
+        position="top-center"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="light"
+      />
     </div>
   );
 };
