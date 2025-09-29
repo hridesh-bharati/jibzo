@@ -4,12 +4,13 @@ import {
   getAuth,
   createUserWithEmailAndPassword,
   updateProfile,
+  updatePassword, // ✅ ADDED
   signInWithPopup,
   GoogleAuthProvider,
   GithubAuthProvider,
 } from "firebase/auth";
 import { db } from "../../assets/utils/firebaseConfig";
-import { ref as dbRef, set, get, child } from "firebase/database";
+import { ref as dbRef, set, get, child, update } from "firebase/database"; // ✅ update added
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useNavigate, Link } from "react-router-dom";
 import { toast, ToastContainer } from "react-toastify";
@@ -68,6 +69,10 @@ const UserRegister = () => {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [githubLoading, setGithubLoading] = useState(false);
   const [photoPreview, setPhotoPreview] = useState(null);
+  const [showPasswordModal, setShowPasswordModal] = useState(false); // ✅ MODAL STATE
+  const [socialUser, setSocialUser] = useState(null); // ✅ SOCIAL USER STATE
+  const [setupPassword, setSetupPassword] = useState(""); // ✅ PASSWORD STATE
+  const [setupPasswordLoading, setSetupPasswordLoading] = useState(false);
 
   const fileInputRef = useRef();
   const auth = getAuth();
@@ -221,7 +226,43 @@ const UserRegister = () => {
     }
   };
 
-  // Common Social Sign-In Handler
+  // ✅ IMPROVED PASSWORD SETUP FUNCTION
+  const handleSetupPassword = async () => {
+    if (!setupPassword || setupPassword.length < 6) {
+      toast.error("Password must be at least 6 characters long");
+      return;
+    }
+
+    try {
+      setSetupPasswordLoading(true);
+      await updatePassword(socialUser, setupPassword);
+      
+      // Update database
+      await update(dbRef(db, `usersData/${socialUser.uid}`), { 
+        passwordNotSet: false 
+      });
+      
+      toast.success("🔒 Password set successfully! You can now login with email/password");
+      setShowPasswordModal(false);
+      setSetupPassword("");
+      setTimeout(() => navigate("/dashboard"), 1000);
+    } catch (error) {
+      console.error("Password setup error:", error);
+      if (error.code === 'auth/requires-recent-login') {
+        toast.error("Session expired. Please login again to set password.");
+        setShowPasswordModal(false);
+        navigate("/login");
+      } else {
+        toast.error("Failed to set password. You can set it later from settings.");
+        setShowPasswordModal(false);
+        navigate("/dashboard");
+      }
+    } finally {
+      setSetupPasswordLoading(false);
+    }
+  };
+
+  // ✅ IMPROVED SOCIAL SIGN-IN HANDLER
   const handleSocialSignIn = async (provider, providerName) => {
     try {
       if (providerName === 'google') setGoogleLoading(true);
@@ -239,23 +280,33 @@ const UserRegister = () => {
           uid: user.uid,
           username: user.displayName || user.email?.split('@')[0] || `${providerName}_${user.uid.slice(0, 8)}`,
           email: user.email || `${user.uid}@${providerName}.com`,
-          photoURL: user.photoURL,
+          photoURL: user.photoURL || "/default-avatar.png",
           createdAt: Date.now(),
           authProvider: providerName,
+          passwordNotSet: true
         });
 
-        toast.success(`Welcome ${user.displayName || user.email}! Account created successfully.`);
+        // Show password setup modal for new users
+        setSocialUser(user);
+        setShowPasswordModal(true);
+        
+        toast.success(`Welcome ${user.displayName || user.email}!`);
       } else {
-        toast.success(`Welcome back ${user.displayName || user.email}!`);
+        // Existing user
+        const userData = userSnapshot.val();
+        if (userData.passwordNotSet) {
+          // Show password setup for existing users who haven't set password
+          setSocialUser(user);
+          setShowPasswordModal(true);
+        } else {
+          toast.success(`Welcome back ${user.displayName || user.email}!`);
+          setTimeout(() => navigate("/dashboard"), 1000);
+        }
       }
-
-      // Navigate to dashboard
-      setTimeout(() => navigate("/dashboard"), 1000);
 
     } catch (error) {
       console.error(`${providerName} Sign-In Error:`, error);
-
-      // Handle specific errors
+      
       if (error.code === 'auth/popup-closed-by-user') {
         toast.info(`${providerName} sign-in was cancelled.`);
       } else if (error.code === 'auth/account-exists-with-different-credential') {
@@ -283,11 +334,64 @@ const UserRegister = () => {
 
   return (
     <div className="register-container p-0 m-0">
+      {/* ✅ PASSWORD SETUP MODAL */}
+      {showPasswordModal && (
+        <div className="modal-overlay">
+          <div className="password-modal">
+            <div className="modal-header">
+              <h3>Set Password</h3>
+              <button 
+                className="close-btn"
+                onClick={() => {
+                  setShowPasswordModal(false);
+                  navigate("/dashboard");
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <div className="modal-body">
+              <p>Set a password for email login (optional but recommended)</p>
+              <input
+                type="password"
+                placeholder="Enter password (min 6 characters)"
+                value={setupPassword}
+                onChange={(e) => setSetupPassword(e.target.value)}
+                className="form-input"
+              />
+              <small className="text-muted">
+                This will allow you to login with email and password in future
+              </small>
+            </div>
+            <div className="modal-footer">
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setShowPasswordModal(false);
+                  toast.info("You can set password later from settings.");
+                  navigate("/dashboard");
+                }}
+                disabled={setupPasswordLoading}
+              >
+                Skip for Now
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleSetupPassword}
+                disabled={setupPasswordLoading || !setupPassword}
+              >
+                {setupPasswordLoading ? "Setting..." : "Set Password"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="register-card p-0 m-0">
         <div className="card-header rounded-0">
           <div className="d-flex align-items-center m-0 p-0 gap-0">
             <div className="logo-container overflow-hidden">
-              <img src="icons/icon-192.png" className="img-fluid" alt="" />
+              <img src="icons/icon-192.png" className="img-fluid" alt="jibzo" />
             </div>
             <div>
               <h1 className="card-title ln-0 p-0 m-0">Create Account</h1>
@@ -299,8 +403,8 @@ const UserRegister = () => {
         {/* Main Content */}
         <div className="card-content">
           {/* Social Login Section */}
-          <div className="social-section">
-            <div className="social-buttons">
+          <div className="social-section m-0 p-0">
+            <div className="social-buttons m-0 p-0">
               <button
                 className="social-btn google-btn p-0 m-0"
                 onClick={handleGoogleSignIn}

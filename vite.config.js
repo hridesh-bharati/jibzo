@@ -7,8 +7,9 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: "autoUpdate",
+      registerType: "autoUpdate", // auto-update SW
       includeAssets: ["favicon.ico", "robots.txt", "icons/*.png"],
+
       manifest: {
         name: "jibzo web app",
         short_name: "jibzo",
@@ -30,10 +31,21 @@ export default defineConfig({
           },
         ],
       },
+
       workbox: {
-        // Increase precache limit to 5 MB
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MB
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB
+
         runtimeCaching: [
+          // CSS / JS caching
+          {
+            urlPattern: /\.(?:css|js)$/i,
+            handler: "StaleWhileRevalidate",
+            options: {
+              cacheName: "static-resources",
+              expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 * 24 }, // 1 day
+            },
+          },
+          // Google Fonts CSS
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
             handler: "CacheFirst",
@@ -42,6 +54,7 @@ export default defineConfig({
               expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
             },
           },
+          // Google Fonts font files
           {
             urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
             handler: "CacheFirst",
@@ -50,28 +63,43 @@ export default defineConfig({
               expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
             },
           },
+          // Images
+          {
+            urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp)$/i,
+            handler: "CacheFirst",
+            options: {
+              cacheName: "images-cache",
+              expiration: { maxEntries: 60, maxAgeSeconds: 30 * 24 * 60 * 60 }, // 30 days
+            },
+          },
         ],
       },
     }),
   ],
+
   server: {
     host: true,
     port: 5173,
   },
+
   define: {
-    global: "window",
+    global: "window", // for crypto-browserify etc
   },
+
   resolve: {
     alias: {
       crypto: "crypto-browserify",
       stream: "stream-browserify",
     },
   },
+
   build: {
     outDir: "dist",
     assetsDir: "assets",
   },
-  base: "./",
+
+  base: "/", // safer for CSS & assets in PWA
+
   optimizeDeps: {
     include: ["react-pdf", "pdfjs-dist"],
   },

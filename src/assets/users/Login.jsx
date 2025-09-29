@@ -1,8 +1,8 @@
 // src/assets/users/Login.jsx
 import React, { useState } from "react";
-import { 
-  getAuth, 
-  signInWithEmailAndPassword, 
+import {
+  getAuth,
+  signInWithEmailAndPassword,
   signInWithPopup,
   GoogleAuthProvider,
   GithubAuthProvider
@@ -16,11 +16,11 @@ import "react-toastify/dist/ReactToastify.css";
 import "./Login.css";
 
 const Login = () => {
-  const [formData, setFormData] = useState({ 
-    email: "", 
-    password: "", 
-    otp: "", 
-    newPassword: "" 
+  const [formData, setFormData] = useState({
+    email: "",
+    password: "",
+    otp: "",
+    newPassword: ""
   });
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
@@ -184,8 +184,8 @@ const Login = () => {
       <div className="login-card">
         {/* Card Header */}
         <div className="card-header">
-          <div className="logo-container">
-            <i className="fas fa-user-circle"></i>
+          <div className="logo-container overflow-hidden">
+            <img src="icons/icon-192.png" className="img-fluid" alt="jibzo" />
           </div>
           <h3 className="card-title">
             {stage === "login" && "Welcome Back"}
@@ -237,13 +237,13 @@ const Login = () => {
                   </>
                 ) : (
                   <>
-                    <i className="fab fa-github github-logo"></i>
+                    <i className="bi bi-github github-logo"></i>
                     Continue with GitHub
                   </>
                 )}
               </button>
             </div>
-            
+
             <div className="divider">
               <span>OR</span>
             </div>
