@@ -12,7 +12,7 @@ export default defineConfig({
       manifest: {
         name: "jibzo web app",
         short_name: "jibzo",
-        description: "jibzo is the socail networking web app",
+        description: "jibzo is the social networking web app",
         theme_color: "#000000",
         background_color: "#ffffff",
         display: "standalone",
@@ -31,7 +31,8 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // Optional: caching strategies
+        // Increase precache limit to 5 MB
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MB
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
