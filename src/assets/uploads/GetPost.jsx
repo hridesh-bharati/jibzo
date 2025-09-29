@@ -44,6 +44,55 @@ class ErrorBoundary extends React.Component {
 }
 
 /* -----------------------
+   Links - IMPROVED
+----------------------- */
+function linkify(text) {
+  if (!text) return [""];
+
+  const urlRegex = /(https?:\/\/[^\s<>]+|www\.[^\s<>]+\.[^\s<>]+)/g;
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = urlRegex.exec(text)) !== null) {
+    const url = match[0];
+    const offset = match.index;
+
+    // Add text before URL
+    if (offset > lastIndex) {
+      parts.push(text.slice(lastIndex, offset));
+    }
+
+    // Add link
+    const fullUrl = url.startsWith("http") ? url : `https://${url}`;
+    parts.push(
+      <a
+        key={offset}
+        href={fullUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ 
+          color: "#0d6efd", 
+          textDecoration: "underline",
+          wordBreak: "break-all" 
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {url}
+      </a>
+    );
+    lastIndex = offset + url.length;
+  }
+
+  // Add remaining text
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts.length > 0 ? parts : [text];
+}
+
+/* -----------------------
    Skeleton loader
 ----------------------- */
 function CardSkeleton() {
@@ -187,10 +236,10 @@ const VideoPreview = React.memo(({ src, id, videoRefs, onOpen, isPlaying, onPlay
 });
 
 /* -----------------------
-   Comments Offcanvas (YouTube Style) - FIXED WITH REAL-TIME UPDATES
+   Comments Offcanvas (YouTube Style) - FIXED
 ----------------------- */
 function CommentsOffcanvas({
-  postId, // Changed from post to postId for real-time updates
+  postId,
   currentUser,
   guestId,
   commentText,
@@ -204,7 +253,6 @@ function CommentsOffcanvas({
   const [post, setPost] = useState(null);
   const [comments, setComments] = useState([]);
 
-  // Real-time listener for post comments
   useEffect(() => {
     if (!postId || !show) return;
 
@@ -213,7 +261,6 @@ function CommentsOffcanvas({
       const postData = snapshot.val();
       if (postData) {
         setPost(postData);
-        // Get comments as array
         const commentsData = postData.comments ? Object.entries(postData.comments) : [];
         setComments(commentsData);
       }
@@ -227,7 +274,6 @@ function CommentsOffcanvas({
   const handleAddComment = async () => {
     if (!commentText.trim()) return;
     await addComment(postId);
-    // Comment text will be cleared in parent component after successful addition
   };
 
   const handleDeleteComment = async (cid, commentUserId) => {
@@ -254,7 +300,7 @@ function CommentsOffcanvas({
           aria-label="Close comments"
         ></button>
       </div>
-      <div className="d-flex flex-column  h-100">
+      <div className="d-flex flex-column h-100">
         <div className="flex-grow-1 overflow-auto p-3">
           {comments.length === 0 ? (
             <div className="text-center text-muted py-4">
@@ -263,10 +309,7 @@ function CommentsOffcanvas({
             </div>
           ) : (
             comments.map(([cid, c]) => (
-              <div
-                key={cid}
-                className="d-flex mb-3"
-              >
+              <div key={cid} className="d-flex mb-3">
                 <img
                   src={c.userPic || "icons/avatar.jpg"}
                   alt="profile"
@@ -275,9 +318,15 @@ function CommentsOffcanvas({
                 />
                 <div className="flex-grow-1">
                   <div className="d-flex justify-content-between align-items-start">
-                    <div>
+                    <div style={{ maxWidth: "85%" }}>
                       <strong>@{c.userName}</strong>
-                      <p className="m-0">{c.text}</p>
+                      <p style={{ margin: 0, wordBreak: "break-word" }}>
+                        {linkify(c.text).map((part, index) =>
+                          typeof part === "string" 
+                            ? <span key={index}>{part}</span> 
+                            : React.cloneElement(part, { key: index })
+                        )}
+                      </p>
                     </div>
                     {(isAdmin() || currentUser?.uid === c.userId || guestId === c.userId) && (
                       <button
@@ -323,7 +372,7 @@ function CommentsOffcanvas({
 }
 
 /* -----------------------
-   ReelsPlayer (TikTok style) - UPDATED TO USE postId
+   ReelsPlayer (TikTok style) - FIXED
 ----------------------- */
 function ReelsPlayer({
   posts,
@@ -339,7 +388,7 @@ function ReelsPlayer({
 }) {
   const [activeVideo, setActiveVideo] = useState(null);
   const [showComments, setShowComments] = useState(false);
-  const [currentPostId, setCurrentPostId] = useState(null); // Changed to postId
+  const [currentPostId, setCurrentPostId] = useState(null);
   const [showIcon, setShowIcon] = useState(null);
   const [animate, setAnimate] = useState(false);
 
@@ -372,7 +421,6 @@ function ReelsPlayer({
   }, [posts]);
 
   useEffect(() => {
-    // Play the active video and pause others
     Object.entries(videoRefs.current).forEach(([id, videoEl]) => {
       if (!videoEl) return;
 
@@ -395,7 +443,7 @@ function ReelsPlayer({
   }, [activeVideo]);
 
   const openComments = (post) => {
-    setCurrentPostId(post.id); // Set postId instead of full post object
+    setCurrentPostId(post.id);
     setShowComments(true);
   };
 
@@ -404,7 +452,6 @@ function ReelsPlayer({
     const videoEl = videoRefs.current[post.id];
     if (!videoEl) return;
 
-    // Single click = Play/Pause toggle
     if (videoEl.paused) {
       videoEl.play();
       setActiveVideo(post.id);
@@ -415,7 +462,6 @@ function ReelsPlayer({
       setShowIcon({ type: "pause" });
     }
 
-    // icon auto hide after 1s
     setAnimate(true);
     setTimeout(() => {
       setAnimate(false);
@@ -431,11 +477,9 @@ function ReelsPlayer({
     const clickX = e.clientX - rect.left;
 
     if (clickX < rect.width / 2) {
-      // Left side → -10s
       videoEl.currentTime = Math.max(0, videoEl.currentTime - 10);
       setShowIcon({ type: "rewind" });
     } else {
-      // Right side → +10s
       videoEl.currentTime = Math.min(videoEl.duration, videoEl.currentTime + 10);
       setShowIcon({ type: "forward" });
     }
@@ -492,7 +536,6 @@ function ReelsPlayer({
                   onDoubleClick={(e) => handleVideoDoubleClick(e, post)}
                 />
 
-                {/* Overlay Icon */}
                 {showIcon && (
                   <div
                     className="position-absolute top-50 start-50 translate-middle"
@@ -514,7 +557,6 @@ function ReelsPlayer({
                 )}
               </div>
 
-              {/* Caption */}
               <div
                 style={{
                   position: "absolute",
@@ -553,10 +595,15 @@ function ReelsPlayer({
                     ADMIN
                   </span>
                 )}
-                <p style={{ margin: 0 }}>{post.caption}</p>
+                <p style={{ margin: 0, wordBreak: "break-word" }}>
+                  {linkify(post.caption)?.map((part, index) => 
+                    typeof part === "string" 
+                      ? <span key={index}>{part}</span> 
+                      : React.cloneElement(part, { key: index })
+                  )}
+                </p>
               </div>
 
-              {/* Buttons + Comments input */}
               <div
                 style={{
                   position: "absolute",
@@ -569,7 +616,6 @@ function ReelsPlayer({
                   color: "#fff",
                 }}
               >
-                {/* Like button */}
                 <div className="d-flex flex-column align-items-center">
                   <button
                     className="btn btn-light rounded-4 px-2"
@@ -581,7 +627,6 @@ function ReelsPlayer({
                   <small>{likeCount}</small>
                 </div>
 
-                {/* Comments button */}
                 <div className="d-flex flex-column align-items-center">
                   <button
                     className="btn btn-light rounded-4 px-2"
@@ -593,13 +638,11 @@ function ReelsPlayer({
                   <small>{commentCount}</small>
                 </div>
 
-                {/* Share button */}
                 <div className="d-flex flex-column align-items-center bg-white rounded-4">
                   <ShareButton link={post.src} />
                 </div>
               </div>
 
-              {/* Comment input overlay at the bottom */}
               <div
                 style={{
                   position: "absolute",
@@ -634,9 +677,8 @@ function ReelsPlayer({
         })}
       </div>
 
-      {/* YouTube Style Comments - UPDATED TO USE postId */}
       <CommentsOffcanvas
-        postId={currentPostId} // Pass postId instead of full post object
+        postId={currentPostId}
         currentUser={currentUser}
         guestId={guestId}
         commentText={commentText}
@@ -693,7 +735,7 @@ function shuffleArray(array) {
 }
 
 /* -----------------------
-   Main GetPost component - UPDATED
+   Main GetPost component - FIXED
 ----------------------- */
 export default function GetPost({ showFilter = true, uid, shuffle = false }) {
   const [posts, setPosts] = useState([]);
@@ -706,7 +748,7 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
   const [fullscreenImage, setFullscreenImage] = useState(null);
   const [playingVideos, setPlayingVideos] = useState({});
   const [showComments, setShowComments] = useState(false);
-  const [commentsPostId, setCommentsPostId] = useState(null); // Changed to postId
+  const [commentsPostId, setCommentsPostId] = useState(null);
 
   const videoRefs = useRef({});
 
@@ -733,9 +775,9 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
       let arr = Object.entries(data).map(([id, v]) => ({ id, ...v }));
 
       if (shuffle) {
-        arr = shuffleArray(arr); // 🔀 shuffle if prop is true
+        arr = shuffleArray(arr);
       } else {
-        arr = arr.sort((a, b) => b.timestamp - a.timestamp); // default sort
+        arr = arr.sort((a, b) => b.timestamp - a.timestamp);
       }
 
       setPosts(arr);
@@ -786,7 +828,7 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
       text: commentText.trim(),
       timestamp: Date.now(),
     });
-    setCommentText(""); // Clear comment text after posting
+    setCommentText("");
   };
 
   const deleteComment = async (postId, cid, commentUserId) => {
@@ -807,7 +849,7 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
   }, []);
 
   const openComments = useCallback((post) => {
-    setCommentsPostId(post.id); // Set postId instead of full post object
+    setCommentsPostId(post.id);
     setShowComments(true);
   }, []);
 
@@ -958,92 +1000,119 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
                 const commentCount = post.comments ? Object.keys(post.comments).length : 0;
 
                 return (
-                  <div key={post.id} className="card border-light mb-5">
-                    <div className="card-header custom-white d-flex align-items-center border-0">
-                      <style>
-                        {`
-                        .card-header.custom-white {
-                          background: white !important;
-                          color: black !important;
-                        }
-                        `}
-                      </style>
-                      <img
-                        src={post.userPic || "icons/avatar.jpg"}
-                        alt="profile"
-                        className="rounded-circle me-2"
-                        style={{ width: 40, height: 40, objectFit: "cover" }}
-                      />
-                      <div className="d-flex flex-column w-100 text-start">
-                        <strong>{post.user || "Guest"}</strong>
-                        {post.caption}
-                      </div>
-                      <button
-                        className="btn btn-sm border ms-auto"
-                        data-bs-toggle="offcanvas"
-                        data-bs-target="#imageOffcanvas"
-                        onClick={() => setOffcanvasPost(post)}
-                        aria-label="Post options"
-                      >
-                        <i className="bi bi-list"></i>
-                      </button>
-                    </div>
+                 <div key={post.id} className="card border-light mb-5">
+  <div className="card-header custom-white d-flex align-items-center border-0 p-3">
+    <style>
+      {`
+      .card-header.custom-white {
+        background: white !important;
+        color: black !important;
+      }
+      .user-avatar {
+        width: 45px !important;
+        height: 45px !important;
+        min-width: 45px !important;
+        min-height: 45px !important;
+        object-fit: cover !important;
+        border: 2px solid #f0f0f0;
+        flex-shrink: 0;
+      }
+      `}
+    </style>
+    <img
+      src={post.userPic || "icons/avatar.jpg"}
+      alt="profile"
+      className="rounded-circle user-avatar me-3"
+    />
+    <div className="d-flex flex-column w-100 text-start">
+      <div className="d-flex align-items-center mb-1">
+        <strong className="me-2">{post.user || "Guest"}</strong>
+        {post.userEmail?.toLowerCase() === ADMIN_EMAIL?.toLowerCase() && (
+          <span
+            style={{
+              backgroundColor: "gold",
+              color: "#000",
+              fontSize: "0.7rem",
+              fontWeight: "bold",
+              padding: "2px 6px",
+              borderRadius: 4,
+            }}
+          >
+            ADMIN
+          </span>
+        )}
+      </div>
+      <span style={{ wordBreak: "break-word", fontSize: "0.9rem" }}>
+        {linkify(post.caption)?.map((part, index) => 
+          typeof part === "string" 
+            ? <span key={index}>{part}</span> 
+            : React.cloneElement(part, { key: index })
+        )}
+      </span>
+    </div>
+    <button
+      className="btn btn-sm border ms-auto"
+      data-bs-toggle="offcanvas"
+      data-bs-target="#imageOffcanvas"
+      onClick={() => setOffcanvasPost(post)}
+      aria-label="Post options"
+      style={{ flexShrink: 0 }}
+    >
+      <i className="bi bi-three-dots"></i>
+    </button>
+  </div>
 
-                    <div className="p-2 text-center">{renderPreview(post)}</div>
-                    <div className="card-body">
-                      <div className="d-flex align-items-center justify-content-between mb-2">
-                        <div className="d-flex align-items-center">
-                          <Heart
-                            liked={liked}
-                            onToggle={() => toggleLike(post.id)}
-                          />
-                          <small className="ms-2 text-muted">
-                            {likeCount} likes
-                          </small>
+  <div className="p-2 text-center">{renderPreview(post)}</div>
+  <div className="card-body">
+    <div className="d-flex align-items-center justify-content-between mb-2">
+      <div className="d-flex align-items-center">
+        <Heart
+          liked={liked}
+          onToggle={() => toggleLike(post.id)}
+        />
+        <small className="ms-2 text-muted">
+          {likeCount} likes
+        </small>
 
-                          <div className="mx-3">
-                            <button
-                              className="btn btn-link text-muted p-0 me-2"
-                              onClick={() => openComments(post)}
-                              aria-label="View comments"
-                            >
-                              <i className="bi bi-chat fs-1"></i>
-                            </button>
-                            <small className="text-muted">{commentCount}</small>
-                          </div>
-                          <ShareButton link={post.src} />
-                          <DownloadBtn link={post.src} />
-                        </div>
+        <div className="mx-3">
+          <button
+            className="btn btn-link text-muted p-0 me-2"
+            onClick={() => openComments(post)}
+            aria-label="View comments"
+          >
+            <i className="bi bi-chat fs-5"></i>
+          </button>
+          <small className="text-muted">{commentCount}</small>
+        </div>
+        <ShareButton link={post.src} />
+        <DownloadBtn link={post.src} />
+      </div>
 
-                        {post.type === "pdf" && (
-                          <button
-                            className="btn btn-sm btn-light d-flex align-items-center me-2"
-                            onClick={() =>
-                              window.open(post.url || post.src, "_blank")
-                            }
-                            aria-label="Open PDF"
-                          >
-                            <i className="bi bi-file-earmark-pdf fs-4 text-danger"></i>
-                            Open
-                          </button>
-                        )}
-                      </div>
+      {post.type === "pdf" && (
+        <button
+          className="btn btn-sm btn-light d-flex align-items-center me-2"
+          onClick={() =>
+            window.open(post.url || post.src, "_blank")
+          }
+          aria-label="Open PDF"
+        >
+          <i className="bi bi-file-earmark-pdf fs-4 text-danger"></i>
+          Open
+        </button>
+      )}
+    </div>
 
-                      {/* <p>
-                        <strong>{post.user}</strong> 
-                      </p> */}
-
-                      {commentCount > 0 && (
-                        <div
-                          className="text-muted mb-2"
-                          style={{ cursor: "pointer" }}
-                          onClick={() => openComments(post)}
-                        >
-                          View all {commentCount} comments
-                        </div>
-                      )}
-                    </div>
-                  </div>
+    {commentCount > 0 && (
+      <div
+        className="text-muted mb-2"
+        style={{ cursor: "pointer" }}
+        onClick={() => openComments(post)}
+      >
+        View all {commentCount} comments
+      </div>
+    )}
+  </div>
+</div>
                 );
               })
             )}
@@ -1057,19 +1126,16 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
           style={{ height: "40vh", zIndex: 1000 }}
         >
           <div className="offcanvas-header bg-primary-subtle">
-            {/* <h5>Options</h5> */}
             <button className="btn-close" data-bs-dismiss="offcanvas" aria-label="Close options" />
           </div>
           <div className="offcanvas-body">
-
             {offcanvasPost && (
               <>
-
                 <h5 className="text-muted">
                   Post Name: <small> {offcanvasPost?.caption}</small>
                 </h5>
                 <small className="text-muted">
-               Date: {offcanvasPost?.timestamp ? new Date(offcanvasPost.timestamp).toLocaleDateString() : ""}
+                  Date: {offcanvasPost?.timestamp ? new Date(offcanvasPost.timestamp).toLocaleDateString() : ""}
                 </small>
 
                 <button
@@ -1096,9 +1162,8 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
           </div>
         </div>
 
-        {/* YouTube Style Comments for All Tab - UPDATED TO USE postId */}
         <CommentsOffcanvas
-          postId={commentsPostId} // Pass postId instead of full post object
+          postId={commentsPostId}
           currentUser={currentUser}
           guestId={guestId}
           commentText={commentText}
