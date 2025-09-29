@@ -33,7 +33,7 @@ import GadgetsTools from "./assets/Gadgets/GadgetsTools";
 import FileConverter from "./assets/Gadgets/FileConverter";
 import ImageCompressor from "./assets/Gadgets/ImageCompressor";
 import ImageResizer from "./assets/Gadgets/ImageResizer";
-// import InstallPrompt from "./assets/Pwa/InstallApp";
+import InstallPrompt from "./assets/Pwa/InstallApp";
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -62,7 +62,7 @@ const App = () => {
     <UserRelationsProvider>
 
       <>
-        {/* <InstallPrompt /> */}
+        <InstallPrompt />
         <Routes>
           {/* Root redirects to login */}
           <Route path="/" element={<Navigate to="/login" />} />

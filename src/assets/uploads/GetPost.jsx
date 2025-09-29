@@ -71,10 +71,10 @@ function linkify(text) {
         href={fullUrl}
         target="_blank"
         rel="noopener noreferrer"
-        style={{ 
-          color: "#0d6efd", 
+        style={{
+          color: "#0d6efd",
           textDecoration: "underline",
-          wordBreak: "break-all" 
+          wordBreak: "break-all"
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -322,8 +322,8 @@ function CommentsOffcanvas({
                       <strong>@{c.userName}</strong>
                       <p style={{ margin: 0, wordBreak: "break-word" }}>
                         {linkify(c.text).map((part, index) =>
-                          typeof part === "string" 
-                            ? <span key={index}>{part}</span> 
+                          typeof part === "string"
+                            ? <span key={index}>{part}</span>
                             : React.cloneElement(part, { key: index })
                         )}
                       </p>
@@ -596,9 +596,9 @@ function ReelsPlayer({
                   </span>
                 )}
                 <p style={{ margin: 0, wordBreak: "break-word" }}>
-                  {linkify(post.caption)?.map((part, index) => 
-                    typeof part === "string" 
-                      ? <span key={index}>{part}</span> 
+                  {linkify(post.caption)?.map((part, index) =>
+                    typeof part === "string"
+                      ? <span key={index}>{part}</span>
                       : React.cloneElement(part, { key: index })
                   )}
                 </p>
@@ -1000,10 +1000,10 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
                 const commentCount = post.comments ? Object.keys(post.comments).length : 0;
 
                 return (
-                 <div key={post.id} className="card border-light mb-5">
-  <div className="card-header custom-white d-flex align-items-center border-0 p-3">
-    <style>
-      {`
+                  <div key={post.id} className="card border-light mb-5">
+                    <div className="card-header custom-white d-flex align-items-center border-0 p-3">
+                      <style>
+                        {`
       .card-header.custom-white {
         background: white !important;
         color: black !important;
@@ -1018,101 +1018,101 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
         flex-shrink: 0;
       }
       `}
-    </style>
-    <img
-      src={post.userPic || "icons/avatar.jpg"}
-      alt="profile"
-      className="rounded-circle user-avatar me-3"
-    />
-    <div className="d-flex flex-column w-100 text-start">
-      <div className="d-flex align-items-center mb-1">
-        <strong className="me-2">{post.user || "Guest"}</strong>
-        {post.userEmail?.toLowerCase() === ADMIN_EMAIL?.toLowerCase() && (
-          <span
-            style={{
-              backgroundColor: "gold",
-              color: "#000",
-              fontSize: "0.7rem",
-              fontWeight: "bold",
-              padding: "2px 6px",
-              borderRadius: 4,
-            }}
-          >
-            ADMIN
-          </span>
-        )}
-      </div>
-      <span style={{ wordBreak: "break-word", fontSize: "0.9rem" }}>
-        {linkify(post.caption)?.map((part, index) => 
-          typeof part === "string" 
-            ? <span key={index}>{part}</span> 
-            : React.cloneElement(part, { key: index })
-        )}
-      </span>
-    </div>
-    <button
-      className="btn btn-sm border ms-auto"
-      data-bs-toggle="offcanvas"
-      data-bs-target="#imageOffcanvas"
-      onClick={() => setOffcanvasPost(post)}
-      aria-label="Post options"
-      style={{ flexShrink: 0 }}
-    >
-      <i className="bi bi-three-dots"></i>
-    </button>
-  </div>
+                      </style>
+                      <img
+                        src={post.userPic || "icons/avatar.jpg"}
+                        alt="profile"
+                        className="rounded-circle user-avatar me-3"
+                      />
+                      <div className="d-flex flex-column w-100 text-start">
+                        <div className="d-flex align-items-center mb-1">
+                          <strong className="me-2">{post.user || "Guest"}</strong>
+                          {post.userEmail?.toLowerCase() === ADMIN_EMAIL?.toLowerCase() && (
+                            <span
+                              style={{
+                                backgroundColor: "gold",
+                                color: "#000",
+                                fontSize: "0.7rem",
+                                fontWeight: "bold",
+                                padding: "2px 6px",
+                                borderRadius: 4,
+                              }}
+                            >
+                              ADMIN
+                            </span>
+                          )}
+                        </div>
+                        <span style={{ wordBreak: "break-word", fontSize: "0.9rem" }}>
+                          {linkify(post.caption)?.map((part, index) =>
+                            typeof part === "string"
+                              ? <span key={index}>{part}</span>
+                              : React.cloneElement(part, { key: index })
+                          )}
+                        </span>
+                      </div>
+                      <button
+                        className="btn btn-sm border ms-auto"
+                        data-bs-toggle="offcanvas"
+                        data-bs-target="#imageOffcanvas"
+                        onClick={() => setOffcanvasPost(post)}
+                        aria-label="Post options"
+                        style={{ flexShrink: 0 }}
+                      >
+                        <i className="bi bi-three-dots"></i>
+                      </button>
+                    </div>
 
-  <div className="p-2 text-center">{renderPreview(post)}</div>
-  <div className="card-body">
-    <div className="d-flex align-items-center justify-content-between mb-2">
-      <div className="d-flex align-items-center">
-        <Heart
-          liked={liked}
-          onToggle={() => toggleLike(post.id)}
-        />
-        <small className="ms-2 text-muted">
-          {likeCount} likes
-        </small>
+                    <div className="p-2 text-center">{renderPreview(post)}</div>
+                    <div className="card-body">
+                      <div className="d-flex align-items-center justify-content-between mb-2">
+                        <div className="d-flex align-items-center">
+                          <Heart
+                            liked={liked}
+                            onToggle={() => toggleLike(post.id)}
+                          />
+                          <small className="ms-2 text-muted">
+                            {likeCount} likes
+                          </small>
 
-        <div className="mx-3">
-          <button
-            className="btn btn-link text-muted p-0 me-2"
-            onClick={() => openComments(post)}
-            aria-label="View comments"
-          >
-            <i className="bi bi-chat fs-5"></i>
-          </button>
-          <small className="text-muted">{commentCount}</small>
-        </div>
-        <ShareButton link={post.src} />
-        <DownloadBtn link={post.src} />
-      </div>
+                          <div className="mx-3">
+                            <button
+                              className="btn btn-link text-muted p-0 me-2"
+                              onClick={() => openComments(post)}
+                              aria-label="View comments"
+                            >
+                              <i className="bi bi-chat fs-5"></i>
+                            </button>
+                            <small className="text-muted">{commentCount}</small>
+                          </div>
+                          <ShareButton link={post.src} />
+                          <DownloadBtn link={post.src} />
+                        </div>
 
-      {post.type === "pdf" && (
-        <button
-          className="btn btn-sm btn-light d-flex align-items-center me-2"
-          onClick={() =>
-            window.open(post.url || post.src, "_blank")
-          }
-          aria-label="Open PDF"
-        >
-          <i className="bi bi-file-earmark-pdf fs-4 text-danger"></i>
-          Open
-        </button>
-      )}
-    </div>
+                        {post.type === "pdf" && (
+                          <button
+                            className="btn btn-sm btn-light d-flex align-items-center me-2"
+                            onClick={() =>
+                              window.open(post.url || post.src, "_blank")
+                            }
+                            aria-label="Open PDF"
+                          >
+                            <i className="bi bi-file-earmark-pdf fs-4 text-danger"></i>
+                            Open
+                          </button>
+                        )}
+                      </div>
 
-    {commentCount > 0 && (
-      <div
-        className="text-muted mb-2"
-        style={{ cursor: "pointer" }}
-        onClick={() => openComments(post)}
-      >
-        View all {commentCount} comments
-      </div>
-    )}
-  </div>
-</div>
+                      {commentCount > 0 && (
+                        <div
+                          className="text-muted mb-2"
+                          style={{ cursor: "pointer" }}
+                          onClick={() => openComments(post)}
+                        >
+                          View all {commentCount} comments
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 );
               })
             )}
