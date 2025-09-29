@@ -1,5 +1,6 @@
 // src/components/Gallery/GetPost.jsx
 import React, { useEffect, useState, useRef, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { db, auth } from "../../assets/utils/firebaseConfig";
 import {
   ref,
@@ -1019,11 +1020,13 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
       }
       `}
                       </style>
-                      <img
-                        src={post.userPic || "icons/avatar.jpg"}
-                        alt="profile"
-                        className="rounded-circle user-avatar me-3"
-                      />
+                      <Link to={`/admin-profile/${post.uid}`}>
+                        <img
+                          src={post.userPic || "icons/avatar.jpg"}
+                          alt="profile"
+                          className="rounded-circle user-avatar me-3"
+                        />
+                      </Link>
                       <div className="d-flex flex-column w-100 text-start">
                         <div className="d-flex align-items-center mb-1">
                           <strong className="me-2">{post.user || "Guest"}</strong>
