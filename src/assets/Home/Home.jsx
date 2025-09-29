@@ -116,7 +116,7 @@ const Home = () => {
   return (
     <>
       <Navbar />
-      <div className="container mt-4">
+      <div className="container p-0 mt-4">
         <SnapStarBar
           users={users}
           currentUser={currentUser}
