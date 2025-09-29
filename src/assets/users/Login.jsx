@@ -359,7 +359,6 @@ const Login = () => {
             </button>
           </form>
         )}
-
         {stage === "changePassword" && verified && (
           <form className="card-body">
             <div className="input-group">

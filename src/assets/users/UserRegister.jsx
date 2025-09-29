@@ -284,7 +284,6 @@ const UserRegister = () => {
   return (
     <div className="register-container p-0 m-0">
       <div className="register-card p-0 m-0">
-        {/* Header Section */}
         <div className="card-header rounded-0">
           <div className="d-flex align-items-center m-0 p-0 gap-0">
             <div className="logo-container overflow-hidden">
