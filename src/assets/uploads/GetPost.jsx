@@ -1,5 +1,6 @@
 // src/components/Gallery/GetPost.jsx
 import React, { useEffect, useState, useRef, useCallback } from "react";
+import { useNavigate } from "react-router-dom"; // Add this import
 import { db, auth } from "../../assets/utils/firebaseConfig";
 import {
   ref,
@@ -14,7 +15,7 @@ import ShareButton from "./ShareBtn";
 import "./Gallery.css";
 import DownloadBtn from "./DownloadBtn";
 
-const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL || "";
+const ADMIN_EMAIL = import.meta.env.EMAIL_USER || import.meta.env.VITE_ADMIN_EMAIL || "";
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -41,6 +42,55 @@ class ErrorBoundary extends React.Component {
     }
     return this.props.children;
   }
+}
+
+/* -----------------------
+   Links - IMPROVED
+----------------------- */
+function linkify(text) {
+  if (!text) return [""];
+
+  const urlRegex = /(https?:\/\/[^\s<>]+|www\.[^\s<>]+\.[^\s<>]+)/g;
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = urlRegex.exec(text)) !== null) {
+    const url = match[0];
+    const offset = match.index;
+
+    // Add text before URL
+    if (offset > lastIndex) {
+      parts.push(text.slice(lastIndex, offset));
+    }
+
+    // Add link
+    const fullUrl = url.startsWith("http") ? url : `https://${url}`;
+    parts.push(
+      <a
+        key={offset}
+        href={fullUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          color: "#0d6efd",
+          textDecoration: "underline",
+          wordBreak: "break-all"
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {url}
+      </a>
+    );
+    lastIndex = offset + url.length;
+  }
+
+  // Add remaining text
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts.length > 0 ? parts : [text];
 }
 
 /* -----------------------
@@ -187,10 +237,10 @@ const VideoPreview = React.memo(({ src, id, videoRefs, onOpen, isPlaying, onPlay
 });
 
 /* -----------------------
-   Comments Offcanvas (YouTube Style) - FIXED WITH REAL-TIME UPDATES
+   Comments Offcanvas (YouTube Style) - UPDATED WITH PROFILE NAVIGATION
 ----------------------- */
 function CommentsOffcanvas({
-  postId, // Changed from post to postId for real-time updates
+  postId,
   currentUser,
   guestId,
   commentText,
@@ -199,12 +249,12 @@ function CommentsOffcanvas({
   deleteComment,
   isAdmin,
   show,
-  onClose
+  onClose,
+  onProfileClick // Add this prop
 }) {
   const [post, setPost] = useState(null);
   const [comments, setComments] = useState([]);
 
-  // Real-time listener for post comments
   useEffect(() => {
     if (!postId || !show) return;
 
@@ -213,7 +263,6 @@ function CommentsOffcanvas({
       const postData = snapshot.val();
       if (postData) {
         setPost(postData);
-        // Get comments as array
         const commentsData = postData.comments ? Object.entries(postData.comments) : [];
         setComments(commentsData);
       }
@@ -227,11 +276,21 @@ function CommentsOffcanvas({
   const handleAddComment = async () => {
     if (!commentText.trim()) return;
     await addComment(postId);
-    // Comment text will be cleared in parent component after successful addition
   };
 
   const handleDeleteComment = async (cid, commentUserId) => {
     await deleteComment(postId, cid, commentUserId);
+  };
+
+  const handleCommentProfileClick = (comment) => {
+    if (comment.userId && onProfileClick) {
+      const userPost = {
+        userId: comment.userId,
+        user: comment.userName,
+        userPic: comment.userPic
+      };
+      onProfileClick(userPost);
+    }
   };
 
   return (
@@ -254,7 +313,7 @@ function CommentsOffcanvas({
           aria-label="Close comments"
         ></button>
       </div>
-      <div className="d-flex flex-column  h-100">
+      <div className="d-flex flex-column h-100">
         <div className="flex-grow-1 overflow-auto p-3">
           {comments.length === 0 ? (
             <div className="text-center text-muted py-4">
@@ -263,21 +322,37 @@ function CommentsOffcanvas({
             </div>
           ) : (
             comments.map(([cid, c]) => (
-              <div
-                key={cid}
-                className="d-flex mb-3"
-              >
+              <div key={cid} className="d-flex mb-3">
                 <img
                   src={c.userPic || "icons/avatar.jpg"}
                   alt="profile"
                   className="rounded-circle me-2"
-                  style={{ width: 36, height: 36, objectFit: "cover" }}
+                  style={{ 
+                    width: 40, 
+                    height: 40, 
+                    minWidth: 40,
+                    minHeight: 40,
+                    objectFit: "cover",
+                    cursor: "pointer"
+                  }}
+                  onClick={() => handleCommentProfileClick(c)}
                 />
                 <div className="flex-grow-1">
                   <div className="d-flex justify-content-between align-items-start">
-                    <div>
-                      <strong>@{c.userName}</strong>
-                      <p className="m-0">{c.text}</p>
+                    <div style={{ maxWidth: "85%" }}>
+                      <strong 
+                        style={{ cursor: "pointer" }}
+                        onClick={() => handleCommentProfileClick(c)}
+                      >
+                        @{c.userName}
+                      </strong>
+                      <p style={{ margin: 0, wordBreak: "break-word" }}>
+                        {linkify(c.text).map((part, index) =>
+                          typeof part === "string"
+                            ? <span key={index}>{part}</span>
+                            : React.cloneElement(part, { key: index })
+                        )}
+                      </p>
                     </div>
                     {(isAdmin() || currentUser?.uid === c.userId || guestId === c.userId) && (
                       <button
@@ -323,7 +398,7 @@ function CommentsOffcanvas({
 }
 
 /* -----------------------
-   ReelsPlayer (TikTok style) - UPDATED TO USE postId
+   ReelsPlayer (TikTok style) - UPDATED WITH PROFILE NAVIGATION
 ----------------------- */
 function ReelsPlayer({
   posts,
@@ -336,10 +411,11 @@ function ReelsPlayer({
   setCommentText,
   deleteComment,
   isAdmin,
+  onProfileClick // Add this prop
 }) {
   const [activeVideo, setActiveVideo] = useState(null);
   const [showComments, setShowComments] = useState(false);
-  const [currentPostId, setCurrentPostId] = useState(null); // Changed to postId
+  const [currentPostId, setCurrentPostId] = useState(null);
   const [showIcon, setShowIcon] = useState(null);
   const [animate, setAnimate] = useState(false);
 
@@ -372,7 +448,6 @@ function ReelsPlayer({
   }, [posts]);
 
   useEffect(() => {
-    // Play the active video and pause others
     Object.entries(videoRefs.current).forEach(([id, videoEl]) => {
       if (!videoEl) return;
 
@@ -395,7 +470,7 @@ function ReelsPlayer({
   }, [activeVideo]);
 
   const openComments = (post) => {
-    setCurrentPostId(post.id); // Set postId instead of full post object
+    setCurrentPostId(post.id);
     setShowComments(true);
   };
 
@@ -404,7 +479,6 @@ function ReelsPlayer({
     const videoEl = videoRefs.current[post.id];
     if (!videoEl) return;
 
-    // Single click = Play/Pause toggle
     if (videoEl.paused) {
       videoEl.play();
       setActiveVideo(post.id);
@@ -415,7 +489,6 @@ function ReelsPlayer({
       setShowIcon({ type: "pause" });
     }
 
-    // icon auto hide after 1s
     setAnimate(true);
     setTimeout(() => {
       setAnimate(false);
@@ -431,11 +504,9 @@ function ReelsPlayer({
     const clickX = e.clientX - rect.left;
 
     if (clickX < rect.width / 2) {
-      // Left side → -10s
       videoEl.currentTime = Math.max(0, videoEl.currentTime - 10);
       setShowIcon({ type: "rewind" });
     } else {
-      // Right side → +10s
       videoEl.currentTime = Math.min(videoEl.duration, videoEl.currentTime + 10);
       setShowIcon({ type: "forward" });
     }
@@ -445,6 +516,12 @@ function ReelsPlayer({
       setAnimate(false);
       setShowIcon(null);
     }, 1000);
+  };
+
+  const handleProfileClick = (post) => {
+    if (onProfileClick) {
+      onProfileClick(post);
+    }
   };
 
   return (
@@ -492,7 +569,6 @@ function ReelsPlayer({
                   onDoubleClick={(e) => handleVideoDoubleClick(e, post)}
                 />
 
-                {/* Overlay Icon */}
                 {showIcon && (
                   <div
                     className="position-absolute top-50 start-50 translate-middle"
@@ -514,7 +590,7 @@ function ReelsPlayer({
                 )}
               </div>
 
-              {/* Caption */}
+              {/* Updated Caption Section with Profile Navigation */}
               <div
                 style={{
                   position: "absolute",
@@ -526,37 +602,58 @@ function ReelsPlayer({
                   maxWidth: "70%",
                 }}
               >
-                <img
-                  src={post.userPic || "icons/avatar.jpg"}
-                  alt="profile"
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: "50%",
-                    objectFit: "cover",
-                    border: "2px solid #fff",
-                    margin: "0 5px 0 0",
-                  }}
-                />
-                <strong>{post.user}</strong>
-                {post.userEmail?.toLowerCase() === ADMIN_EMAIL?.toLowerCase() && (
-                  <span
+                <div className="d-flex align-items-center mb-2">
+                  <img
+                    src={post.userPic || "icons/avatar.jpg"}
+                    alt="profile"
                     style={{
-                      backgroundColor: "gold",
-                      color: "#000",
-                      fontWeight: "bold",
-                      padding: "0 5px",
-                      borderRadius: 4,
-                      marginLeft: 5,
+                      width: 38,
+                      height: 38,
+                      minWidth: 38,
+                      minHeight: 38,
+                      borderRadius: "50%",
+                      objectFit: "cover",
+                      border: "2px solid #fff",
+                      marginRight: 8,
+                      cursor: "pointer",
                     }}
-                  >
-                    ADMIN
-                  </span>
-                )}
-                <p style={{ margin: 0 }}>{post.caption}</p>
+                    onClick={() => handleProfileClick(post)}
+                  />
+                  <div>
+                    <div className="d-flex align-items-center">
+                      <strong 
+                        style={{ cursor: "pointer" }}
+                        onClick={() => handleProfileClick(post)}
+                      >
+                        {post.user}
+                      </strong>
+                      {post.userEmail?.toLowerCase() === ADMIN_EMAIL?.toLowerCase() && (
+                        <span
+                          style={{
+                            backgroundColor: "gold",
+                            color: "#000",
+                            fontSize: "0.7rem",
+                            fontWeight: "bold",
+                            padding: "2px 6px",
+                            borderRadius: 4,
+                            marginLeft: 5,
+                          }}
+                        >
+                          ADMIN
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <p style={{ margin: 0, wordBreak: "break-word" }}>
+                  {linkify(post.caption)?.map((part, index) =>
+                    typeof part === "string"
+                      ? <span key={index}>{part}</span>
+                      : React.cloneElement(part, { key: index })
+                  )}
+                </p>
               </div>
 
-              {/* Buttons + Comments input */}
               <div
                 style={{
                   position: "absolute",
@@ -569,7 +666,6 @@ function ReelsPlayer({
                   color: "#fff",
                 }}
               >
-                {/* Like button */}
                 <div className="d-flex flex-column align-items-center">
                   <button
                     className="btn btn-light rounded-4 px-2"
@@ -581,7 +677,6 @@ function ReelsPlayer({
                   <small>{likeCount}</small>
                 </div>
 
-                {/* Comments button */}
                 <div className="d-flex flex-column align-items-center">
                   <button
                     className="btn btn-light rounded-4 px-2"
@@ -593,13 +688,11 @@ function ReelsPlayer({
                   <small>{commentCount}</small>
                 </div>
 
-                {/* Share button */}
                 <div className="d-flex flex-column align-items-center bg-white rounded-4">
                   <ShareButton link={post.src} />
                 </div>
               </div>
 
-              {/* Comment input overlay at the bottom */}
               <div
                 style={{
                   position: "absolute",
@@ -634,9 +727,8 @@ function ReelsPlayer({
         })}
       </div>
 
-      {/* YouTube Style Comments - UPDATED TO USE postId */}
       <CommentsOffcanvas
-        postId={currentPostId} // Pass postId instead of full post object
+        postId={currentPostId}
         currentUser={currentUser}
         guestId={guestId}
         commentText={commentText}
@@ -646,6 +738,7 @@ function ReelsPlayer({
         isAdmin={isAdmin}
         show={showComments}
         onClose={() => setShowComments(false)}
+        onProfileClick={onProfileClick} // Pass the function
       />
     </>
   );
@@ -693,9 +786,10 @@ function shuffleArray(array) {
 }
 
 /* -----------------------
-   Main GetPost component - UPDATED
+   Main GetPost component - UPDATED WITH PROFILE NAVIGATION
 ----------------------- */
 export default function GetPost({ showFilter = true, uid, shuffle = false }) {
+  const navigate = useNavigate(); // Add this
   const [posts, setPosts] = useState([]);
   const [filter, setFilter] = useState("all");
   const [commentText, setCommentText] = useState("");
@@ -706,7 +800,7 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
   const [fullscreenImage, setFullscreenImage] = useState(null);
   const [playingVideos, setPlayingVideos] = useState({});
   const [showComments, setShowComments] = useState(false);
-  const [commentsPostId, setCommentsPostId] = useState(null); // Changed to postId
+  const [commentsPostId, setCommentsPostId] = useState(null);
 
   const videoRefs = useRef({});
 
@@ -733,9 +827,9 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
       let arr = Object.entries(data).map(([id, v]) => ({ id, ...v }));
 
       if (shuffle) {
-        arr = shuffleArray(arr); // 🔀 shuffle if prop is true
+        arr = shuffleArray(arr);
       } else {
-        arr = arr.sort((a, b) => b.timestamp - a.timestamp); // default sort
+        arr = arr.sort((a, b) => b.timestamp - a.timestamp);
       }
 
       setPosts(arr);
@@ -744,6 +838,13 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
 
   const isAdmin = () =>
     (currentUser?.email || "").toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
+  // Profile navigation function
+  const handleProfileClick = (post) => {
+    if (post.userId) {
+      navigate(`/admin-profile/${post.userId}`);
+    }
+  };
 
   const toggleLike = async (id) => {
     const userId = currentUser?.uid || guestId;
@@ -786,7 +887,7 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
       text: commentText.trim(),
       timestamp: Date.now(),
     });
-    setCommentText(""); // Clear comment text after posting
+    setCommentText("");
   };
 
   const deleteComment = async (postId, cid, commentUserId) => {
@@ -807,7 +908,7 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
   }, []);
 
   const openComments = useCallback((post) => {
-    setCommentsPostId(post.id); // Set postId instead of full post object
+    setCommentsPostId(post.id);
     setShowComments(true);
   }, []);
 
@@ -943,6 +1044,7 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
             setCommentText={setCommentText}
             deleteComment={deleteComment}
             isAdmin={isAdmin}
+            onProfileClick={handleProfileClick} // Pass the function
           />
         ) : (
           <div className="gallery-feed p-0 container">
@@ -959,24 +1061,73 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
 
                 return (
                   <div key={post.id} className="card border-light mb-5">
-                    <div className="card-header custom-white d-flex align-items-center border-0">
+                    <div className="card-header custom-white d-flex align-items-center border-0 p-3">
                       <style>
                         {`
                         .card-header.custom-white {
                           background: white !important;
                           color: black !important;
                         }
+                        .user-avatar {
+                          width: 45px !important;
+                          height: 45px !important;
+                          min-width: 45px !important;
+                          min-height: 45px !important;
+                          object-fit: cover !important;
+                          border: 2px solid #f0f0f0;
+                          flex-shrink: 0;
+                          cursor: pointer;
+                          transition: transform 0.2s ease, box-shadow 0.2s ease;
+                        }
+                        .user-avatar:hover {
+                          transform: scale(1.05);
+                          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                        }
+                        .username-link {
+                          cursor: pointer;
+                          transition: color 0.2s ease;
+                        }
+                        .username-link:hover {
+                          color: #007bff !important;
+                        }
                         `}
                       </style>
                       <img
                         src={post.userPic || "icons/avatar.jpg"}
                         alt="profile"
-                        className="rounded-circle me-2"
-                        style={{ width: 40, height: 40, objectFit: "cover" }}
+                        className="rounded-circle user-avatar me-3"
+                        onClick={() => handleProfileClick(post)}
                       />
                       <div className="d-flex flex-column w-100 text-start">
-                        <strong>{post.user || "Guest"}</strong>
-                        {post.caption}
+                        <div className="d-flex align-items-center mb-1">
+                          <strong 
+                            className="me-2 username-link"
+                            onClick={() => handleProfileClick(post)}
+                          >
+                            {post.user || "Guest"}
+                          </strong>
+                          {post.userEmail?.toLowerCase() === ADMIN_EMAIL?.toLowerCase() && (
+                            <span
+                              style={{
+                                backgroundColor: "gold",
+                                color: "#000",
+                                fontSize: "0.7rem",
+                                fontWeight: "bold",
+                                padding: "2px 6px",
+                                borderRadius: 4,
+                              }}
+                            >
+                              ADMIN
+                            </span>
+                          )}
+                        </div>
+                        <span style={{ wordBreak: "break-word", fontSize: "0.9rem" }}>
+                          {linkify(post.caption)?.map((part, index) =>
+                            typeof part === "string"
+                              ? <span key={index}>{part}</span>
+                              : React.cloneElement(part, { key: index })
+                          )}
+                        </span>
                       </div>
                       <button
                         className="btn btn-sm border ms-auto"
@@ -984,8 +1135,9 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
                         data-bs-target="#imageOffcanvas"
                         onClick={() => setOffcanvasPost(post)}
                         aria-label="Post options"
+                        style={{ flexShrink: 0 }}
                       >
-                        <i className="bi bi-list"></i>
+                        <i className="bi bi-three-dots"></i>
                       </button>
                     </div>
 
@@ -1007,7 +1159,7 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
                               onClick={() => openComments(post)}
                               aria-label="View comments"
                             >
-                              <i className="bi bi-chat fs-1"></i>
+                              <i className="bi bi-chat fs-5"></i>
                             </button>
                             <small className="text-muted">{commentCount}</small>
                           </div>
@@ -1028,10 +1180,6 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
                           </button>
                         )}
                       </div>
-
-                      {/* <p>
-                        <strong>{post.user}</strong> 
-                      </p> */}
 
                       {commentCount > 0 && (
                         <div
@@ -1057,19 +1205,16 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
           style={{ height: "40vh", zIndex: 1000 }}
         >
           <div className="offcanvas-header bg-primary-subtle">
-            {/* <h5>Options</h5> */}
             <button className="btn-close" data-bs-dismiss="offcanvas" aria-label="Close options" />
           </div>
           <div className="offcanvas-body">
-
             {offcanvasPost && (
               <>
-
                 <h5 className="text-muted">
                   Post Name: <small> {offcanvasPost?.caption}</small>
                 </h5>
                 <small className="text-muted">
-               Date: {offcanvasPost?.timestamp ? new Date(offcanvasPost.timestamp).toLocaleDateString() : ""}
+                  Date: {offcanvasPost?.timestamp ? new Date(offcanvasPost.timestamp).toLocaleDateString() : ""}
                 </small>
 
                 <button
@@ -1096,9 +1241,8 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
           </div>
         </div>
 
-        {/* YouTube Style Comments for All Tab - UPDATED TO USE postId */}
         <CommentsOffcanvas
-          postId={commentsPostId} // Pass postId instead of full post object
+          postId={commentsPostId}
           currentUser={currentUser}
           guestId={guestId}
           commentText={commentText}
@@ -1108,6 +1252,7 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
           isAdmin={isAdmin}
           show={showComments}
           onClose={() => setShowComments(false)}
+          onProfileClick={handleProfileClick} // Pass the function
         />
 
         <FullscreenVideoModal
