@@ -1,6 +1,6 @@
 // src/components/Gallery/GetPost.jsx
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom"; // Add this import
 import { db, auth } from "../../assets/utils/firebaseConfig";
 import {
   ref,
@@ -237,7 +237,7 @@ const VideoPreview = React.memo(({ src, id, videoRefs, onOpen, isPlaying, onPlay
 });
 
 /* -----------------------
-   Comments Offcanvas (YouTube Style) - FIXED
+   Comments Offcanvas (YouTube Style) - UPDATED WITH PROFILE NAVIGATION
 ----------------------- */
 function CommentsOffcanvas({
   postId,
@@ -249,7 +249,8 @@ function CommentsOffcanvas({
   deleteComment,
   isAdmin,
   show,
-  onClose
+  onClose,
+  onProfileClick // Add this prop
 }) {
   const [post, setPost] = useState(null);
   const [comments, setComments] = useState([]);
@@ -279,6 +280,17 @@ function CommentsOffcanvas({
 
   const handleDeleteComment = async (cid, commentUserId) => {
     await deleteComment(postId, cid, commentUserId);
+  };
+
+  const handleCommentProfileClick = (comment) => {
+    if (comment.userId && onProfileClick) {
+      const userPost = {
+        userId: comment.userId,
+        user: comment.userName,
+        userPic: comment.userPic
+      };
+      onProfileClick(userPost);
+    }
   };
 
   return (
@@ -315,12 +327,25 @@ function CommentsOffcanvas({
                   src={c.userPic || "icons/avatar.jpg"}
                   alt="profile"
                   className="rounded-circle me-2"
-                  style={{ width: 36, height: 36, objectFit: "cover" }}
+                  style={{ 
+                    width: 40, 
+                    height: 40, 
+                    minWidth: 40,
+                    minHeight: 40,
+                    objectFit: "cover",
+                    cursor: "pointer"
+                  }}
+                  onClick={() => handleCommentProfileClick(c)}
                 />
                 <div className="flex-grow-1">
                   <div className="d-flex justify-content-between align-items-start">
                     <div style={{ maxWidth: "85%" }}>
-                      <strong>@{c.userName}</strong>
+                      <strong 
+                        style={{ cursor: "pointer" }}
+                        onClick={() => handleCommentProfileClick(c)}
+                      >
+                        @{c.userName}
+                      </strong>
                       <p style={{ margin: 0, wordBreak: "break-word" }}>
                         {linkify(c.text).map((part, index) =>
                           typeof part === "string"
@@ -373,7 +398,7 @@ function CommentsOffcanvas({
 }
 
 /* -----------------------
-   ReelsPlayer (TikTok style) - FIXED
+   ReelsPlayer (TikTok style) - UPDATED WITH PROFILE NAVIGATION
 ----------------------- */
 function ReelsPlayer({
   posts,
@@ -386,6 +411,7 @@ function ReelsPlayer({
   setCommentText,
   deleteComment,
   isAdmin,
+  onProfileClick // Add this prop
 }) {
   const [activeVideo, setActiveVideo] = useState(null);
   const [showComments, setShowComments] = useState(false);
@@ -492,6 +518,12 @@ function ReelsPlayer({
     }, 1000);
   };
 
+  const handleProfileClick = (post) => {
+    if (onProfileClick) {
+      onProfileClick(post);
+    }
+  };
+
   return (
     <>
       <div
@@ -558,6 +590,7 @@ function ReelsPlayer({
                 )}
               </div>
 
+              {/* Updated Caption Section with Profile Navigation */}
               <div
                 style={{
                   position: "absolute",
@@ -569,33 +602,49 @@ function ReelsPlayer({
                   maxWidth: "70%",
                 }}
               >
-                <img
-                  src={post.userPic || "icons/avatar.jpg"}
-                  alt="profile"
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: "50%",
-                    objectFit: "cover",
-                    border: "2px solid #fff",
-                    margin: "0 5px 0 0",
-                  }}
-                />
-                <strong>{post.user}</strong>
-                {post.userEmail?.toLowerCase() === ADMIN_EMAIL?.toLowerCase() && (
-                  <span
+                <div className="d-flex align-items-center mb-2">
+                  <img
+                    src={post.userPic || "icons/avatar.jpg"}
+                    alt="profile"
                     style={{
-                      backgroundColor: "gold",
-                      color: "#000",
-                      fontWeight: "bold",
-                      padding: "0 5px",
-                      borderRadius: 4,
-                      marginLeft: 5,
+                      width: 38,
+                      height: 38,
+                      minWidth: 38,
+                      minHeight: 38,
+                      borderRadius: "50%",
+                      objectFit: "cover",
+                      border: "2px solid #fff",
+                      marginRight: 8,
+                      cursor: "pointer",
                     }}
-                  >
-                    ADMIN
-                  </span>
-                )}
+                    onClick={() => handleProfileClick(post)}
+                  />
+                  <div>
+                    <div className="d-flex align-items-center">
+                      <strong 
+                        style={{ cursor: "pointer" }}
+                        onClick={() => handleProfileClick(post)}
+                      >
+                        {post.user}
+                      </strong>
+                      {post.userEmail?.toLowerCase() === ADMIN_EMAIL?.toLowerCase() && (
+                        <span
+                          style={{
+                            backgroundColor: "gold",
+                            color: "#000",
+                            fontSize: "0.7rem",
+                            fontWeight: "bold",
+                            padding: "2px 6px",
+                            borderRadius: 4,
+                            marginLeft: 5,
+                          }}
+                        >
+                          ADMIN
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
                 <p style={{ margin: 0, wordBreak: "break-word" }}>
                   {linkify(post.caption)?.map((part, index) =>
                     typeof part === "string"
@@ -689,6 +738,7 @@ function ReelsPlayer({
         isAdmin={isAdmin}
         show={showComments}
         onClose={() => setShowComments(false)}
+        onProfileClick={onProfileClick} // Pass the function
       />
     </>
   );
@@ -736,9 +786,10 @@ function shuffleArray(array) {
 }
 
 /* -----------------------
-   Main GetPost component - FIXED
+   Main GetPost component - UPDATED WITH PROFILE NAVIGATION
 ----------------------- */
 export default function GetPost({ showFilter = true, uid, shuffle = false }) {
+  const navigate = useNavigate(); // Add this
   const [posts, setPosts] = useState([]);
   const [filter, setFilter] = useState("all");
   const [commentText, setCommentText] = useState("");
@@ -787,6 +838,13 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
 
   const isAdmin = () =>
     (currentUser?.email || "").toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
+  // Profile navigation function
+  const handleProfileClick = (post) => {
+    if (post.userId) {
+      navigate(`/admin-profile/${post.userId}`);
+    }
+  };
 
   const toggleLike = async (id) => {
     const userId = currentUser?.uid || guestId;
@@ -986,6 +1044,7 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
             setCommentText={setCommentText}
             deleteComment={deleteComment}
             isAdmin={isAdmin}
+            onProfileClick={handleProfileClick} // Pass the function
           />
         ) : (
           <div className="gallery-feed p-0 container">
@@ -1005,31 +1064,48 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
                     <div className="card-header custom-white d-flex align-items-center border-0 p-3">
                       <style>
                         {`
-      .card-header.custom-white {
-        background: white !important;
-        color: black !important;
-      }
-      .user-avatar {
-        width: 45px !important;
-        height: 45px !important;
-        min-width: 45px !important;
-        min-height: 45px !important;
-        object-fit: cover !important;
-        border: 2px solid #f0f0f0;
-        flex-shrink: 0;
-      }
-      `}
+                        .card-header.custom-white {
+                          background: white !important;
+                          color: black !important;
+                        }
+                        .user-avatar {
+                          width: 45px !important;
+                          height: 45px !important;
+                          min-width: 45px !important;
+                          min-height: 45px !important;
+                          object-fit: cover !important;
+                          border: 2px solid #f0f0f0;
+                          flex-shrink: 0;
+                          cursor: pointer;
+                          transition: transform 0.2s ease, box-shadow 0.2s ease;
+                        }
+                        .user-avatar:hover {
+                          transform: scale(1.05);
+                          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                        }
+                        .username-link {
+                          cursor: pointer;
+                          transition: color 0.2s ease;
+                        }
+                        .username-link:hover {
+                          color: #007bff !important;
+                        }
+                        `}
                       </style>
-                      <Link to={`/admin-profile/${post.uid}`}>
-                        <img
-                          src={post.userPic || "icons/avatar.jpg"}
-                          alt="profile"
-                          className="rounded-circle user-avatar me-3"
-                        />
-                      </Link>
+                      <img
+                        src={post.userPic || "icons/avatar.jpg"}
+                        alt="profile"
+                        className="rounded-circle user-avatar me-3"
+                        onClick={() => handleProfileClick(post)}
+                      />
                       <div className="d-flex flex-column w-100 text-start">
                         <div className="d-flex align-items-center mb-1">
-                          <strong className="me-2">{post.user || "Guest"}</strong>
+                          <strong 
+                            className="me-2 username-link"
+                            onClick={() => handleProfileClick(post)}
+                          >
+                            {post.user || "Guest"}
+                          </strong>
                           {post.userEmail?.toLowerCase() === ADMIN_EMAIL?.toLowerCase() && (
                             <span
                               style={{
@@ -1176,6 +1252,7 @@ export default function GetPost({ showFilter = true, uid, shuffle = false }) {
           isAdmin={isAdmin}
           show={showComments}
           onClose={() => setShowComments(false)}
+          onProfileClick={handleProfileClick} // Pass the function
         />
 
         <FullscreenVideoModal
