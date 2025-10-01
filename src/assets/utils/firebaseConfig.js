@@ -5,7 +5,6 @@ import { getStorage } from "firebase/storage";
 import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getMessaging, getToken, onMessage, isSupported } from "firebase/messaging";
-
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -28,12 +27,10 @@ let messaging = null;
 export const getFirebaseMessaging = async () => {
   if (!messaging && await isSupported()) {
     messaging = getMessaging(app);
-    
-    // VAPID Key add karo - Yeh Firebase Console se milega
-    // Firebase Console → Project Settings → Cloud Messaging → Web Push certificates
+
     try {
       const token = await getToken(messaging, {
-        vapidKey:"BF6waKYjIeVcDGRYij4_isfQgOudOHtkUM-jiD7zHp_Nl6rP_3h7rqNQtadYRowF6_Vp850PW6K5kTrKZDPO3XA" 
+        vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY
       });
       console.log('🔑 FCM Token:', token);
     } catch (error) {
@@ -43,24 +40,22 @@ export const getFirebaseMessaging = async () => {
   return messaging;
 };
 
-// Request notification permission and get token
 export const requestNotificationPermission = async () => {
   try {
     console.log('🔔 Requesting notification permission...');
-    
+
     if (!("Notification" in window)) {
       console.log("❌ This browser does not support notifications");
       return null;
     }
 
-    // Permission check karo
     let permission = Notification.permission;
-    
+
     if (permission === "default") {
       console.log('🟡 Requesting notification permission...');
       permission = await Notification.requestPermission();
     }
-    
+
     console.log('📋 Notification permission:', permission);
 
     if (permission === "granted") {
@@ -69,15 +64,15 @@ export const requestNotificationPermission = async () => {
         console.log('❌ Messaging not supported');
         return null;
       }
-      
+
       try {
-        // VAPID Key add karo yahan bhi
+        // ✅ VAPID KEY USE KARO YAHAN
         const token = await getToken(messagingInstance, {
-          vapidKey: "BF6waKYjIeVcDGRYij4_isfQgOudOHtkUM-jiD7zHp_Nl6rP_3h7rqNQtadYRowF6_Vp850PW6K5kTrKZDPO3XA"
+          vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY // YEH LINE IMPORTANT HAI
         });
-        
-        console.log('✅ FCM Token received:', token);
-        
+
+        console.log('✅ FCM Token with VAPID received:', token);
+
         if (token) {
           // Token save karo database mein
           const currentUser = auth.currentUser;
@@ -86,7 +81,7 @@ export const requestNotificationPermission = async () => {
             console.log('💾 FCM token saved to database');
           }
         }
-        
+
         return token;
       } catch (tokenError) {
         console.error('❌ Error getting FCM token:', tokenError);
@@ -109,15 +104,15 @@ export const onForegroundMessage = (callback) => {
       console.log('❌ Messaging not available for foreground messages');
       return null;
     }
-    
+
     return onMessage(messagingInstance, (payload) => {
       console.log('📱 Foreground message received:', payload);
-      
+
       // Custom notification show karo
       if (callback) {
         callback(payload);
       }
-      
+
       // Browser notification bhi show karo
       showBrowserNotification(payload);
     });
@@ -165,7 +160,7 @@ export const showBrowserNotification = (payload) => {
       console.log('🔔 Notification clicked');
       window.focus();
       notification.close();
-      
+
       // Specific URL par navigate karo
       if (data.url) {
         window.location.href = data.url;
@@ -176,7 +171,7 @@ export const showBrowserNotification = (payload) => {
     setTimeout(() => {
       notification.close();
     }, 8000);
-    
+
     console.log('✅ Browser notification shown');
   } else {
     console.log('ℹ️ App is focused, notification not shown');

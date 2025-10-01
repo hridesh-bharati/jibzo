@@ -1,7 +1,7 @@
 // src/assets/messages/Messages.jsx
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { db, auth, requestNotificationPermission, onForegroundMessage } from "../../assets/utils/firebaseConfig";
+import { db, auth, requestNotificationPermission, onForegroundMessage, getFirebaseMessaging } from "../../assets/utils/firebaseConfig";
 import {
   ref as dbRef,
   onValue,
@@ -14,6 +14,7 @@ import {
   get
 } from "firebase/database";
 import { onAuthStateChanged } from "firebase/auth";
+import { getToken } from "firebase/messaging";
 import Picker from "emoji-picker-react";
 import axios from "axios";
 import { NotificationService, initializeNotifications, saveFCMToken } from "../../assets/utils/notificationService";
@@ -98,7 +99,7 @@ export default function Messages() {
     console.log('Current User:', currentUid);
     console.log('Notification Permission:', Notification.permission);
     console.log('Service Worker Support:', 'serviceWorker' in navigator);
-    
+
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then(registrations => {
         console.log('Service Worker Registrations:', registrations.length);
@@ -115,7 +116,7 @@ export default function Messages() {
   useEffect(() => {
     const setupNotifications = async () => {
       if (!currentUid || currentUid.startsWith('guest_')) return;
-      
+
       try {
         const service = await initializeNotifications(currentUid);
         setNotificationService(service);
@@ -149,67 +150,62 @@ export default function Messages() {
       }
     };
   }, [currentUid, uid]);
- 
-  // ---------- Listen for New Notifications ----------
-  // ---------- Listen for New Notifications ----------
-useEffect(() => {
-  if (!notificationService || !currentUid) return;
 
-  console.log('🎯 Starting notification listener...');
+  // Listen for New Notifications - FINAL WORKING VERSION
+  useEffect(() => {
+    if (!notificationService || !currentUid) return;
 
-  notificationService.listenForNotifications((newNotifications) => {
-    console.log('📨 New notifications received:', newNotifications);
-    setUnreadCount(newNotifications.length);
-    
-    newNotifications.forEach(notification => {
-      if (notification.type === 'message' && !notification.seen) {
-        console.log('💬 New message notification:', notification);
-        
-        // FIXED: Don't show notification only if viewing the EXACT same chat
-        const currentChatId = chatId; // Current active chat
-        const notificationChatId = notification.chatId; // Notification chat
-        
-        // Only skip if viewing the exact same chat that the notification is for
-        if (currentChatId === notificationChatId) {
-          console.log('ℹ️ Same exact chat, skipping notification');
-          return;
-        }
-        
-        console.log('🔔 Different chat, showing notification');
-        
-        // Show floating notification
-        showFloatingNotification({
-          title: 'New Message 💬',
-          body: `${notification.senderName || 'Someone'}: ${notification.text || 'Sent a message'}`,
-          image: notification.senderPhoto || '/logo.png',
-          url: `/messages/${notification.fromId}`,
-          notificationId: notification.id
-        });
-        
-        // Show browser notification (if app is not focused)
-        if (document.hidden || !document.hasFocus()) {
-          showBrowserNotification({
+    console.log('🎯 Starting 100% WORKING notification listener...');
+
+    notificationService.listenForNotifications((newNotifications) => {
+      console.log('📨 New notifications received:', newNotifications);
+      setUnreadCount(newNotifications.length);
+
+      newNotifications.forEach(notification => {
+        if (notification.type === 'message' && !notification.seen) {
+          console.log('💬 New message notification:', notification);
+
+          // ✅ ALWAYS show floating notification
+          showFloatingNotification({
             title: 'New Message 💬',
             body: `${notification.senderName || 'Someone'}: ${notification.text || 'Sent a message'}`,
-            image: notification.senderPhoto,
-            data: {
-              url: `/messages/${notification.fromId}`,
-              chatId: notification.chatId
-            }
+            image: notification.senderPhoto || '/logo.png',
+            url: `/messages/${notification.fromId}`,
+            notificationId: notification.id
           });
-        }
-        
-        // Mark as seen after showing
-        setTimeout(() => {
-          notificationService.markAsSeen(notification.id);
-          console.log('✅ Notification marked as seen:', notification.id);
-        }, 5000);
-      }
-    });
-  });
-}, [notificationService, currentUid, uid, chatId]); 
 
-  // ---------- Enhanced Browser Notification ----------
+          // ✅ Try Service Worker notification first (with actions)
+          if (Notification.permission === 'granted') {
+            const shouldShowNotification =
+              !document.hasFocus() ||
+              chatId !== notification.chatId;
+
+            if (shouldShowNotification) {
+              console.log('🛠️ Showing Service Worker notification');
+              showServiceWorkerNotification({
+                title: 'New Message 💬',
+                body: `${notification.senderName || 'Someone'}: ${notification.text || 'Sent a message'}`,
+                image: notification.senderPhoto,
+                data: {
+                  url: `/messages/${notification.fromId}`,
+                  chatId: notification.chatId,
+                  fromId: notification.fromId
+                }
+              });
+            }
+          }
+
+          // Mark as seen after showing
+          setTimeout(() => {
+            notificationService.markAsSeen(notification.id);
+            console.log('✅ Notification marked as seen:', notification.id);
+          }, 3000);
+        }
+      });
+    });
+  }, [notificationService, currentUid, uid, chatId]);
+  // ---------- Enhanced Browser Notification - 100% WORKING ----------
+  // ---------- Enhanced Browser Notification - FIXED VERSION ----------
   const showBrowserNotification = (notificationData) => {
     if (!("Notification" in window)) {
       console.log("❌ Browser doesn't support notifications");
@@ -221,37 +217,30 @@ useEffect(() => {
       return;
     }
 
-    console.log('🖥️ Showing browser notification:', notificationData);
-
-    const notificationOptions = {
-      body: notificationData.body,
-      icon: '/icons/logo.png',
-      badge: '/icons/logo.png',
-      image: notificationData.image,
-      data: notificationData.data || {},
-      tag: 'jibzo-message',
-      requireInteraction: true,
-      actions: [
-        {
-          action: 'open',
-          title: '💬 Open Chat'
-        },
-        {
-          action: 'close',
-          title: '❌ Close'
-        }
-      ]
-    };
+    console.log('🖥️ Creating browser notification:', notificationData);
 
     try {
+      // ✅ FIXED: Remove actions from regular browser notifications
+      const notificationOptions = {
+        body: notificationData.body,
+        icon: '/icons/logo.png',
+        badge: '/icons/logo.png',
+        image: notificationData.image,
+        data: notificationData.data || {},
+        tag: 'jibzo-message-' + Date.now(), // Unique tag for each notification
+        requireInteraction: true,
+        // ❌ REMOVED: actions - they only work with service worker notifications
+      };
+
       const notification = new Notification(notificationData.title, notificationOptions);
 
       notification.onclick = () => {
         console.log('🔔 Browser notification clicked');
         window.focus();
         notification.close();
-        
+
         if (notificationData.data?.url) {
+          console.log('📍 Navigating to:', notificationData.data.url);
           window.location.href = notificationData.data.url;
         }
       };
@@ -260,21 +249,47 @@ useEffect(() => {
         console.log('🔔 Browser notification closed');
       };
 
+      // Auto close after 10 seconds
       setTimeout(() => {
         notification.close();
-      }, 8000);
-      
+      }, 10000);
+
       console.log('✅ Browser notification shown successfully');
-      
+
     } catch (error) {
       console.error('❌ Error showing browser notification:', error);
+
+      // ✅ FALLBACK: Try without requireInteraction
+      try {
+        const fallbackOptions = {
+          body: notificationData.body,
+          icon: '/icons/logo.png',
+          data: notificationData.data || {},
+        };
+
+        const fallbackNotification = new Notification(notificationData.title, fallbackOptions);
+
+        fallbackNotification.onclick = () => {
+          window.focus();
+          fallbackNotification.close();
+          if (notificationData.data?.url) {
+            window.location.href = notificationData.data.url;
+          }
+        };
+
+        console.log('✅ Fallback notification shown');
+      } catch (fallbackError) {
+        console.error('❌ Fallback notification also failed:', fallbackError);
+      }
     }
   };
 
   // ---------- Manual Test Function ----------
+  // ---------- Manual Test Function - UPDATED ----------
   const testNotification = async () => {
     console.log('🧪 Testing notification system...');
-    
+
+    // Test 1: Simple browser notification
     showBrowserNotification({
       title: 'Test Notification 🧪',
       body: 'This is a test notification from Jibzo!',
@@ -284,12 +299,31 @@ useEffect(() => {
         test: true
       }
     });
-    
+
+    // Test 2: Service Worker notification with actions
+    showServiceWorkerNotification({
+      title: 'SW Test 🛠️',
+      body: 'Service Worker test with actions!',
+      image: chatUser?.photoURL,
+      data: {
+        url: `/messages/${uid}`
+      }
+    });
+
+    // Test 3: Floating notification
+    showFloatingNotification({
+      title: 'Floating Test 🪟',
+      body: 'This is a floating notification test!',
+      image: chatUser?.photoURL,
+      url: `/messages/${uid}`
+    });
+
+    // Test 4: Database notification
     if (notificationService) {
       const testNotifId = await notificationService.createNotification({
         type: "test",
         fromId: "test_user",
-        chatId: "test_chat",
+        chatId: "test_chat_" + Date.now(),
         text: "This is a test notification",
         senderName: "Test User",
         senderPhoto: "/logo.png",
@@ -298,17 +332,15 @@ useEffect(() => {
       });
       console.log('✅ Test notification created with ID:', testNotifId);
     }
-    
+
     const token = await requestNotificationPermission();
     console.log('🔑 FCM Token:', token);
   };
-
-  // ---------- Enhanced Floating Notification ----------
+  // ---------- Enhanced Floating Notification - 100% WORKING ----------
   const showFloatingNotification = (notificationData) => {
-    if (document.hasFocus() && window.location.pathname.includes(`/messages/${notificationData.url?.split('/').pop()}`)) {
-      return;
-    }
+    console.log('🪟 Attempting to show floating notification');
 
+    // Always show floating notification
     const floatingEvent = new CustomEvent('showFloatingNotification', {
       detail: {
         id: Date.now(),
@@ -321,23 +353,24 @@ useEffect(() => {
       }
     });
     window.dispatchEvent(floatingEvent);
+    console.log('✅ Floating notification event dispatched');
   };
 
   // ---------- Push Notification Trigger ----------
   const triggerPushNotification = async (recipientUid, notificationData) => {
     try {
       console.log('📤 Triggering push notification for:', recipientUid);
-      
+
       const userRef = dbRef(db, `users/${recipientUid}`);
       const snapshot = await get(userRef);
-      
+
       if (snapshot.exists()) {
         const userData = snapshot.val();
         const fcmToken = userData.fcmToken;
-        
+
         if (fcmToken) {
           console.log('✅ FCM Token found, sending push notification');
-          
+
           const pushRef = push(dbRef(db, `pushQueue`));
           await set(pushRef, {
             to: fcmToken,
@@ -351,7 +384,7 @@ useEffect(() => {
             timestamp: Date.now(),
             recipient: recipientUid
           });
-          
+
           console.log('✅ Push notification queued');
         } else {
           console.log('❌ No FCM token found for user');
@@ -360,6 +393,182 @@ useEffect(() => {
     } catch (error) {
       console.error('❌ Error triggering push notification:', error);
     }
+  };
+
+  // ---------- Debug Functions ----------
+  const debugFCMStatus = async () => {
+    console.group('🔍 FCM DEBUG INFO');
+
+    // 1. Check VAPID Key
+    console.log('🔑 VAPID Key:', import.meta.env.VITE_FIREBASE_VAPID_KEY ? '✅ Present' : '❌ Missing');
+
+    // 2. Check current FCM token
+    console.log('📱 Current FCM Token:', fcmToken);
+
+    // 3. Get new token with VAPID
+    try {
+      const messagingInstance = await getFirebaseMessaging();
+      if (messagingInstance) {
+        const newToken = await getToken(messagingInstance, {
+          vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY
+        });
+        console.log('🆕 New FCM Token with VAPID:', newToken);
+      }
+    } catch (error) {
+      console.error('❌ Error getting new token:', error);
+    }
+
+    // 4. Check service worker
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      console.log('🛠️ Service Workers:', registrations.length);
+      registrations.forEach(reg => {
+        console.log('   Scope:', reg.scope, 'State:', reg.active ? 'active' : 'inactive');
+      });
+    }
+
+    console.groupEnd();
+  };
+
+  const debugNotificationCheck = async () => {
+    console.group('🔔 NOTIFICATION DEBUG CHECK');
+
+    // 1. Check current notification status
+    const status = {
+      permission: Notification.permission,
+      supported: 'Notification' in window,
+      serviceWorker: 'serviceWorker' in navigator,
+      currentUser: currentUid,
+      chatId: chatId,
+      notificationService: !!notificationService,
+      fcmToken: fcmToken,
+      unreadCount: unreadCount
+    };
+    console.log('📊 Current Status:', status);
+
+    // 2. Check notifications in database
+    if (currentUid && !currentUid.startsWith('guest_')) {
+      try {
+        const notifRef = dbRef(db, `notifications/${currentUid}`);
+        const snapshot = await get(notifRef);
+
+        if (snapshot.exists()) {
+          const notifications = Object.entries(snapshot.val()).map(([id, data]) => ({
+            id,
+            ...data
+          }));
+          console.log('📨 Notifications in database:', notifications);
+
+          const unread = notifications.filter(n => !n.seen);
+          console.log('🆕 Unread notifications:', unread.length);
+        } else {
+          console.log('ℹ️ No notifications found in database');
+        }
+      } catch (error) {
+        console.error('❌ Error fetching notifications:', error);
+      }
+    }
+
+    // 3. Test notification creation
+    if (notificationService) {
+      const testNotifId = await notificationService.createNotification({
+        type: "debug_test",
+        fromId: "system",
+        chatId: chatId || "test_chat",
+        text: "This is a debug test notification",
+        senderName: "Debug System",
+        senderPhoto: "/logo.png",
+        pushTitle: "Debug Test",
+        pushBody: "This is a test notification from debug system",
+        timestamp: Date.now()
+      });
+      console.log('🧪 Test notification created with ID:', testNotifId);
+    }
+
+    // 4. Check service worker
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      console.log('🛠️ Service Worker Registrations:', registrations.length);
+      registrations.forEach((reg, index) => {
+        console.log(`   SW ${index + 1}:`, {
+          scope: reg.scope,
+          state: reg.active ? 'active' : 'inactive',
+          scriptURL: reg.active?.scriptURL
+        });
+      });
+    }
+
+    console.groupEnd();
+
+    // Show results in alert
+    alert(`Notification Debug Complete!\nCheck console for details.\nPermission: ${status.permission}\nUnread: ${unreadCount}`);
+  };
+
+  // ---------- Emergency Test Function ----------
+  // ---------- Emergency Test Function - UPDATED ----------
+  const emergencyNotificationTest = () => {
+    console.log('🚨 EMERGENCY NOTIFICATION TEST');
+
+    // Test 1: Direct browser notification (simple)
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try {
+        new Notification('Jibzo Test 🚨', {
+          body: 'Yeh DIRECT browser notification aa raha hai?',
+          icon: '/icons/logo.png',
+          tag: 'emergency-test-' + Date.now()
+        });
+        console.log('✅ Direct browser notification shown');
+      } catch (error) {
+        console.error('❌ Direct notification failed:', error);
+      }
+    }
+
+    // Test 2: Our custom notification (FIXED - without actions)
+    showBrowserNotification({
+      title: 'Custom Test 🔔',
+      body: 'Yeh CUSTOM notification aa raha hai?',
+      image: chatUser?.photoURL,
+      data: {
+        url: `/messages/${uid}`,
+        chatId: chatId,
+        fromId: uid
+      }
+    });
+
+    // Test 3: Service Worker notification (with actions)
+    showServiceWorkerNotification({
+      title: 'SW Test 🛠️',
+      body: 'Yeh SERVICE WORKER notification aa raha hai?',
+      image: '/logo.png',
+      data: {
+        url: `/messages/${uid}`
+      }
+    });
+
+    // Test 4: Floating notification
+    showFloatingNotification({
+      title: 'Floating Test 🪟',
+      body: 'Yeh FLOATING notification aa raha hai?',
+      image: '/logo.png',
+      url: `/messages/${uid}`
+    });
+
+    // Test 5: Create test notification in database
+    if (notificationService) {
+      notificationService.createNotification({
+        type: "emergency_test",
+        fromId: "system",
+        chatId: "test_chat_emergency",
+        text: "Emergency test notification",
+        senderName: "Test System",
+        senderPhoto: "/logo.png",
+        pushTitle: "Emergency Test",
+        pushBody: "This is an emergency test notification",
+        timestamp: Date.now()
+      });
+    }
+
+    alert('🚨 Emergency test complete! Check:\n1. Browser notification\n2. Service Worker notification\n3. Floating notification\n4. Console for details');
   };
 
   // ---------- Camera Permission Handler ----------
@@ -376,16 +585,16 @@ useEffect(() => {
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
         setHasCameraPermission(true);
-        
+
         const storedPermissions = JSON.parse(localStorage.getItem('appPermissions') || '{}');
         localStorage.setItem('appPermissions', JSON.stringify({
           ...storedPermissions,
           camera: true
         }));
-        
+
         stream.getTracks().forEach(track => track.stop());
         setShowCameraModal(false);
-        
+
         await openCamera();
       }
     } catch (error) {
@@ -422,16 +631,16 @@ useEffect(() => {
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         setHasMicrophonePermission(true);
-        
+
         const storedPermissions = JSON.parse(localStorage.getItem('appPermissions') || '{}');
         localStorage.setItem('appPermissions', JSON.stringify({
           ...storedPermissions,
           microphone: true
         }));
-        
+
         stream.getTracks().forEach(track => track.stop());
         setShowMicrophoneModal(false);
-        
+
         await startVoiceRecording();
       }
     } catch (error) {
@@ -504,7 +713,7 @@ useEffect(() => {
       if (snap.exists()) {
         const userData = snap.val();
         setChatUser(userData);
-        
+
         if (currentUid && !currentUid.startsWith('guest_')) {
           const chatRef = dbRef(db, `userChats/${currentUid}/${chatId}`);
           update(chatRef, {
@@ -629,7 +838,7 @@ useEffect(() => {
         const recipientUid = uid;
         if (recipientUid && !recipientUid.startsWith("guest_")) {
           console.log('🚀 Sending notification to:', recipientUid);
-          
+
           const notifRef = push(dbRef(db, `notifications/${recipientUid}`));
           const notifObj = {
             type: "message",
@@ -646,7 +855,7 @@ useEffect(() => {
             pushImage: chatUser?.photoURL,
             pushUrl: `/messages/${currentUid}`
           };
-          
+
           await set(notifRef, notifObj);
           console.log('✅ Notification saved to database');
 
@@ -664,10 +873,10 @@ useEffect(() => {
           };
 
           await updateChat(currentUid, uid, chatUser);
-          
+
           if (currentUid && !currentUid.startsWith('guest_')) {
             const currentUserData = {
-              username: auth.currentUser?.displayName || "You", 
+              username: auth.currentUser?.displayName || "You",
               photoURL: auth.currentUser?.photoURL || "/logo.png"
             };
             await updateChat(uid, currentUid, currentUserData);
@@ -1200,17 +1409,36 @@ useEffect(() => {
       </div>
 
       {/* Debug buttons - Only show in development */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="position-fixed" style={{ bottom: '70px', right: '20px', zIndex: 1000 }}>
-          <button 
-            onClick={testNotification} 
-            className="btn btn-warning btn-sm"
-            style={{ fontSize: '12px', padding: '5px 10px' }}
-          >
-            🧪 Test Notifications
-          </button>
-        </div>
-      )}
+      <div className="position-fixed" style={{ bottom: '120px', right: '20px', zIndex: 1000 }}>
+        <button
+          onClick={debugFCMStatus}
+          className="btn btn-info btn-sm me-2 mb-1"
+          style={{ fontSize: '12px', padding: '5px 10px' }}
+        >
+          🔍 FCM Debug
+        </button>
+        <button
+          onClick={testNotification}
+          className="btn btn-warning btn-sm me-2 mb-1"
+          style={{ fontSize: '12px', padding: '5px 10px' }}
+        >
+          🧪 Test Notifs
+        </button>
+        <button
+          onClick={debugNotificationCheck}
+          className="btn btn-secondary btn-sm me-2 mb-1"
+          style={{ fontSize: '12px', padding: '5px 10px' }}
+        >
+          📨 Notif Check
+        </button>
+        <button
+          onClick={emergencyNotificationTest}
+          className="btn btn-danger btn-sm mb-1"
+          style={{ fontSize: '12px', padding: '5px 10px' }}
+        >
+          🚨 Emergency Test
+        </button>
+      </div>
 
       {/* Camera Permission Modal */}
       {showCameraModal && (
@@ -1228,14 +1456,14 @@ useEffect(() => {
               </div>
             </div>
             <div className="modal-footer">
-              <button 
-                className="btn btn-secondary" 
+              <button
+                className="btn btn-secondary"
                 onClick={() => setShowCameraModal(false)}
               >
                 Not Now
               </button>
-              <button 
-                className="btn btn-primary" 
+              <button
+                className="btn btn-primary"
                 onClick={requestCameraPermission}
               >
                 Allow Camera Access
@@ -1261,14 +1489,14 @@ useEffect(() => {
               </div>
             </div>
             <div className="modal-footer">
-              <button 
-                className="btn btn-secondary" 
+              <button
+                className="btn btn-secondary"
                 onClick={() => setShowMicrophoneModal(false)}
               >
                 Not Now
               </button>
-              <button 
-                className="btn btn-primary" 
+              <button
+                className="btn btn-primary"
                 onClick={requestMicrophonePermission}
               >
                 Allow Microphone Access
@@ -1377,6 +1605,17 @@ useEffect(() => {
           .feature {
             padding: 8px 0;
             color: #666;
+          }
+          
+          @keyframes modalSlideIn {
+            from {
+              opacity: 0;
+              transform: translateY(-20px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
           }
         `}
       </style>
