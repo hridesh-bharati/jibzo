@@ -183,26 +183,39 @@ export default function Messages() {
   };
 
   // ---------- Smart Notification (Auto-chooses best method) ----------
-  const showSmartNotification = (notificationData) => {
-    console.log('🤖 Showing smart notification');
-    
-    // Always show floating notification
-    showFloatingNotification(notificationData);
-    
-    // Show browser notification if app is not focused
-    if (!document.hasFocus()) {
-      if ('serviceWorker' in navigator) {
-        // Try service worker notification first (with actions)
-        showServiceWorkerNotification(notificationData);
-      } else {
-        // Fallback to regular browser notification
-        showBrowserNotification(notificationData);
-      }
-    } else {
-      console.log('ℹ️ App is focused, skipping browser notification');
-    }
-  };
+ // ---------- Smart Notification (FIXED FOR CROSS-DEVICE) ----------
+const showSmartNotification = (notificationData) => {
+  console.log('🤖 Showing smart notification');
+  
+  // Always show floating notification
+  showFloatingNotification(notificationData);
+  
+  // ✅ FIXED: Check if this is from DIFFERENT chat (cross-device)
+  const currentChatId = chatId;
+  const notificationChatId = notificationData.data?.chatId;
+  const isDifferentChat = currentChatId !== notificationChatId;
+  
+  console.log('🔍 Cross-device check:', {
+    currentChatId,
+    notificationChatId,
+    isDifferentChat,
+    isFocused: document.hasFocus()
+  });
 
+  // ✅ ALWAYS show notification for different chats (cross-device)
+  // ✅ OR if app is not focused (background/minimized)
+  if (isDifferentChat || !document.hasFocus()) {
+    if ('serviceWorker' in navigator) {
+      // Try service worker notification first (with actions)
+      showServiceWorkerNotification(notificationData);
+    } else {
+      // Fallback to regular browser notification
+      showBrowserNotification(notificationData);
+    }
+  } else {
+    console.log('ℹ️ Same chat + focused, skipping browser notification');
+  }
+};
   // ---------- Manual Test Function ----------
   const testNotification = async () => {
     console.log('🧪 Testing notification system...');

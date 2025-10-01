@@ -1,4 +1,4 @@
-// public/firebase-messaging-sw.js - UPDATE KARO
+// public/firebase-messaging-sw.js - 
 
 importScripts('https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.6.0/firebase-messaging-compat.js');
