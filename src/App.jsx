@@ -20,6 +20,7 @@ import InstaUserProfile from "./assets/users/InstaUserProfile";
 import Followers from "./assets/users/Followers";
 import Following from "./assets/users/Following";
 import Requested from "./assets/users/Requested";
+import Friends from "./assets/users/Friends";
 import UploadPost from "./assets/uploads/UploadPost";
 import GetPost from "./assets/uploads/GetPost";
 import Messages from "./assets/messages/Messages";
@@ -34,6 +35,8 @@ import FileConverter from "./assets/Gadgets/FileConverter";
 import ImageCompressor from "./assets/Gadgets/ImageCompressor";
 import ImageResizer from "./assets/Gadgets/ImageResizer";
 import InstallPrompt from "./assets/Pwa/InstallApp";
+import FaceSticker from "./assets/Gadgets/AiModel/FaceSticker";
+import AgeCalculator from "./assets/Gadgets/AgeCal/AgeCalculator";
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -60,7 +63,6 @@ const App = () => {
 
   return (
     <UserRelationsProvider>
-
       <>
         <InstallPrompt />
         <Routes>
@@ -103,22 +105,48 @@ const App = () => {
             element={<PrivateRoute user={user}><InstaUserProfile /></PrivateRoute>}
           />
 
-          {/* Relationship Routes */}
+          {/* Relationship Routes - FIXED PATHS */}
           <Route
-            path="/followers/:uid?"
+            path="/followers"
             element={<PrivateRoute user={user}><Followers /></PrivateRoute>}
           />
           <Route
-            path="/following/:uid?"
+            path="/followers/:uid"
+            element={<PrivateRoute user={user}><Followers /></PrivateRoute>}
+          />
+          <Route
+            path="/following"
             element={<PrivateRoute user={user}><Following /></PrivateRoute>}
           />
           <Route
-            path="/blocked/:uid?"  // FIXED: Removed double slash
+            path="/following/:uid"
+            element={<PrivateRoute user={user}><Following /></PrivateRoute>}
+          />
+          <Route
+            path="/blocked"
             element={<PrivateRoute user={user}><Blocked /></PrivateRoute>}
           />
           <Route
-            path="/requested/:uid?"
+            path="/blocked/:uid"
+            element={<PrivateRoute user={user}><Blocked /></PrivateRoute>}
+          />
+          <Route
+            path="/requested"
             element={<PrivateRoute user={user}><Requested /></PrivateRoute>}
+          />
+          <Route
+            path="/requested/:uid"
+            element={<PrivateRoute user={user}><Requested /></PrivateRoute>}
+          />
+          {/* Add Friends route if needed */}
+         // In your App.jsx, add this route:
+          <Route
+            path="/friends"
+            element={<PrivateRoute user={user}><Friends /></PrivateRoute>}
+          />
+          <Route
+            path="/friends/:uid"
+            element={<PrivateRoute user={user}><Friends /></PrivateRoute>}
           />
 
           {/* Content Routes */}
@@ -137,7 +165,11 @@ const App = () => {
 
           {/* Messaging Routes */}
           <Route
-            path="/messages/:uid?"
+            path="/messages"
+            element={<PrivateRoute user={user}><Messages /></PrivateRoute>}
+          />
+          <Route
+            path="/messages/:uid"
             element={<PrivateRoute user={user}><Messages /></PrivateRoute>}
           />
 
@@ -146,6 +178,10 @@ const App = () => {
             path="/status/upload"
             element={<PrivateRoute user={user}><UploadStatus /></PrivateRoute>}
           />
+          <Route
+            path="/status"
+            element={<PrivateRoute user={user}><ViewStatus /></PrivateRoute>}
+          />
 
           {/* Account Management Routes */}
           <Route
@@ -153,15 +189,18 @@ const App = () => {
             element={<PrivateRoute user={user}><DeleteAccount /></PrivateRoute>}
           />
 
-          {/* Public Routes */}
-          <Route path="/status" element={<ViewStatus />} />
+          {/* Support Route */}
           <Route path="/support" element={<Support />} />
 
+          {/* Gadgets & Tools Routes - FIXED NESTED ROUTES */}
           <Route path="/gadgets-and-tools" element={<GadgetsTools />}>
-            <Route index element={<h4 className="text-center mt-3">Welcome to Gadgets & Tools</h4>} />
+            <Route index element={<FileConverter />} />
             <Route path="file-converter" element={<FileConverter />} />
             <Route path="image-compression" element={<ImageCompressor />} />
             <Route path="image-resizer" element={<ImageResizer />} />
+            <Route path="face-sticker" element={<FaceSticker />} />
+            <Route path="age-calculator" element={<AgeCalculator />} />
+
           </Route>
 
           {/* Catch-all route for 404 */}
@@ -185,7 +224,6 @@ const App = () => {
         />
       </>
     </UserRelationsProvider>
-
   );
 };
 

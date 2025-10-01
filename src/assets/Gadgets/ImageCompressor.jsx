@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import "bootstrap/dist/css/bootstrap.min.css";
 
 export default function ImageCompressor() {
   const [files, setFiles] = useState([]);
@@ -38,7 +37,7 @@ export default function ImageCompressor() {
                 (blob) => {
                   const sizeKB = blob.size / 1024;
                   if (Math.abs(sizeKB - targetSizeKB) <= 5 || quality <= 0.1) {
-                    res({ blob, sizeKB, originalSize: file.size / 1024, fileName: file.name });
+                    res({ blob, sizeKB, fileName: file.name });
                   } else if (sizeKB > targetSizeKB) {
                     res(compress(quality * 0.7));
                   } else {
@@ -59,11 +58,11 @@ export default function ImageCompressor() {
     if (!files.length) return;
     setCompressing(true);
     setCompressedFiles([]);
+    
     try {
       const results = await Promise.all(files.map((f) => compressImage(f, targetSize)));
       setCompressedFiles(results);
     } catch (err) {
-      console.error(err);
       alert("Error compressing images");
     } finally {
       setCompressing(false);
@@ -84,51 +83,27 @@ export default function ImageCompressor() {
     setCompressedFiles([]);
   };
 
-  const renderFileCard = (file, size, isCompressed = false) => (
-    <div className="text-center">
-      <img
-        src={isCompressed ? URL.createObjectURL(file.blob) : URL.createObjectURL(file)}
-        alt=""
-        className="img-thumbnail border-danger"
-        style={{ width: "100px", height: "100px", objectFit: "cover" }}
-      />
-      <div className="small mt-1">{size.toFixed(1)}KB</div>
-      {isCompressed && (
-        <button
-          className="btn btn-success btn-sm mt-1"
-          onClick={() => downloadFile(file)}
-        >
-          Download
-        </button>
-      )}
-    </div>
-  );
-
   return (
-    <div className="container my-4 p-0">
-      <div className="card shadow-sm border-0 w-100 m-0 p-0">
+    <div className="container my-4">
+      <div className="card">
         <div className="card-body">
-          <h3 className="card-title text-danger mb-4">Jibzo Photo Compressor</h3>
+          <h3 className="card-title mb-4 text-danger fw-bolder">Image Compressor</h3>
 
-          {/* Target Size */}
-          <div className="mb-3 row align-items-center">
-            <label className="col-auto col-form-label fw-bold">Target Size:</label>
-            <div className="col-auto">
-              <select
-                className="form-select border-danger"
-                value={targetSize}
-                onChange={(e) => setTargetSize(Number(e.target.value))}
-              >
-                {[5, 20, 50, 100, 200].map((size) => (
-                  <option key={size} value={size}>
-                    {size}KB
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div className="mb-3">
+            <label className="form-label fw-bold">Target Size:</label>
+            <select
+              className="form-select"
+              value={targetSize}
+              onChange={(e) => setTargetSize(Number(e.target.value))}
+            >
+              {[5, 20, 50, 100, 200].map((size) => (
+                <option key={size} value={size}>
+                  {size}KB
+                </option>
+              ))}
+            </select>
           </div>
 
-          {/* File Input */}
           <div className="mb-4">
             <input
               type="file"
@@ -145,38 +120,60 @@ export default function ImageCompressor() {
             {files.length > 0 && (
               <div className="mt-3">
                 <button
-                  className="btn btn-danger me-2"
+                  className="btn btn-primary me-2"
                   onClick={handleCompress}
                   disabled={compressing}
                 >
                   {compressing ? "Compressing..." : `Compress to ${targetSize}KB`}
                 </button>
                 <button className="btn btn-outline-secondary" onClick={clearFiles}>
-                  Clear Files
+                  Clear
                 </button>
               </div>
             )}
           </div>
 
           <div className="row">
-            {/* Original Files */}
             {files.length > 0 && (
-              <div className="col-6 mb-4">
-                <h5 className="fw-bold">Original Files</h5>
+              <div className="col-6">
+                <h5>Original Files</h5>
                 <div className="d-flex flex-wrap gap-3">
-                  {files.map((file, idx) => renderFileCard(file, file.size / 1024))}
+                  {files.map((file, idx) => (
+                    <div key={idx} className="text-center">
+                      <img
+                        src={URL.createObjectURL(file)}
+                        alt=""
+                        className="img-thumbnail"
+                        style={{ width: "100px", height: "100px", objectFit: "cover" }}
+                      />
+                      <div className="small mt-1">{(file.size / 1024).toFixed(1)}KB</div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
 
-            {/* Compressed Files */}
             {compressedFiles.length > 0 && (
-              <div className="col-6 mb-4">
-                <h5 className="fw-bold">Compressed Files</h5>
+              <div className="col-6">
+                <h5>Compressed Files</h5>
                 <div className="d-flex flex-wrap gap-3">
-                  {compressedFiles.map((file, idx) =>
-                    renderFileCard(file, file.sizeKB, true)
-                  )}
+                  {compressedFiles.map((file, idx) => (
+                    <div key={idx} className="text-center">
+                      <img
+                        src={URL.createObjectURL(file.blob)}
+                        alt=""
+                        className="img-thumbnail"
+                        style={{ width: "100px", height: "100px", objectFit: "cover" }}
+                      />
+                      <div className="small mt-1">{file.sizeKB.toFixed(1)}KB</div>
+                      <button
+                        className="btn btn-success btn-sm mt-1"
+                        onClick={() => downloadFile(file)}
+                      >
+                        Download
+                      </button>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

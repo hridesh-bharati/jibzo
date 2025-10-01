@@ -3,11 +3,38 @@ import { useState, useEffect, useCallback } from 'react';
 import { db, auth } from '../assets/utils/firebaseConfig';
 import { ref, onValue, update, get } from 'firebase/database';
 
-// Global cache shared across all components
 const userCache = new Map();
 const CACHE_DURATION = 5 * 60 * 1000;
 
-// Enhanced relationship calculator
+// Helper Functions
+const getUsersDetails = async (uids) => {
+  if (!uids.length) return [];
+
+  const now = Date.now();
+  const users = await Promise.all(
+    uids.map(async (userId) => {
+      const cached = userCache.get(userId);
+      if (cached && (now - cached.timestamp < CACHE_DURATION)) {
+        return cached.data;
+      }
+
+      try {
+        const userSnap = await get(ref(db, `usersData/${userId}`));
+        if (userSnap.exists()) {
+          const userData = { uid: userId, ...userSnap.val() };
+          userCache.set(userId, { data: userData, timestamp: now });
+          return userData;
+        }
+        return null;
+      } catch (error) {
+        console.error(`Error fetching user ${userId}:`, error);
+        return null;
+      }
+    })
+  );
+  return users.filter(Boolean);
+};
+
 export const calculateRelationship = (currentUserId, targetUser, relations) => {
   if (!targetUser || !currentUserId || !relations) {
     return {
@@ -22,58 +49,33 @@ export const calculateRelationship = (currentUserId, targetUser, relations) => {
     };
   }
   
+  const isFollowing = relations.following?.some(u => u?.uid === targetUser.uid) || false;
+  const isFollower = relations.followers?.some(u => u?.uid === targetUser.uid) || false;
+  const isFriend = isFollowing && isFollower; // Mutual following = friends
+  const hasSentRequest = relations.sentRequests?.some(u => u?.uid === targetUser.uid) || false;
+  const hasReceivedRequest = relations.requested?.some(u => u?.uid === targetUser.uid) || false;
+  const isBlocked = relations.blocked?.some(u => u?.uid === targetUser.uid) || false;
+  const isBlockedBy = relations.blockedBy?.some(u => u?.uid === targetUser.uid) || false;
+  
   return {
     isOwner: currentUserId === targetUser.uid,
-    isFollowing: relations.following?.some(u => u?.uid === targetUser.uid) || false,
-    isFollower: relations.followers?.some(u => u?.uid === targetUser.uid) || false,
-    isFriend: relations.friends?.some(u => u?.uid === targetUser.uid) || false,
-    hasSentRequest: relations.sentRequests?.some(u => u?.uid === targetUser.uid) || false,
-    hasReceivedRequest: relations.requested?.some(u => u?.uid === targetUser.uid) || false,
-    isBlocked: relations.blocked?.some(u => u?.uid === targetUser.uid) || false,
-    isBlockedBy: relations.blockedBy?.some(u => u?.uid === targetUser.uid) || false,
+    isFollowing,
+    isFollower,
+    isFriend,
+    hasSentRequest,
+    hasReceivedRequest,
+    isBlocked,
+    isBlockedBy,
   };
 };
 
 export const useUserRelations = (uid) => {
   const [relations, setRelations] = useState({
-    followers: [], 
-    following: [], 
-    requested: [], 
-    sentRequests: [], 
-    friends: [], 
-    blocked: [],
-    blockedBy: []
+    followers: [], following: [], requested: [], 
+    sentRequests: [], friends: [], blocked: [], blockedBy: []
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  const getUsersDetails = useCallback(async (uids) => {
-    if (!uids.length) return [];
-
-    const now = Date.now();
-    const users = await Promise.all(
-      uids.map(async (userId) => {
-        const cached = userCache.get(userId);
-        if (cached && (now - cached.timestamp < CACHE_DURATION)) {
-          return cached.data;
-        }
-
-        try {
-          const userSnap = await get(ref(db, `usersData/${userId}`));
-          if (userSnap.exists()) {
-            const userData = { uid: userId, ...userSnap.val() };
-            userCache.set(userId, { data: userData, timestamp: now });
-            return userData;
-          }
-          return null;
-        } catch (error) {
-          console.error(`Error fetching user ${userId}:`, error);
-          return null;
-        }
-      })
-    );
-    return users.filter(Boolean);
-  }, []);
 
   useEffect(() => {
     if (!uid) {
@@ -85,17 +87,14 @@ export const useUserRelations = (uid) => {
     const unsubscribe = onValue(relationsRef, async (snapshot) => {
       try {
         if (!snapshot.exists()) {
-          setRelations({
-            followers: [], following: [], requested: [], 
-            sentRequests: [], friends: [], blocked: [], blockedBy: []
-          });
+          setRelations({ followers: [], following: [], requested: [], sentRequests: [], friends: [], blocked: [], blockedBy: [] });
           setLoading(false);
           return;
         }
 
         const data = snapshot.val();
         
-        // Get blockedBy users by checking who blocked this user
+        // Get blockedBy users
         const allUsersRef = ref(db, 'usersData');
         const allUsersSnap = await get(allUsersRef);
         const allUsers = allUsersSnap.val() || {};
@@ -108,13 +107,7 @@ export const useUserRelations = (uid) => {
         });
 
         const [
-          followers, 
-          following, 
-          requested, 
-          sentRequests, 
-          friends, 
-          blocked,
-          blockedBy
+          followers, following, requested, sentRequests, friends, blocked, blockedBy
         ] = await Promise.all([
           getUsersDetails(Object.keys(data.followers || {})),
           getUsersDetails(Object.keys(data.following || {})),
@@ -125,15 +118,7 @@ export const useUserRelations = (uid) => {
           getUsersDetails(blockedByUsers)
         ]);
 
-        setRelations({ 
-          followers, 
-          following, 
-          requested, 
-          sentRequests, 
-          friends, 
-          blocked,
-          blockedBy 
-        });
+        setRelations({ followers, following, requested, sentRequests, friends, blocked, blockedBy });
         setError(null);
       } catch (error) {
         console.error('Error processing relations:', error);
@@ -148,7 +133,7 @@ export const useUserRelations = (uid) => {
     });
 
     return () => unsubscribe();
-  }, [uid, getUsersDetails]);
+  }, [uid]);
 
   return { relations, calculateRelationship, loading, error };
 };
@@ -159,23 +144,14 @@ export const useUserActions = () => {
   const updateRelations = async (updates) => {
     try {
       await update(ref(db), updates);
-      // Clear cache for ALL affected users to force refresh
-      const affectedUsers = new Set();
-      
+      // Clear cache for affected users
       Object.keys(updates).forEach(key => {
         if (key.includes('usersData/')) {
           const uid = key.split('/')[1];
-          affectedUsers.add(uid);
           userCache.delete(uid);
         }
       });
-
-      // Also clear cache for current user
-      if (currentUser) {
-        userCache.delete(currentUser.uid);
-      }
-
-      console.log('Cache cleared for users:', Array.from(affectedUsers));
+      if (currentUser) userCache.delete(currentUser.uid);
     } catch (error) {
       console.error('Relation update error:', error);
       throw error;
@@ -186,16 +162,63 @@ export const useUserActions = () => {
     if (!currentUser) throw new Error('Login required');
     if (currentUser.uid === targetUid) throw new Error('Cannot follow yourself');
 
-    const updates = {
-      [`usersData/${targetUid}/followRequests/received/${currentUser.uid}`]: {
-        uid: currentUser.uid, 
-        timestamp: Date.now()
-      },
-      [`usersData/${currentUser.uid}/followRequests/sent/${targetUid}`]: {
+    const [currentUserSnap, targetUserSnap] = await Promise.all([
+      get(ref(db, `usersData/${currentUser.uid}`)),
+      get(ref(db, `usersData/${targetUid}`))
+    ]);
+
+    const currentUserData = currentUserSnap.val() || {};
+    const targetUserData = targetUserSnap.val() || {};
+
+    // Check if target user follows back
+    const targetFollowsBack = targetUserData.following?.[currentUser.uid];
+    const updates = {};
+
+    if (targetFollowsBack) {
+      // Mutual follow - become friends immediately
+      updates[`usersData/${currentUser.uid}/following/${targetUid}`] = {
         uid: targetUid, 
+        username: targetUserData.username, 
+        photoURL: targetUserData.photoURL, 
         timestamp: Date.now()
-      }
-    };
+      };
+      updates[`usersData/${targetUid}/followers/${currentUser.uid}`] = {
+        uid: currentUser.uid, 
+        username: currentUserData.username, 
+        photoURL: currentUserData.photoURL, 
+        timestamp: Date.now()
+      };
+      updates[`usersData/${currentUser.uid}/friends/${targetUid}`] = {
+        uid: targetUid, 
+        username: targetUserData.username, 
+        photoURL: targetUserData.photoURL, 
+        timestamp: Date.now()
+      };
+      updates[`usersData/${targetUid}/friends/${currentUser.uid}`] = {
+        uid: currentUser.uid, 
+        username: currentUserData.username, 
+        photoURL: currentUserData.photoURL, 
+        timestamp: Date.now()
+      };
+      // Remove any pending requests
+      updates[`usersData/${targetUid}/followRequests/received/${currentUser.uid}`] = null;
+      updates[`usersData/${currentUser.uid}/followRequests/sent/${targetUid}`] = null;
+    } else {
+      // Send follow request
+      updates[`usersData/${targetUid}/followRequests/received/${currentUser.uid}`] = {
+        uid: currentUser.uid, 
+        username: currentUserData.username,
+        photoURL: currentUserData.photoURL,
+        timestamp: Date.now()
+      };
+      updates[`usersData/${currentUser.uid}/followRequests/sent/${targetUid}`] = {
+        uid: targetUid, 
+        username: targetUserData.username,
+        photoURL: targetUserData.photoURL,
+        timestamp: Date.now()
+      };
+    }
+
     await updateRelations(updates);
   };
 
@@ -223,31 +246,29 @@ export const useUserActions = () => {
       // Remove requests
       [`usersData/${currentUser.uid}/followRequests/received/${targetUid}`]: null,
       [`usersData/${targetUid}/followRequests/sent/${currentUser.uid}`]: null,
-      
       // Add mutual follow
       [`usersData/${currentUser.uid}/following/${targetUid}`]: {
         uid: targetUid, 
-        username: targetUserData.username,
+        username: targetUserData.username, 
         photoURL: targetUserData.photoURL, 
         timestamp: Date.now()
       },
       [`usersData/${targetUid}/followers/${currentUser.uid}`]: {
         uid: currentUser.uid, 
-        username: currentUserData.username,
+        username: currentUserData.username, 
         photoURL: currentUserData.photoURL, 
         timestamp: Date.now()
       },
-      
-      // Add to friends (mutual follow = friends)
+      // Add to friends
       [`usersData/${currentUser.uid}/friends/${targetUid}`]: {
         uid: targetUid, 
-        username: targetUserData.username,
+        username: targetUserData.username, 
         photoURL: targetUserData.photoURL, 
         timestamp: Date.now()
       },
       [`usersData/${targetUid}/friends/${currentUser.uid}`]: {
         uid: currentUser.uid, 
-        username: currentUserData.username,
+        username: currentUserData.username, 
         photoURL: currentUserData.photoURL, 
         timestamp: Date.now()
       }
@@ -271,7 +292,9 @@ export const useUserActions = () => {
       [`usersData/${targetUid}/followers/${currentUser.uid}`]: null,
       [`usersData/${currentUser.uid}/following/${targetUid}`]: null,
       [`usersData/${targetUid}/friends/${currentUser.uid}`]: null,
-      [`usersData/${currentUser.uid}/friends/${targetUid}`]: null
+      [`usersData/${currentUser.uid}/friends/${targetUid}`]: null,
+      [`usersData/${targetUid}/followRequests/received/${currentUser.uid}`]: null,
+      [`usersData/${currentUser.uid}/followRequests/sent/${targetUid}`]: null
     };
     await updateRelations(updates);
   };
@@ -295,14 +318,12 @@ export const useUserActions = () => {
       get(ref(db, `usersData/${targetUid}`))
     ]);
 
-    const currentUserData = currentUserSnap.val() || {};
     const targetUserData = targetUserSnap.val() || {};
-
     const updates = {
-      // Add to blocked
       [`usersData/${currentUser.uid}/blockedUsers/${targetUid}`]: {
         uid: targetUid, 
-        username: targetUserData.username,
+        username: targetUserData.username, 
+        photoURL: targetUserData.photoURL,
         timestamp: Date.now()
       },
       // Remove all relationships

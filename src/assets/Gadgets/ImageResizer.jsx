@@ -14,18 +14,12 @@ export default function ImageResizer() {
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext("2d");
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = "high";
         ctx.drawImage(img, 0, 0, width, height);
 
-        canvas.toBlob(
-          (blob) => {
-            const resizedFile = new File([blob], file.name, { type: file.type });
-            resolve(resizedFile);
-          },
-          file.type,
-          1.0
-        );
+        canvas.toBlob((blob) => {
+          const resizedFile = new File([blob], file.name, { type: file.type });
+          resolve(resizedFile);
+        }, file.type);
       };
     });
   };
@@ -44,46 +38,41 @@ export default function ImageResizer() {
   };
 
   return (
-    <div className="p-4 bg-white rounded-3 shadow-sm" style={{ maxWidth: "450px", margin: "40px auto", border: "1px solid #f0f0f0" }}>
-      <h4 className="text-center text-danger mb-4" style={{ fontWeight: "600" }}>
-        Resize Photos
-      </h4>
+    <div className="container my-4">
+      <div className="card">
+        <div className="card-body">
+          <h4 className="text-center mb-4 text-danger fw-bolder">Image Resizer</h4>
 
-      <input
-        type="file"
-        accept="image/*"
-        multiple
-        onChange={(e) => setFiles([...e.target.files])}
-        className="form-control mb-3"
-        style={{ borderRadius: "8px", borderColor: "#e53935" }}
-      />
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={(e) => setFiles([...e.target.files])}
+            className="form-control mb-3"
+          />
 
-      <div className="mb-3">
-        <input
-          type="number"
-          value={width}
-          onChange={(e) => setWidth(+e.target.value)}
-          placeholder="Width"
-          className="form-control mb-2"
-          style={{ borderRadius: "8px", borderColor: "#e53935" }}
-        />
-        <input
-          type="number"
-          value={height}
-          onChange={(e) => setHeight(+e.target.value)}
-          placeholder="Height"
-          className="form-control"
-          style={{ borderRadius: "8px", borderColor: "#e53935" }}
-        />
+          <div className="mb-3">
+            <input
+              type="number"
+              value={width}
+              onChange={(e) => setWidth(+e.target.value)}
+              placeholder="Width"
+              className="form-control mb-2"
+            />
+            <input
+              type="number"
+              value={height}
+              onChange={(e) => setHeight(+e.target.value)}
+              placeholder="Height"
+              className="form-control"
+            />
+          </div>
+
+          <button className="btn btn-primary w-100" onClick={handleResize}>
+            Resize & Download
+          </button>
+        </div>
       </div>
-
-      <button
-        className="btn btn-danger w-100"
-        style={{ borderRadius: "8px", fontWeight: "500" }}
-        onClick={handleResize}
-      >
-        Resize & Download
-      </button>
     </div>
   );
 }

@@ -1,9 +1,7 @@
 import React, { useState } from "react";
 import { jsPDF } from "jspdf";
 import * as pdfjsLib from "pdfjs-dist/build/pdf";
-import "bootstrap/dist/css/bootstrap.min.css";
 
-// ✅ from CDN
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
 
 export default function FileConverter() {
@@ -13,7 +11,6 @@ export default function FileConverter() {
   const [loading, setLoading] = useState(false);
   const [conversionType, setConversionType] = useState("jpg-to-pdf");
 
-  // Optimized toBase64 function
   const toBase64 = (file) =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -22,42 +19,21 @@ export default function FileConverter() {
       reader.onerror = reject;
     });
 
-  // Optimized image compression
-  const compressImage = (base64, quality = 0.7) => {
+  const compressImage = (base64) => {
     return new Promise((resolve) => {
       const img = new Image();
       img.src = base64;
       img.onload = () => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
-
-        // Set reasonable dimensions
-        const MAX_WIDTH = 800;
-        const MAX_HEIGHT = 1000;
-
-        let { width, height } = img;
-
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', quality));
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
       };
     });
   };
 
-  /** Convert Images -> PDF */
   const handleImagesToPdf = async () => {
     if (!imageFiles.length) {
       alert("Please select images first!");
@@ -69,34 +45,30 @@ export default function FileConverter() {
       const pdf = new jsPDF();
 
       for (let i = 0; i < imageFiles.length; i++) {
-        const originalBase64 = await toBase64(imageFiles[i]);
-        const compressedBase64 = await compressImage(originalBase64, 0.7);
+        const base64 = await toBase64(imageFiles[i]);
+        const compressed = await compressImage(base64);
 
         const img = new Image();
-        img.src = compressedBase64;
+        img.src = compressed;
 
-        await new Promise((resolve, reject) => {
+        await new Promise((resolve) => {
           img.onload = resolve;
-          img.onerror = reject;
         });
 
         const pdfWidth = pdf.internal.pageSize.getWidth();
         const pdfHeight = (img.height * pdfWidth) / img.width;
 
         if (i > 0) pdf.addPage();
-        pdf.addImage(compressedBase64, "JPEG", 0, 0, pdfWidth, pdfHeight);
+        pdf.addImage(compressed, "JPEG", 0, 0, pdfWidth, pdfHeight);
       }
 
       pdf.save(`converted-${Date.now()}.pdf`);
-
     } catch (err) {
-      console.error("PDF Conversion Error:", err);
       alert("Failed to convert images to PDF.");
     }
     setLoading(false);
   };
 
-  /** Convert PDF -> JPG */
   const handlePdfToJpg = async () => {
     if (!pdfFile) {
       alert("Please select a PDF file first!");
@@ -113,7 +85,7 @@ export default function FileConverter() {
 
       for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
         const page = await pdf.getPage(pageNum);
-        const viewport = page.getViewport({ scale: 1.2 }); // Lower scale for smaller files
+        const viewport = page.getViewport({ scale: 1.5 });
 
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
@@ -121,18 +93,14 @@ export default function FileConverter() {
         canvas.height = viewport.height;
 
         await page.render({ canvasContext: ctx, viewport }).promise;
-
-        const imgData = canvas.toDataURL("image/jpeg", 0.8); // 80% quality
-
         pages.push({
-          data: imgData,
+          data: canvas.toDataURL("image/jpeg"),
           pageNumber: pageNum,
         });
       }
 
       setPdfImages(pages);
     } catch (err) {
-      console.error("PDF to JPG Error:", err);
       alert("Failed to convert PDF to images.");
     }
     setLoading(false);
@@ -158,17 +126,12 @@ export default function FileConverter() {
   };
 
   return (
-    <div className="container my-4">
-      <h2 className="text-center mb-4 text-primary fw-bold">
-        <i className="bi bi-file-earmark-arrow-down me-2"></i>
-        File Converter
-      </h2>
+    <div className="container my-4 myshadow p-2">
+      <h2 className="text-center mb-4 text-danger fw-bolder">File Converter</h2>
 
-      {/* Conversion Type */}
       <div className="btn-group w-100 mb-4">
         <button
-          className={`btn ${conversionType === "jpg-to-pdf" ? "btn-primary" : "btn-outline-primary"
-            }`}
+          className={`btn ${conversionType === "jpg-to-pdf" ? "btn-primary" : "btn-outline-primary"}`}
           onClick={() => {
             setConversionType("jpg-to-pdf");
             clearFiles();
@@ -177,8 +140,7 @@ export default function FileConverter() {
           Images → PDF
         </button>
         <button
-          className={`btn ${conversionType === "pdf-to-jpg" ? "btn-success" : "btn-outline-success"
-            }`}
+          className={`btn ${conversionType === "pdf-to-jpg" ? "btn-success" : "btn-outline-success"}`}
           onClick={() => {
             setConversionType("pdf-to-jpg");
             clearFiles();
@@ -188,7 +150,6 @@ export default function FileConverter() {
         </button>
       </div>
 
-      {/* Images -> PDF */}
       {conversionType === "jpg-to-pdf" && (
         <div className="card mb-4">
           <div className="card-body">
@@ -210,7 +171,6 @@ export default function FileConverter() {
         </div>
       )}
 
-      {/* PDF -> Images */}
       {conversionType === "pdf-to-jpg" && (
         <div className="card mb-4">
           <div className="card-body">
@@ -231,16 +191,12 @@ export default function FileConverter() {
         </div>
       )}
 
-      {/* Show Extracted Images */}
       {pdfImages.length > 0 && (
         <div className="card mb-4">
           <div className="card-body">
             <div className="d-flex justify-content-between mb-3">
               <h5>Extracted Images ({pdfImages.length})</h5>
-              <button
-                className="btn btn-outline-primary btn-sm"
-                onClick={downloadAllImages}
-              >
+              <button className="btn btn-outline-primary btn-sm" onClick={downloadAllImages}>
                 Download All
               </button>
             </div>
@@ -252,7 +208,7 @@ export default function FileConverter() {
                       src={img.data}
                       alt={`Page ${img.pageNumber}`}
                       className="img-fluid mb-2"
-                      style={{ maxHeight: "150px", objectFit: "contain" }}
+                      style={{ maxHeight: "150px" }}
                     />
                     <button
                       className="btn btn-outline-secondary btn-sm"
