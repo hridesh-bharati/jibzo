@@ -1,4 +1,3 @@
-// src/App.jsx
 import React, { useEffect, useState } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
@@ -47,23 +46,28 @@ const App = () => {
 
   useEffect(() => {
     const auth = getAuth();
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      if (u) {
-        setUser(u);
-        localStorage.setItem("currentUser", JSON.stringify(u));
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      try {
+        if (user) {
+          setUser(user);
+          localStorage.setItem("currentUser", JSON.stringify(user));
 
-        // User login ke baad permission modal show karo
-        const hasSeenPermissions = localStorage.getItem('hasSeenPermissionModal');
-        if (!hasSeenPermissions) {
+          // Show permission modal after 3 seconds if not seen before
           setTimeout(() => {
-            setShowPermissionModal(true);
-          }, 2000);
+            const hasSeenPermissions = localStorage.getItem('hasSeenPermissionModal');
+            if (!hasSeenPermissions) {
+              setShowPermissionModal(true);
+            }
+          }, 3000);
+        } else {
+          setUser(null);
+          localStorage.removeItem("currentUser");
         }
-      } else {
-        setUser(null);
-        localStorage.removeItem("currentUser");
+      } catch (error) {
+        console.error("Auth state change error:", error);
+      } finally {
+        setLoadingAuth(false);
       }
-      setLoadingAuth(false);
     });
 
     return () => unsubscribe();
@@ -74,143 +78,175 @@ const App = () => {
     localStorage.setItem('hasSeenPermissionModal', 'true');
   };
 
-  if (loadingAuth) return <Loader />;
+  // Show loader while checking authentication
+  if (loadingAuth) {
+    return <Loader />;
+  }
 
   return (
     <UserRelationsProvider>
-      <>
+      <div className="app">
         {/* Permission Modal */}
         {showPermissionModal && (
           <PermissionModal onClose={handlePermissionClose} />
         )}
 
+        {/* PWA Install Prompt */}
         <InstallPrompt />
-        <Routes>
-          {/* Root redirects to login */}
-          <Route path="/" element={<Navigate to="/login" />} />
 
-          {/* Public Routes */}
-          <Route
-            path="/register"
-            element={user ? <Navigate to="/home" /> : <UserRegister />}
+        {/* Routes */}
+        <Routes>
+          {/* Authentication Routes */}
+          <Route 
+            path="/" 
+            element={
+              user ? <Navigate to="/home" replace /> : <Navigate to="/login" replace />
+            } 
           />
-          <Route
-            path="/login"
-            element={user ? <Navigate to="/home" /> : <Login />}
+          <Route 
+            path="/login" 
+            element={user ? <Navigate to="/home" replace /> : <Login />} 
+          />
+          <Route 
+            path="/register" 
+            element={user ? <Navigate to="/home" replace /> : <UserRegister />} 
           />
 
           {/* Protected Routes */}
-          <Route
-            path="/home"
-            element={<PrivateRoute user={user}><Home /></PrivateRoute>}
-          />
+          <Route path="/home" element={
+            <PrivateRoute user={user}>
+              <Home />
+            </PrivateRoute>
+          } />
 
           {/* Profile Routes */}
-          <Route
-            path="/admin-profile"
-            element={<PrivateRoute user={user}><Profile /></PrivateRoute>}
-          />
-          <Route
-            path="/admin-profile/:uid"
-            element={<PrivateRoute user={user}><Profile /></PrivateRoute>}
-          />
+          <Route path="/admin-profile" element={
+            <PrivateRoute user={user}>
+              <Profile />
+            </PrivateRoute>
+          } />
+          <Route path="/admin-profile/:uid" element={
+            <PrivateRoute user={user}>
+              <Profile />
+            </PrivateRoute>
+          } />
 
           {/* User Discovery Routes */}
-          <Route
-            path="/all-insta-users"
-            element={<PrivateRoute user={user}><InstaUsers /></PrivateRoute>}
-          />
-          <Route
-            path="/user-profile/:uid"
-            element={<PrivateRoute user={user}><InstaUserProfile /></PrivateRoute>}
-          />
+          <Route path="/all-insta-users" element={
+            <PrivateRoute user={user}>
+              <InstaUsers />
+            </PrivateRoute>
+          } />
+          <Route path="/user-profile/:uid" element={
+            <PrivateRoute user={user}>
+              <InstaUserProfile />
+            </PrivateRoute>
+          } />
 
-          <Route
-            path="/followers"
-            element={<PrivateRoute user={user}><Followers /></PrivateRoute>}
-          />
-          <Route
-            path="/followers/:uid"
-            element={<PrivateRoute user={user}><Followers /></PrivateRoute>}
-          />
-          <Route
-            path="/following"
-            element={<PrivateRoute user={user}><Following /></PrivateRoute>}
-          />
-          <Route
-            path="/following/:uid"
-            element={<PrivateRoute user={user}><Following /></PrivateRoute>}
-          />
-          <Route
-            path="/blocked"
-            element={<PrivateRoute user={user}><Blocked /></PrivateRoute>}
-          />
-          <Route
-            path="/blocked/:uid"
-            element={<PrivateRoute user={user}><Blocked /></PrivateRoute>}
-          />
-          <Route
-            path="/requested"
-            element={<PrivateRoute user={user}><Requested /></PrivateRoute>}
-          />
-          <Route
-            path="/requested/:uid"
-            element={<PrivateRoute user={user}><Requested /></PrivateRoute>}
-          />
-          {/* Add Friends route if needed */}
-          <Route
-            path="/friends"
-            element={<PrivateRoute user={user}><Friends /></PrivateRoute>}
-          />
-          <Route
-            path="/friends/:uid"
-            element={<PrivateRoute user={user}><Friends /></PrivateRoute>}
-          />
+          {/* Social Routes */}
+          <Route path="/followers" element={
+            <PrivateRoute user={user}>
+              <Followers />
+            </PrivateRoute>
+          } />
+          <Route path="/followers/:uid" element={
+            <PrivateRoute user={user}>
+              <Followers />
+            </PrivateRoute>
+          } />
+          <Route path="/following" element={
+            <PrivateRoute user={user}>
+              <Following />
+            </PrivateRoute>
+          } />
+          <Route path="/following/:uid" element={
+            <PrivateRoute user={user}>
+              <Following />
+            </PrivateRoute>
+          } />
+          <Route path="/blocked" element={
+            <PrivateRoute user={user}>
+              <Blocked />
+            </PrivateRoute>
+          } />
+          <Route path="/blocked/:uid" element={
+            <PrivateRoute user={user}>
+              <Blocked />
+            </PrivateRoute>
+          } />
+          <Route path="/requested" element={
+            <PrivateRoute user={user}>
+              <Requested />
+            </PrivateRoute>
+          } />
+          <Route path="/requested/:uid" element={
+            <PrivateRoute user={user}>
+              <Requested />
+            </PrivateRoute>
+          } />
+          <Route path="/friends" element={
+            <PrivateRoute user={user}>
+              <Friends />
+            </PrivateRoute>
+          } />
+          <Route path="/friends/:uid" element={
+            <PrivateRoute user={user}>
+              <Friends />
+            </PrivateRoute>
+          } />
 
           {/* Content Routes */}
-          <Route
-            path="/user/new/post"
-            element={<PrivateRoute user={user}><UploadPost /></PrivateRoute>}
-          />
-          <Route
-            path="/user/get-all-post/post"
-            element={<PrivateRoute user={user}><GetPost /></PrivateRoute>}
-          />
-          <Route
-            path="/post/:postId"
-            element={<PrivateRoute user={user}><GetPost /></PrivateRoute>}
-          />
+          <Route path="/user/new/post" element={
+            <PrivateRoute user={user}>
+              <UploadPost />
+            </PrivateRoute>
+          } />
+          <Route path="/user/get-all-post/post" element={
+            <PrivateRoute user={user}>
+              <GetPost />
+            </PrivateRoute>
+          } />
+          <Route path="/post/:postId" element={
+            <PrivateRoute user={user}>
+              <GetPost />
+            </PrivateRoute>
+          } />
 
           {/* Messaging Routes */}
-          <Route
-            path="/messages"
-            element={<PrivateRoute user={user}><Messages /></PrivateRoute>}
-          />
-          <Route
-            path="/messages/:uid"
-            element={<PrivateRoute user={user}><Messages /></PrivateRoute>}
-          />
+          <Route path="/messages" element={
+            <PrivateRoute user={user}>
+              <Messages />
+            </PrivateRoute>
+          } />
+          <Route path="/messages/:uid" element={
+            <PrivateRoute user={user}>
+              <Messages />
+            </PrivateRoute>
+          } />
 
           {/* Status Routes */}
-          <Route
-            path="/status/upload"
-            element={<PrivateRoute user={user}><UploadStatus /></PrivateRoute>}
-          />
-          <Route
-            path="/status"
-            element={<PrivateRoute user={user}><ViewStatus /></PrivateRoute>}
-          />
+          <Route path="/status/upload" element={
+            <PrivateRoute user={user}>
+              <UploadStatus />
+            </PrivateRoute>
+          } />
+          <Route path="/status" element={
+            <PrivateRoute user={user}>
+              <ViewStatus />
+            </PrivateRoute>
+          } />
 
-          {/* Account Management Routes */}
-          <Route
-            path="/delete-account"
-            element={<PrivateRoute user={user}><DeleteAccount /></PrivateRoute>}
-          />
+          {/* Account Management */}
+          <Route path="/delete-account" element={
+            <PrivateRoute user={user}>
+              <DeleteAccount />
+            </PrivateRoute>
+          } />
 
           {/* Support Route */}
           <Route path="/support" element={<Support />} />
 
-          {/* Gadgets & Tools Routes - FIXED NESTED ROUTES */}
+          {/* Gadgets & Tools Routes */}
           <Route path="/gadgets-and-tools" element={<GadgetsTools />}>
             <Route index element={<FileConverter />} />
             <Route path="file-converter" element={<FileConverter />} />
@@ -220,26 +256,29 @@ const App = () => {
             <Route path="age-calculator" element={<AgeCalculator />} />
           </Route>
 
-          {/* Catch-all route for 404 */}
-          <Route path="*" element={<Navigate to="/home" />} />
+          {/* 404 Route */}
+          <Route path="*" element={<Navigate to={user ? "/home" : "/login"} replace />} />
         </Routes>
 
-        {/* Footer only if logged in and not on login/register/root */}
-        {user && !["/", "/login", "/register"].includes(location.pathname) && (
+        {/* Footer - Show only when user is logged in and not on auth pages */}
+        {user && !['/login', '/register', '/'].includes(location.pathname) && (
           <BottomFooter />
         )}
 
+        {/* Toast Notifications */}
         <ToastContainer
           position="top-right"
-          autoClose={3000}
+          autoClose={5000}
           hideProgressBar={false}
           newestOnTop={false}
           closeOnClick
-          pauseOnHover
+          rtl={false}
+          pauseOnFocusLoss
           draggable
+          pauseOnHover
           theme="colored"
         />
-      </>
+      </div>
     </UserRelationsProvider>
   );
 };

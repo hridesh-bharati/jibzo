@@ -1,5 +1,4 @@
-// src/assets/Pwa/PermissionModal.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './PermissionModal.css';
 
 const PermissionModal = ({ onClose }) => {
@@ -58,6 +57,59 @@ const PermissionModal = ({ onClose }) => {
     }
   ];
 
+  useEffect(() => {
+    // Check current permissions
+    const checkCurrentPermissions = async () => {
+      const currentPermissions = {
+        notifications: Notification.permission === 'granted',
+        camera: await checkCameraPermission(),
+        microphone: await checkMicrophonePermission(),
+        location: await checkLocationPermission()
+      };
+      
+      setPermissionsGranted(currentPermissions);
+    };
+
+    checkCurrentPermissions();
+  }, []);
+
+  const checkCameraPermission = async () => {
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) return false;
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      stream.getTracks().forEach(track => track.stop());
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const checkMicrophonePermission = async () => {
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) return false;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(track => track.stop());
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const checkLocationPermission = async () => {
+    return new Promise((resolve) => {
+      if (!navigator.geolocation) {
+        resolve(false);
+        return;
+      }
+      
+      navigator.geolocation.getCurrentPosition(
+        () => resolve(true),
+        () => resolve(false),
+        { timeout: 1000 }
+      );
+    });
+  };
+
   const requestPermission = async (type) => {
     try {
       let granted = false;
@@ -74,11 +126,10 @@ const PermissionModal = ({ onClose }) => {
           break;
 
         case 'camera':
-          if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          if (navigator.mediaDevices?.getUserMedia) {
             try {
               const stream = await navigator.mediaDevices.getUserMedia({ video: true });
               granted = true;
-              // Stream close karo - humko sirf permission chahiye
               stream.getTracks().forEach(track => track.stop());
               console.log('✅ Camera permission granted');
             } catch (error) {
@@ -89,7 +140,7 @@ const PermissionModal = ({ onClose }) => {
           break;
 
         case 'microphone':
-          if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          if (navigator.mediaDevices?.getUserMedia) {
             try {
               const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
               granted = true;
@@ -133,16 +184,16 @@ const PermissionModal = ({ onClose }) => {
         [type]: granted
       }));
 
-      // Next step par jao
+      // Move to next step after delay
       if (currentStep < permissionSteps.length - 1) {
         setTimeout(() => {
           setCurrentStep(prev => prev + 1);
-        }, 800);
+        }, 1000);
       } else {
-        // Last step complete - modal close karo
+        // Last step complete
         setTimeout(() => {
           onClose();
-        }, 1000);
+        }, 1500);
       }
 
       return granted;
@@ -161,10 +212,12 @@ const PermissionModal = ({ onClose }) => {
   };
 
   const skipAll = () => {
+    localStorage.setItem('hasSeenPermissionModal', 'true');
     onClose();
   };
 
   const currentPermission = permissionSteps[currentStep];
+  const progress = ((currentStep + 1) / permissionSteps.length) * 100;
 
   return (
     <div className="permission-overlay">
@@ -173,12 +226,12 @@ const PermissionModal = ({ onClose }) => {
         <div className="progress-container">
           <div 
             className="progress-bar"
-            style={{ width: `${((currentStep + 1) / permissionSteps.length) * 100}%` }}
+            style={{ width: `${progress}%` }}
           ></div>
         </div>
 
         {/* Close Button */}
-        <button className="close-btn" onClick={skipAll}>
+        <button className="close-btn" onClick={skipAll} aria-label="Close">
           ✕
         </button>
 
@@ -201,7 +254,7 @@ const PermissionModal = ({ onClose }) => {
             {currentPermission.benefits.map((benefit, index) => (
               <div key={index} className="benefit-item">
                 <span className="benefit-icon">✓</span>
-                <span>{benefit}</span>
+                <span className="benefit-text">{benefit}</span>
               </div>
             ))}
           </div>
@@ -223,21 +276,20 @@ const PermissionModal = ({ onClose }) => {
         {/* Actions */}
         <div className="permission-actions">
           <button
-            className="btn btn-primary btn-lg allow-btn"
+            className={`btn allow-btn ${permissionsGranted[currentPermission.type] ? 'btn-success' : 'btn-primary'}`}
             onClick={() => requestPermission(currentPermission.type)}
             disabled={permissionsGranted[currentPermission.type]}
           >
-            {permissionsGranted[currentPermission.type] ? '✅ Allowed' : 'Allow Access'}
+            {permissionsGranted[currentPermission.type] ? '✅ Permission Granted' : 'Allow Access'}
           </button>
           
           <button
-            className="btn btn-outline skip-btn"
+            className="btn skip-btn"
             onClick={skipPermission}
           >
             {currentStep === permissionSteps.length - 1 ? 'Finish Setup' : 'Skip for now'}
           </button>
 
-          {/* Small text for skip */}
           <p className="skip-note">
             You can always enable these in settings later
           </p>
