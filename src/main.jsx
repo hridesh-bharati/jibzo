@@ -36,15 +36,20 @@ class ErrorBoundary extends React.Component {
 }
 
 // Service Worker registration with better error handling
-const registerServiceWorker = async () => {
+const registerServiceWorkers = async () => {
   if ('serviceWorker' in navigator) {
     try {
-      const registration = await navigator.serviceWorker.register('/sw.js');
-      console.log("✅ Service Worker registered:", registration);
+      // Register your main app service worker
+      const mainSW = await navigator.serviceWorker.register('/sw.js');
+      console.log("✅ Main Service Worker registered:", mainSW);
+      
+      // Register Firebase messaging service worker
+      const messagingSW = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+      console.log("✅ Firebase Messaging Service Worker registered:", messagingSW);
       
       // Check for updates
-      registration.addEventListener('updatefound', () => {
-        const newWorker = registration.installing;
+      mainSW.addEventListener('updatefound', () => {
+        const newWorker = mainSW.installing;
         console.log('New service worker found...');
         
         newWorker.addEventListener('statechange', () => {
@@ -72,4 +77,4 @@ root.render(
 );
 
 // Register service worker after initial render
-registerServiceWorker();
+registerServiceWorkers();

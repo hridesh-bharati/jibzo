@@ -13,6 +13,7 @@ import Heart from "./Heart";
 import ShareButton from "./ShareBtn";
 import "./Gallery.css";
 import DownloadBtn from "./DownloadBtn";
+import { useNavigate } from "react-router-dom";
 
 const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL || "";
 
@@ -1045,6 +1046,7 @@ export default function GetPost({ showFilter = true, uid }) {
   const [showComments, setShowComments] = useState(false);
   const [commentsPostId, setCommentsPostId] = useState(null);
   const [commentsText, setCommentsText] = useState({});
+  const navigate = useNavigate();
 
   const videoRefs = useRef({});
 
@@ -1073,6 +1075,9 @@ export default function GetPost({ showFilter = true, uid }) {
       setPosts(arr);
     });
   }, []);
+  const goToProfile = (uid) => {
+    navigate(`/user-profile/${uid}`);
+  };
 
   const isAdmin = () =>
     (currentUser?.email || "").toLowerCase() === ADMIN_EMAIL.toLowerCase();
@@ -1355,7 +1360,10 @@ export default function GetPost({ showFilter = true, uid }) {
                       src={post.userPic || "icons/avatar.jpg"}
                       alt="profile"
                       className="rounded-circle me-2 user-avatar"
-                      style={{ width: 40, height: 40, objectFit: "cover" }}
+                      style={{
+                        width: 40, height: 40, objectFit: "cover", cursor: "pointer"
+                      }}
+                      onClick={() => goToProfile(post.userId)}
                     />
                     <div className="d-flex flex-column">
                       <strong className="username-link">{post.user || "Guest"}</strong>
@@ -1391,17 +1399,18 @@ export default function GetPost({ showFilter = true, uid }) {
                   </div>
 
                   <div className="p-3">{renderPreview(post)}</div>
-
                   <div className="card-body p-3 pt-0">
                     <div className="d-flex align-items-center justify-content-between mb-2">
                       <div className="d-flex align-items-center justify-content-between w-100">
-                        <Heart
-                          liked={liked}
-                          onToggle={() => toggleLike(post.id)}
-                        />
-                        <small className="text-muted">
-                          {likeCount}
-                        </small>
+                        <div className="d-flex align-items-center">
+                          <Heart
+                            liked={liked}
+                            onToggle={() => toggleLike(post.id)}
+                          />
+                          <small className="text-muted ms-1">
+                            {likeCount}
+                          </small>
+                        </div>
 
                         <div className="mx-3 d-flex align-items-center">
                           <button

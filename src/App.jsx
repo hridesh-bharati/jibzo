@@ -1,4 +1,4 @@
-// App.jsx
+// src/App.jsx
 import React, { useEffect, useState } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
@@ -37,10 +37,12 @@ import ImageResizer from "./assets/Gadgets/ImageResizer";
 import InstallPrompt from "./assets/Pwa/InstallApp";
 import FaceSticker from "./assets/Gadgets/AiModel/FaceSticker";
 import AgeCalculator from "./assets/Gadgets/AgeCal/AgeCalculator";
+import PermissionModal from "./assets/Pwa/PermissionModal";
 
 const App = () => {
   const [user, setUser] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
@@ -49,6 +51,14 @@ const App = () => {
       if (u) {
         setUser(u);
         localStorage.setItem("currentUser", JSON.stringify(u));
+
+        // User login ke baad permission modal show karo
+        const hasSeenPermissions = localStorage.getItem('hasSeenPermissionModal');
+        if (!hasSeenPermissions) {
+          setTimeout(() => {
+            setShowPermissionModal(true);
+          }, 2000);
+        }
       } else {
         setUser(null);
         localStorage.removeItem("currentUser");
@@ -59,11 +69,21 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
+  const handlePermissionClose = () => {
+    setShowPermissionModal(false);
+    localStorage.setItem('hasSeenPermissionModal', 'true');
+  };
+
   if (loadingAuth) return <Loader />;
 
   return (
     <UserRelationsProvider>
       <>
+        {/* Permission Modal */}
+        {showPermissionModal && (
+          <PermissionModal onClose={handlePermissionClose} />
+        )}
+
         <InstallPrompt />
         <Routes>
           {/* Root redirects to login */}
@@ -105,7 +125,6 @@ const App = () => {
             element={<PrivateRoute user={user}><InstaUserProfile /></PrivateRoute>}
           />
 
-          {/* Relationship Routes - FIXED PATHS */}
           <Route
             path="/followers"
             element={<PrivateRoute user={user}><Followers /></PrivateRoute>}
@@ -139,7 +158,6 @@ const App = () => {
             element={<PrivateRoute user={user}><Requested /></PrivateRoute>}
           />
           {/* Add Friends route if needed */}
-         // In your App.jsx, add this route:
           <Route
             path="/friends"
             element={<PrivateRoute user={user}><Friends /></PrivateRoute>}
@@ -200,7 +218,6 @@ const App = () => {
             <Route path="image-resizer" element={<ImageResizer />} />
             <Route path="face-sticker" element={<FaceSticker />} />
             <Route path="age-calculator" element={<AgeCalculator />} />
-
           </Route>
 
           {/* Catch-all route for 404 */}

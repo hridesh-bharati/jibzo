@@ -19,8 +19,8 @@ export default function Heart({ liked = false, onToggle }) {
       <style>{`
         .heart-btn {
           position: relative;
-          width: 44px;
-          height: 44px;
+          width: 40px;
+          height: 40px;
           border: none;
           background: none;
           cursor: pointer;

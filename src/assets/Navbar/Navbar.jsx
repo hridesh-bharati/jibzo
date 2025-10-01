@@ -384,7 +384,7 @@ const Navbar = () => {
         <p className="text-muted">No notifications yet</p>
       ) : (
         notifications.map((n) => (
-          <div key={n.id} className="d-flex align-items-center justify-content-between mb-2 cursor-pointer">
+          <div key={n.id} className="d-flex align-items-center justify-content-between mb-2 me-4 cursor-pointer">
             <div onClick={() => n.type === "message" ? openChat(n.likerId) : openPost(n.postId)}>
               {n.type === "message" ? "💬" : "❤️"} <strong>{n.likerName}</strong>{" "}
               {n.type === "message" ? `: ${n.text || "Message"}` : `liked ${n.postCaption}`}
@@ -474,7 +474,7 @@ const Navbar = () => {
         {/* Notifications */}
         <div className="position-relative">
           <IconButton
-            icon="bi bi-bell-fill fs-3 me-3 text-primary"
+            icon="bi bi-bell-fill fs-3 me-2 text-primary"
             badgeCount={unreadLikes}
             onClick={handleNotificationToggle}
             badgeClass="badge me-4 mt-2"

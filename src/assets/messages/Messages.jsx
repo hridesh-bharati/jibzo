@@ -1,7 +1,7 @@
-// src\assets\messages\Messages.jsx
+// src/assets/messages/Messages.jsx
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { db, auth } from "../../assets/utils/firebaseConfig";
+import { db, auth, requestNotificationPermission, onForegroundMessage } from "../../assets/utils/firebaseConfig";
 import {
   ref as dbRef,
   onValue,
@@ -15,6 +15,7 @@ import {
 import { onAuthStateChanged } from "firebase/auth";
 import Picker from "emoji-picker-react";
 import axios from "axios";
+import { NotificationService, initializeNotifications, saveFCMToken } from "../../assets/utils/notificationService";
 import "bootstrap/dist/css/bootstrap.min.css";
 
 export default function Messages() {
@@ -42,6 +43,15 @@ export default function Messages() {
   const [uploadProgress, setUploadProgress] = useState(0);
 
   const [partnerStatus, setPartnerStatus] = useState(null);
+  const [notificationService, setNotificationService] = useState(null);
+  const [fcmToken, setFcmToken] = useState(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Permission states
+  const [hasCameraPermission, setHasCameraPermission] = useState(false);
+  const [hasMicrophonePermission, setHasMicrophonePermission] = useState(false);
+  const [showCameraModal, setShowCameraModal] = useState(false);
+  const [showMicrophoneModal, setShowMicrophoneModal] = useState(false);
 
   const messagesEndRef = useRef(null);
   const longPressTimerRef = useRef(null);
@@ -51,8 +61,17 @@ export default function Messages() {
   const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_NAME;
   const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
-  const chatId =
-    currentUid && uid ? [currentUid, uid].sort().join("_") : null;
+  const chatId = currentUid && uid ? [currentUid, uid].sort().join("_") : null;
+
+  // ---------- Check Permissions on Load ----------
+  useEffect(() => {
+    const storedPermissions = localStorage.getItem('appPermissions');
+    if (storedPermissions) {
+      const permissions = JSON.parse(storedPermissions);
+      setHasCameraPermission(permissions.camera || false);
+      setHasMicrophonePermission(permissions.microphone || false);
+    }
+  }, []);
 
   // ---------- Auth ----------
   useEffect(() => {
@@ -72,9 +91,188 @@ export default function Messages() {
     setCurrentUid(auth.currentUser?.uid || guestId);
   }, []);
 
+  // ---------- Notification Setup ----------
+  useEffect(() => {
+    const setupNotifications = async () => {
+      if (!currentUid || currentUid.startsWith('guest_')) return;
+      
+      try {
+        // Initialize notification service
+        const service = await initializeNotifications(currentUid);
+        setNotificationService(service);
+
+        // Request FCM token for push notifications
+        const token = await requestNotificationPermission();
+        if (token) {
+          setFcmToken(token);
+          await saveFCMToken(currentUid, token);
+        }
+
+        // Listen for foreground messages
+        onForegroundMessage((payload) => {
+          console.log('New message received in foreground:', payload);
+          showFloatingNotification({
+            title: payload.notification?.title || 'New Message',
+            body: payload.notification?.body || 'You have a new message',
+            image: chatUser?.photoURL || '/logo.png',
+            url: payload.data?.url || `/messages/${uid}`
+          });
+        });
+
+      } catch (error) {
+        console.error('Notification setup error:', error);
+      }
+    };
+
+    setupNotifications();
+
+    return () => {
+      if (notificationService) {
+        notificationService.unsubscribeFromNotifications();
+      }
+    };
+  }, [currentUid, uid]);
+
+  // ---------- Listen for New Notifications ----------
+  useEffect(() => {
+    if (!notificationService || !currentUid) return;
+
+    notificationService.listenForNotifications((newNotifications) => {
+      setUnreadCount(newNotifications.length);
+      
+      newNotifications.forEach(notification => {
+        if (notification.type === 'message' && !notification.seen) {
+          // Don't show notification for current chat
+          if (notification.fromId === uid) return;
+          
+          showFloatingNotification({
+            title: 'New Message',
+            body: `${notification.senderName || 'Someone'}: ${notification.text || 'Sent a message'}`,
+            image: notification.senderPhoto || '/logo.png',
+            url: `/messages/${notification.fromId}`,
+            notificationId: notification.id
+          });
+          
+          // Mark as seen after showing
+          setTimeout(() => {
+            notificationService.markAsSeen(notification.id);
+          }, 5000);
+        }
+      });
+    });
+  }, [notificationService, currentUid, uid]);
+
+  // ---------- Enhanced Floating Notification ----------
+  const showFloatingNotification = (notificationData) => {
+    // Don't show if user is currently viewing the same chat
+    if (document.hasFocus() && window.location.pathname.includes(`/messages/${notificationData.url?.split('/').pop()}`)) {
+      return;
+    }
+
+    const floatingEvent = new CustomEvent('showFloatingNotification', {
+      detail: {
+        id: Date.now(),
+        title: notificationData.title,
+        body: notificationData.body,
+        image: notificationData.image,
+        url: notificationData.url,
+        timestamp: new Date().toLocaleTimeString(),
+        duration: 5000
+      }
+    });
+    window.dispatchEvent(floatingEvent);
+  };
+
+  // ---------- Camera Permission Handler ----------
+  const handleCameraClick = async () => {
+    if (!hasCameraPermission) {
+      setShowCameraModal(true);
+      return;
+    }
+    await openCamera();
+  };
+
+  const requestCameraPermission = async () => {
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        setHasCameraPermission(true);
+        
+        // Update local storage
+        const storedPermissions = JSON.parse(localStorage.getItem('appPermissions') || '{}');
+        localStorage.setItem('appPermissions', JSON.stringify({
+          ...storedPermissions,
+          camera: true
+        }));
+        
+        stream.getTracks().forEach(track => track.stop());
+        setShowCameraModal(false);
+        
+        // Now open camera for actual use
+        await openCamera();
+      }
+    } catch (error) {
+      console.error('Camera permission denied:', error);
+      alert('Camera permission is required to take photos');
+    }
+  };
+
+  const openCamera = async () => {
+    // Create camera input
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'environment'; // Rear camera
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        handleImageUpload(file);
+      }
+    };
+    input.click();
+  };
+
+  // ---------- Microphone Permission Handler ----------
+  const handleMicrophoneClick = async () => {
+    if (!hasMicrophonePermission) {
+      setShowMicrophoneModal(true);
+      return;
+    }
+    await startVoiceRecording();
+  };
+
+  const requestMicrophonePermission = async () => {
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        setHasMicrophonePermission(true);
+        
+        // Update local storage
+        const storedPermissions = JSON.parse(localStorage.getItem('appPermissions') || '{}');
+        localStorage.setItem('appPermissions', JSON.stringify({
+          ...storedPermissions,
+          microphone: true
+        }));
+        
+        stream.getTracks().forEach(track => track.stop());
+        setShowMicrophoneModal(false);
+        
+        // Now start voice recording
+        await startVoiceRecording();
+      }
+    } catch (error) {
+      console.error('Microphone permission denied:', error);
+      alert('Microphone permission is required for voice messages');
+    }
+  };
+
+  const startVoiceRecording = async () => {
+    alert('Voice message feature coming soon! 🎤');
+    // Voice recording implementation yahan add kar sakte ho
+  };
+
   // ---------- Auto focus input on mount ----------
   useEffect(() => {
-    // Focus input when component mounts
     if (inputRef.current) {
       setTimeout(() => {
         inputRef.current?.focus();
@@ -96,7 +294,7 @@ export default function Messages() {
     };
     updateStatus("online");
     window.addEventListener("focus", () => updateStatus("online"));
-    window.addEventListener("blur", () => updateStatus("offline"));
+    window.addEventListener("blur", () => updateStatus("away"));
     onDisconnect(statusRef).set({
       state: "offline",
       last_changed: serverTimestamp(),
@@ -105,7 +303,7 @@ export default function Messages() {
     });
     return () => {
       window.removeEventListener("focus", () => updateStatus("online"));
-      window.removeEventListener("blur", () => updateStatus("offline"));
+      window.removeEventListener("blur", () => updateStatus("away"));
     };
   }, [currentUid, privacyHide]);
 
@@ -130,9 +328,23 @@ export default function Messages() {
     if (!uid) return;
     const userRef = dbRef(db, `usersData/${uid}`);
     return onValue(userRef, (snap) => {
-      if (snap.exists()) setChatUser(snap.val());
+      if (snap.exists()) {
+        const userData = snap.val();
+        setChatUser(userData);
+        
+        // Update last seen for the chat
+        if (currentUid && !currentUid.startsWith('guest_')) {
+          const chatRef = dbRef(db, `userChats/${currentUid}/${chatId}`);
+          update(chatRef, {
+            lastMessage: `Chat with ${userData.username}`,
+            timestamp: serverTimestamp(),
+            partnerPhoto: userData.photoURL,
+            partnerName: userData.username
+          }).catch(console.warn);
+        }
+      }
     });
-  }, [uid]);
+  }, [uid, currentUid, chatId]);
 
   // ---------- Partner presence ----------
   useEffect(() => {
@@ -207,7 +419,7 @@ export default function Messages() {
     }, 1500);
   };
 
-  // ---------- Send Message (FIXED: Immediate input clear) ----------
+  // ---------- Send Message with Enhanced Notifications ----------
   const sendMessage = async (opts = {}) => {
     if (!currentUid || !chatId) return;
     const text = opts.text ?? input.trim();
@@ -244,31 +456,46 @@ export default function Messages() {
       } else {
         const pushed = await push(dbRef(db, `chats/${chatId}/messages`), msgPayload);
 
-        // ✅ FIXED: Floating notification for new messages
+        // ✅ Enhanced Notification System
         const recipientUid = uid;
         if (recipientUid && !recipientUid.startsWith("guest_")) {
-          // Floating notification trigger
-          const floatingEvent = new CustomEvent('showFloatingNotification', {
-            detail: {
-              title: "New Message",
-              body: `${chatUser?.username || "Someone"}: ${text || "Sent an image"}`,
-              image: chatUser?.photoURL || '/logo.png',
-              url: `/messages/${currentUid}`
-            }
-          });
-          window.dispatchEvent(floatingEvent);
-
-          // Existing notification save
+          // Create notification object
           const notifRef = push(dbRef(db, `notifications/${recipientUid}`));
           const notifObj = {
             type: "message",
             fromId: currentUid,
             chatId,
-            text: (text || (opts.imageURL ? "Image" : "")).slice(0, 200),
+            text: (text || (opts.imageURL ? "📷 Image" : "")).slice(0, 200),
             timestamp: serverTimestamp(),
-            seen: false
+            seen: false,
+            senderName: chatUser?.username || "User",
+            senderPhoto: chatUser?.photoURL || "/logo.png"
           };
           await set(notifRef, notifObj);
+
+          // Update chat list for both users
+          const updateChat = async (userId, partnerId, partnerData) => {
+            const userChatRef = dbRef(db, `userChats/${userId}/${chatId}`);
+            await set(userChatRef, {
+              lastMessage: text || "📷 Image",
+              timestamp: serverTimestamp(),
+              partnerId: partnerId,
+              partnerPhoto: partnerData?.photoURL,
+              partnerName: partnerData?.username,
+              unread: userId !== currentUid ? 1 : 0
+            });
+          };
+
+          // Update current user's chat
+          await updateChat(currentUid, uid, chatUser);
+          
+          // Update recipient's chat
+          if (currentUid && !currentUid.startsWith('guest_')) {
+            await updateChat(uid, currentUid, {
+              username: auth.currentUser?.displayName || "You",
+              photoURL: auth.currentUser?.photoURL || "/logo.png"
+            });
+          }
         }
       }
 
@@ -313,6 +540,7 @@ export default function Messages() {
       setPreviewImage(null);
     } catch (err) {
       console.error(err);
+      alert("Image upload failed. Please try again.");
     }
     setIsUploading(false);
   };
@@ -361,10 +589,14 @@ export default function Messages() {
     const updates = {};
     msgs.forEach((m) => {
       if (m.sender === currentUid) return;
-      updates[`chats/${chatId}/messages/${m.id}/status`] = "seen";
-      updates[`chats/${chatId}/messages/${m.id}/read`] = true;
+      if (m.status !== "seen") {
+        updates[`chats/${chatId}/messages/${m.id}/status`] = "seen";
+        updates[`chats/${chatId}/messages/${m.id}/read`] = true;
+      }
     });
-    if (Object.keys(updates).length) await update(dbRef(db), updates);
+    if (Object.keys(updates).length) {
+      await update(dbRef(db), updates);
+    }
   };
 
   const renderStatus = (msg) => {
@@ -380,10 +612,8 @@ export default function Messages() {
     if (typeof ts === 'number') {
       date = new Date(ts);
     } else if (ts.toDate) {
-      // Firebase timestamp
       date = ts.toDate();
     } else if (ts.seconds) {
-      // Firebase timestamp with seconds
       date = new Date(ts.seconds * 1000);
     } else {
       date = new Date(ts);
@@ -398,18 +628,14 @@ export default function Messages() {
 
   const addEmoji = (emoji) => {
     setInput((prev) => prev + emoji.emoji);
-    // Focus input after adding emoji
     setTimeout(() => {
       inputRef.current?.focus();
     }, 100);
   };
 
-  // ---------- Handle emoji picker visibility (FIXED for mobile) ----------
   const toggleEmojiPicker = () => {
     setShowEmojiPicker(prev => !prev);
-    // On mobile, we want to focus input but not show emoji picker that blocks keyboard
     if (window.innerWidth <= 768) {
-      // On mobile, don't show emoji picker that blocks the keyboard
       setShowEmojiPicker(false);
       inputRef.current?.focus();
     }
@@ -523,10 +749,15 @@ export default function Messages() {
         {/* Three-dot menu */}
         <div className="position-relative">
           <button
-            className="btn btn-sm btn-transparent text-white"
+            className="btn btn-sm btn-transparent text-white position-relative"
             onClick={() => setShowMenu((prev) => !prev)}
           >
             <i className="bi bi-three-dots-vertical fs-5"></i>
+            {unreadCount > 0 && (
+              <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                {unreadCount}
+              </span>
+            )}
           </button>
           {showMenu && (
             <div
@@ -550,6 +781,15 @@ export default function Messages() {
                 }}
               >
                 {privacyHide ? "Show Online / Last Seen" : "Hide Online / Last Seen"}
+              </button>
+              <button
+                className="py-2 px-3 dropdown-item"
+                onClick={() => {
+                  notificationService?.markAllAsSeen();
+                  setShowMenu(false);
+                }}
+              >
+                Mark All as Read
               </button>
             </div>
           )}
@@ -655,7 +895,7 @@ export default function Messages() {
         </div>
       )}
 
-      {/* Input Area - FIXED for mobile keyboard */}
+      {/* Input Area */}
       <div className="p-2 mb-5 pb-3" style={{ background: "#ccf" }}>
         {previewImage && (
           <div
@@ -693,7 +933,17 @@ export default function Messages() {
         )}
 
         <div className="d-flex align-items-center gap-2">
-          {/* Emoji Button - Fixed for mobile */}
+          {/* Camera Button with Permission Check */}
+          <button
+            className="btn btn-light"
+            onClick={handleCameraClick}
+            type="button"
+            title={hasCameraPermission ? "Take Photo" : "Camera Permission Required"}
+          >
+            📷
+          </button>
+
+          {/* Emoji Button */}
           <button
             className="btn btn-light"
             onClick={toggleEmojiPicker}
@@ -702,7 +952,7 @@ export default function Messages() {
             😀
           </button>
 
-          {/* Input Field - FIXED: Proper mobile keyboard */}
+          {/* Input Field */}
           <input
             ref={inputRef}
             type="text"
@@ -716,12 +966,21 @@ export default function Messages() {
                 sendMessage();
               }
             }}
-            // Mobile optimizations
             inputMode="text"
             autoComplete="off"
             autoCorrect="on"
             autoCapitalize="sentences"
           />
+
+          {/* Microphone Button with Permission Check */}
+          <button
+            className="btn btn-light"
+            onClick={handleMicrophoneClick}
+            type="button"
+            title={hasMicrophonePermission ? "Voice Message" : "Microphone Permission Required"}
+          >
+            🎤
+          </button>
 
           <label className="btn btn-light mb-0">
             📎
@@ -742,7 +1001,7 @@ export default function Messages() {
           </button>
         </div>
 
-        {/* Emoji Picker - FIXED: Only show on desktop, not on mobile */}
+        {/* Emoji Picker */}
         {showEmojiPicker && window.innerWidth > 768 && (
           <div
             className="position-absolute"
@@ -753,7 +1012,73 @@ export default function Messages() {
         )}
       </div>
 
-      {/* CSS for typing dots */}
+      {/* Camera Permission Modal */}
+      {showCameraModal && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title">📷 Camera Access Required</h5>
+            </div>
+            <div className="modal-body">
+              <p>Jibzo needs camera access to let you take photos and share them with friends.</p>
+              <div className="permission-features">
+                <div className="feature">✅ Take photos in chat</div>
+                <div className="feature">✅ Share instant pictures</div>
+                <div className="feature">✅ Better messaging experience</div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => setShowCameraModal(false)}
+              >
+                Not Now
+              </button>
+              <button 
+                className="btn btn-primary" 
+                onClick={requestCameraPermission}
+              >
+                Allow Camera Access
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Microphone Permission Modal */}
+      {showMicrophoneModal && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title">🎤 Microphone Access Required</h5>
+            </div>
+            <div className="modal-body">
+              <p>Jibzo needs microphone access for voice messages and audio calls.</p>
+              <div className="permission-features">
+                <div className="feature">✅ Send voice messages</div>
+                <div className="feature">✅ Make audio calls</div>
+                <div className="feature">✅ Better communication</div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => setShowMicrophoneModal(false)}
+              >
+                Not Now
+              </button>
+              <button 
+                className="btn btn-primary" 
+                onClick={requestMicrophonePermission}
+              >
+                Allow Microphone Access
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CSS for typing dots and notifications */}
       <style>
         {`
           .typing-dots {
@@ -780,8 +1105,78 @@ export default function Messages() {
               height: 100vh !important;
             }
             input.form-control {
-              font-size: 16px; /* Prevents zoom on iOS */
+              font-size: 16px;
             }
+          }
+
+          /* Notification badge */
+          .badge {
+            font-size: 0.6rem;
+            padding: 0.25em 0.4em;
+          }
+
+          /* Custom scrollbar */
+          .overflow-auto::-webkit-scrollbar {
+            width: 6px;
+          }
+          .overflow-auto::-webkit-scrollbar-track {
+            background: #f1f1f1;
+          }
+          .overflow-auto::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 3px;
+          }
+          .overflow-auto::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+          }
+
+          /* Permission Modals */
+          .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+          }
+          
+          .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 0;
+            max-width: 400px;
+            width: 90%;
+            animation: modalSlideIn 0.3s ease;
+          }
+          
+          .modal-header {
+            padding: 20px 20px 10px;
+            border-bottom: none;
+            text-align: center;
+          }
+          
+          .modal-body {
+            padding: 10px 20px;
+          }
+          
+          .modal-footer {
+            padding: 20px;
+            border-top: 1px solid #eee;
+            display: flex;
+            gap: 10px;
+          }
+          
+          .permission-features {
+            margin: 15px 0;
+          }
+          
+          .feature {
+            padding: 8px 0;
+            color: #666;
           }
         `}
       </style>
