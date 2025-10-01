@@ -1,6 +1,5 @@
-
-
-const CACHE_NAME = 'jibzo-v2.1';
+// public/sw.js - COMBINED SERVICE WORKER
+const CACHE_NAME = 'jibzo-v3.0';
 const urlsToCache = [
   '/',
   '/static/js/bundle.js',
@@ -9,10 +8,6 @@ const urlsToCache = [
   '/icons/logo.png',
   '/manifest.json'
 ];
-
-// Firebase Messaging Integration
-importScripts('https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/9.6.0/firebase-messaging-compat.js');
 
 // Firebase Config
 const firebaseConfig = {
@@ -24,10 +19,6 @@ const firebaseConfig = {
   appId: "1:1001469015630:web:79fe0cfb9ffe9f0a60b51f"
 };
 
-// Initialize Firebase
-firebase.initializeApp(firebaseConfig);
-const messaging = firebase.messaging();
-
 self.addEventListener('install', (event) => {
   console.log('🟢 Service Worker installing...');
   event.waitUntil(
@@ -35,9 +26,6 @@ self.addEventListener('install', (event) => {
       .then((cache) => {
         console.log('📦 Opened cache');
         return cache.addAll(urlsToCache);
-      })
-      .catch((error) => {
-        console.error('❌ Cache installation failed:', error);
       })
   );
   self.skipWaiting();
@@ -61,54 +49,44 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Skip non-GET requests
-  if (event.request.method !== 'GET') return;
-
   event.respondWith(
     caches.match(event.request)
       .then((response) => {
-        // Return cached version or fetch from network
-        if (response) {
-          return response;
-        }
-
-        return fetch(event.request).then((response) => {
-          // Check if we received a valid response
-          if (!response || response.status !== 200 || response.type !== 'basic') {
-            return response;
-          }
-
-          // Clone the response
-          const responseToCache = response.clone();
-
-          caches.open(CACHE_NAME)
-            .then((cache) => {
-              cache.put(event.request, responseToCache);
-            });
-
-          return response;
-        });
-      })
-      .catch(() => {
-        // Fallback for failed requests
-        if (event.request.destination === 'document') {
-          return caches.match('/');
-        }
+        return response || fetch(event.request);
       })
   );
 });
 
-// Firebase Background Message Handler
-messaging.onBackgroundMessage((payload) => {
-  console.log('📱 [SW] Received background message:', payload);
+// ✅ ENHANCED PUSH NOTIFICATION HANDLER
+self.addEventListener('push', (event) => {
+  console.log('📱 Push event received:', event);
+  
+  let data = {};
+  try {
+    data = event.data?.json() || {};
+  } catch (e) {
+    data = {
+      notification: {
+        title: 'Jibzo',
+        body: 'You have a new message'
+      },
+      data: {}
+    };
+  }
 
-  const notificationOptions = {
-    body: payload.notification?.body || 'You have a new message',
+  // 🚨 IMPORTANT: Don't show notification if it's from current user
+  if (data.data?.fromId === data.data?.currentUserId) {
+    console.log('🚫 Skipping self notification in SW');
+    return;
+  }
+
+  const options = {
+    body: data.notification?.body || 'You have a new message',
     icon: '/icons/logo.png',
     badge: '/icons/logo.png',
-    image: payload.notification?.image,
-    data: payload.data || {},
-    tag: 'jibzo-message',
+    image: data.notification?.image,
+    data: data.data || {},
+    tag: 'jibzo-' + Date.now(),
     requireInteraction: true,
     actions: [
       {
@@ -122,20 +100,22 @@ messaging.onBackgroundMessage((payload) => {
     ]
   };
 
+  console.log('🔄 Showing notification from service worker...');
+
   event.waitUntil(
     self.registration.showNotification(
-      payload.notification?.title || 'Jibzo',
-      notificationOptions
+      data.notification?.title || 'Jibzo',
+      options
     )
   );
 });
 
-// Notification Click Handler
+// ✅ ENHANCED NOTIFICATION CLICK HANDLER
 self.addEventListener('notificationclick', (event) => {
-  console.log('🔔 [SW] Notification clicked:', event);
+  console.log('🔔 Notification clicked:', event);
   event.notification.close();
 
-  const urlToOpen = event.notification.data?.url || '/';
+  const urlToOpen = event.notification.data?.url || '/messages';
 
   event.waitUntil(
     clients.matchAll({
@@ -144,15 +124,15 @@ self.addEventListener('notificationclick', (event) => {
     }).then((clientList) => {
       console.log('🔍 Found clients:', clientList.length);
 
-      // Focus existing tab
+      // Pehle check karo koi existing tab hai kya
       for (const client of clientList) {
-        if (client.url.includes(self.location.origin) && 'focus' in client) {
+        if (client.url.includes('jibzo') && 'focus' in client) {
           console.log('✅ Focusing existing tab');
           return client.focus();
         }
       }
 
-      // Open new tab
+      // Agar nahi hai toh naya tab kholo
       if (clients.openWindow) {
         console.log('🆕 Opening new tab:', urlToOpen);
         return clients.openWindow(urlToOpen);
@@ -161,41 +141,48 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-// Push Event Handler
-self.addEventListener('push', (event) => {
-  console.log('📬 Push event received:', event);
+// ✅ IMPORT FIREBASE SCRIPTS FOR MESSAGING
+importScripts('https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/9.6.0/firebase-messaging-compat.js');
 
-  let data = {};
-  try {
-    data = event.data?.json() || {};
-  } catch (e) {
-    data = {
-      notification: {
-        title: 'Jibzo',
-        body: 'You have a new message'
-      }
-    };
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+const messaging = firebase.messaging();
+
+// ✅ BACKGROUND MESSAGE HANDLER
+messaging.onBackgroundMessage((payload) => {
+  console.log('📱 [SW] Received background message:', payload);
+
+  // 🚨 IMPORTANT: Don't show notification if it's from current user
+  if (payload.data?.fromId === payload.data?.currentUserId) {
+    console.log('🚫 Skipping self background notification');
+    return;
   }
 
-  const options = {
-    body: data.notification?.body || 'New notification',
+  const notificationOptions = {
+    body: payload.notification?.body || 'You have a new message',
     icon: '/icons/logo.png',
     badge: '/icons/logo.png',
-    data: data.data || {},
-    tag: 'jibzo-push',
+    image: payload.notification?.image,
+    data: payload.data || {},
+    tag: 'jibzo-bg-' + Date.now(),
     requireInteraction: true,
     actions: [
       {
         action: 'open',
-        title: 'Open App'
+        title: '💬 Open Chat'
+      },
+      {
+        action: 'close',
+        title: '❌ Close'
       }
     ]
   };
 
-  event.waitUntil(
-    self.registration.showNotification(
-      data.notification?.title || 'Jibzo',
-      options
-    )
+  console.log('🔄 Showing background notification...');
+
+  return self.registration.showNotification(
+    payload.notification?.title || 'Jibzo',
+    notificationOptions
   );
 });
