@@ -1,3 +1,4 @@
+// src/main.jsx
 import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.jsx";
@@ -35,32 +36,57 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// Service Worker registration with better error handling
+// Enhanced Service Worker registration
 const registerServiceWorkers = async () => {
   if ('serviceWorker' in navigator) {
     try {
-      // Register your main app service worker
-      const mainSW = await navigator.serviceWorker.register('/sw.js');
-      console.log("✅ Main Service Worker registered:", mainSW);
+      console.log('🔄 Registering service workers...');
       
-      // Register Firebase messaging service worker
-      const messagingSW = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-      console.log("✅ Firebase Messaging Service Worker registered:", messagingSW);
-      
-      // Check for updates
-      mainSW.addEventListener('updatefound', () => {
-        const newWorker = mainSW.installing;
-        console.log('New service worker found...');
-        
-        newWorker.addEventListener('statechange', () => {
-          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            console.log('New content available; please refresh.');
-          }
+      // Pehle existing registrations clear karo
+      const existingRegistrations = await navigator.serviceWorker.getRegistrations();
+      for (let registration of existingRegistrations) {
+        await registration.unregister();
+        console.log('🗑️ Unregistered old SW:', registration.scope);
+      }
+
+      // Main service worker register karo
+      try {
+        const mainSW = await navigator.serviceWorker.register('/sw.js', {
+          scope: '/',
+          updateViaCache: 'none'
         });
-      });
+        console.log("✅ Main Service Worker registered:", mainSW.scope);
+        
+        mainSW.addEventListener('updatefound', () => {
+          const newWorker = mainSW.installing;
+          console.log('🆕 New service worker found...');
+          
+          newWorker.addEventListener('statechange', () => {
+            console.log('🔄 Service Worker state:', newWorker.state);
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              console.log('🆕 New content available; please refresh.');
+            }
+          });
+        });
+      } catch (mainError) {
+        console.error("❌ Main Service Worker registration failed:", mainError);
+      }
+
+      // Firebase messaging service worker register karo
+      try {
+        const messagingSW = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+          scope: '/firebase-cloud-messaging-push-scope'
+        });
+        console.log("✅ Firebase Messaging Service Worker registered:", messagingSW.scope);
+      } catch (messagingError) {
+        console.error("❌ Firebase Messaging SW registration failed:", messagingError);
+      }
+
     } catch (error) {
       console.error("❌ Service Worker registration failed:", error);
     }
+  } else {
+    console.log("❌ Service Workers not supported in this browser");
   }
 };
 
@@ -76,5 +102,9 @@ root.render(
   </React.StrictMode>
 );
 
-// Register service worker after initial render
-registerServiceWorkers();
+// DOM load hone ke baad service workers register karo
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', registerServiceWorkers);
+} else {
+  registerServiceWorkers();
+}

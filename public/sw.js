@@ -1,64 +1,101 @@
-// public\sw.js
-importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
+// public/sw.js
+const CACHE_NAME = 'jibzo-v2.0';
+const urlsToCache = [
+  '/',
+  '/static/js/bundle.js',
+  '/static/css/main.css',
+  '/logo.png',
+  '/icons/logo.png'
+];
 
-// Your web app's Firebase configuration
-const firebaseConfig = {
-  apiKey: "AIzaSyBmnp_8dW9hJ23ZSUFnadB4NHw-89MfN_k",
-  authDomain: "portfolio-dfe5c.firebaseapp.com",
-  projectId: "portfolio-dfe5c",
-  storageBucket: "portfolio-dfe5c.appspot.com",
-  messagingSenderId: "1001469015630",
-  appId: "1:1001469015630:web:79fe0cfb9ffe9f0a60b51f"
-};
+self.addEventListener('install', (event) => {
+  console.log('🟢 Service Worker installing...');
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => {
+        console.log('📦 Opened cache');
+        return cache.addAll(urlsToCache);
+      })
+  );
+  self.skipWaiting();
+});
 
-// Initialize Firebase
-firebase.initializeApp(firebaseConfig);
+self.addEventListener('activate', (event) => {
+  console.log('🟢 Service Worker activated');
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          if (cacheName !== CACHE_NAME) {
+            console.log('🗑️ Deleting old cache:', cacheName);
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    })
+  );
+  self.clients.claim();
+});
 
-const messaging = firebase.messaging();
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    caches.match(event.request)
+      .then((response) => {
+        // Cache me mila toh return karo, nahi toh network se fetch karo
+        return response || fetch(event.request);
+      })
+  );
+});
 
-// Handle background messages
-messaging.onBackgroundMessage((payload) => {
-  console.log('Received background message:', payload);
-
-  const notificationTitle = payload.notification?.title || 'New Message';
-  const notificationOptions = {
-    body: payload.notification?.body || 'You have a new message',
+// Firebase Messaging ko handle karo
+self.addEventListener('push', (event) => {
+  console.log('📱 Push event received:', event);
+  
+  let data = {};
+  if (event.data) {
+    data = event.data.json();
+  }
+  
+  const options = {
+    body: data.body || 'You have a new notification',
     icon: '/icons/logo.png',
-    image: payload.notification?.image,
     badge: '/icons/logo.png',
-    tag: 'chat-message',
-    renotify: true,
-    data: payload.data || {},
+    image: data.image,
+    data: data,
     actions: [
       {
         action: 'open',
-        title: 'Open Chat'
+        title: 'Open App'
+      },
+      {
+        action: 'close',
+        title: 'Close'
       }
     ]
   };
 
-  return self.registration.showNotification(notificationTitle, notificationOptions);
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'Jibzo', options)
+  );
 });
 
-// Handle notification click
 self.addEventListener('notificationclick', (event) => {
+  console.log('🔔 Notification clicked:', event);
   event.notification.close();
-
-  const urlToOpen = event.notification.data?.url || '/messages';
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true })
-      .then((windowClients) => {
-        // Check if app is already open
-        for (let client of windowClients) {
-          if (client.url.includes(urlToOpen) && 'focus' in client) {
+      .then((clientList) => {
+        // Pehle check karo koi existing tab hai kya
+        for (const client of clientList) {
+          if (client.url.includes('jibzo') && 'focus' in client) {
             return client.focus();
           }
         }
-
-        // Open new window if app not open
+        
+        // Agar nahi hai toh naya tab kholo
         if (clients.openWindow) {
+          const urlToOpen = event.notification.data?.url || '/';
           return clients.openWindow(urlToOpen);
         }
       })

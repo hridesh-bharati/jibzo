@@ -14,7 +14,6 @@ const firebaseConfig = {
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
 const app = initializeApp(firebaseConfig);
@@ -29,6 +28,17 @@ let messaging = null;
 export const getFirebaseMessaging = async () => {
   if (!messaging && await isSupported()) {
     messaging = getMessaging(app);
+    
+    // VAPID Key add karo - Yeh Firebase Console se milega
+    // Firebase Console → Project Settings → Cloud Messaging → Web Push certificates
+    try {
+      const token = await getToken(messaging, {
+        vapidKey:"BF6waKYjIeVcDGRYij4_isfQgOudOHtkUM-jiD7zHp_Nl6rP_3h7rqNQtadYRowF6_Vp850PW6K5kTrKZDPO3XA" 
+      });
+      console.log('🔑 FCM Token:', token);
+    } catch (error) {
+      console.error('❌ FCM Token error:', error);
+    }
   }
   return messaging;
 };
@@ -36,25 +46,58 @@ export const getFirebaseMessaging = async () => {
 // Request notification permission and get token
 export const requestNotificationPermission = async () => {
   try {
+    console.log('🔔 Requesting notification permission...');
+    
     if (!("Notification" in window)) {
-      console.log("This browser does not support notifications");
+      console.log("❌ This browser does not support notifications");
       return null;
     }
 
-    const permission = await Notification.requestPermission();
+    // Permission check karo
+    let permission = Notification.permission;
+    
+    if (permission === "default") {
+      console.log('🟡 Requesting notification permission...');
+      permission = await Notification.requestPermission();
+    }
+    
+    console.log('📋 Notification permission:', permission);
+
     if (permission === "granted") {
       const messagingInstance = await getFirebaseMessaging();
-      if (!messagingInstance) return null;
+      if (!messagingInstance) {
+        console.log('❌ Messaging not supported');
+        return null;
+      }
       
-      const token = await getToken(messagingInstance, {
-        vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
-      });
-      console.log("FCM Token received:", token);
-      return token;
+      try {
+        // VAPID Key add karo yahan bhi
+        const token = await getToken(messagingInstance, {
+          vapidKey: "BF6waKYjIeVcDGRYij4_isfQgOudOHtkUM-jiD7zHp_Nl6rP_3h7rqNQtadYRowF6_Vp850PW6K5kTrKZDPO3XA"
+        });
+        
+        console.log('✅ FCM Token received:', token);
+        
+        if (token) {
+          // Token save karo database mein
+          const currentUser = auth.currentUser;
+          if (currentUser) {
+            await set(ref(db, `users/${currentUser.uid}/fcmToken`), token);
+            console.log('💾 FCM token saved to database');
+          }
+        }
+        
+        return token;
+      } catch (tokenError) {
+        console.error('❌ Error getting FCM token:', tokenError);
+        return null;
+      }
+    } else {
+      console.log('❌ Notification permission not granted');
+      return null;
     }
-    return null;
   } catch (error) {
-    console.error("Error getting notification token:", error);
+    console.error("❌ Error requesting notification permission:", error);
     return null;
   }
 };
@@ -62,56 +105,81 @@ export const requestNotificationPermission = async () => {
 // Handle foreground messages
 export const onForegroundMessage = (callback) => {
   return getFirebaseMessaging().then(messagingInstance => {
-    if (!messagingInstance) return null;
+    if (!messagingInstance) {
+      console.log('❌ Messaging not available for foreground messages');
+      return null;
+    }
     
     return onMessage(messagingInstance, (payload) => {
-      console.log("Foreground message received:", payload);
-      if (callback) callback(payload);
+      console.log('📱 Foreground message received:', payload);
+      
+      // Custom notification show karo
+      if (callback) {
+        callback(payload);
+      }
+      
+      // Browser notification bhi show karo
       showBrowserNotification(payload);
     });
   });
 };
 
-// Browser notification helper
+// Enhanced browser notification
 export const showBrowserNotification = (payload) => {
-  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  if (!("Notification" in window)) {
+    console.log("❌ Browser doesn't support notifications");
+    return;
+  }
 
-  const { title, body, image } = payload.notification || payload.data || {};
+  if (Notification.permission !== "granted") {
+    console.log("❌ Notification permission not granted");
+    return;
+  }
+
+  const title = payload.notification?.title || 'Jibzo';
+  const body = payload.notification?.body || 'You have a new message';
+  const image = payload.notification?.image;
+  const data = payload.data || {};
 
   const notificationOptions = {
-    body: body || "New message received",
-    icon: "/logo.png",
+    body: body,
+    icon: '/icons/logo.png',
+    badge: '/icons/logo.png',
     image: image,
-    badge: "/logo.png",
-    tag: "chat-message",
-    renotify: true,
-    silent: false,
-    data: payload.data || {},
+    data: data,
+    tag: 'jibzo-message',
+    requireInteraction: true,
     actions: [
       {
-        action: "open",
-        title: "Open Chat",
-      },
-    ],
+        action: 'open',
+        title: '💬 Open Chat'
+      }
+    ]
   };
 
-  // Show notification only if app is not focused
+  // Only show if app is not focused
   if (document.hidden || !document.hasFocus()) {
-    const notification = new Notification(title || "New Message", notificationOptions);
+    const notification = new Notification(title, notificationOptions);
 
     notification.onclick = () => {
+      console.log('🔔 Notification clicked');
       window.focus();
       notification.close();
-
-      if (payload.data?.url) {
-        window.location.href = payload.data.url;
+      
+      // Specific URL par navigate karo
+      if (data.url) {
+        window.location.href = data.url;
       }
     };
 
-    // Auto close after 5 seconds
+    // Auto close after 8 seconds
     setTimeout(() => {
       notification.close();
-    }, 5000);
+    }, 8000);
+    
+    console.log('✅ Browser notification shown');
+  } else {
+    console.log('ℹ️ App is focused, notification not shown');
   }
 };
 
