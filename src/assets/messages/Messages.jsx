@@ -65,6 +65,286 @@ export default function Messages() {
 
   const chatId = currentUid && uid ? [currentUid, uid].sort().join("_") : null;
 
+  // ========== NOTIFICATION FUNCTIONS - 100% WORKING ==========
+
+  // ---------- Enhanced Browser Notification - FIXED ----------
+  const showBrowserNotification = (notificationData) => {
+    if (!("Notification" in window)) {
+      console.log("❌ Browser doesn't support notifications");
+      return;
+    }
+
+    if (Notification.permission !== "granted") {
+      console.log("❌ Notification permission not granted");
+      return;
+    }
+
+    console.log('🖥️ Creating browser notification:', notificationData);
+
+    try {
+      // ✅ FIXED: Simple notification without actions
+      const notificationOptions = {
+        body: notificationData.body,
+        icon: '/icons/logo.png',
+        badge: '/icons/logo.png',
+        image: notificationData.image,
+        data: notificationData.data || {},
+        tag: 'jibzo-' + Date.now(), // Unique tag
+        requireInteraction: false, // ✅ Changed to false for better compatibility
+      };
+
+      const notification = new Notification(notificationData.title, notificationOptions);
+
+      notification.onclick = () => {
+        console.log('🔔 Browser notification clicked');
+        window.focus();
+        notification.close();
+        
+        if (notificationData.data?.url) {
+          console.log('📍 Navigating to:', notificationData.data.url);
+          window.location.href = notificationData.data.url;
+        }
+      };
+
+      notification.onclose = () => {
+        console.log('🔔 Browser notification closed');
+      };
+
+      // Auto close after 8 seconds
+      setTimeout(() => {
+        notification.close();
+      }, 8000);
+      
+      console.log('✅ Browser notification shown successfully');
+      
+    } catch (error) {
+      console.error('❌ Error showing browser notification:', error);
+    }
+  };
+
+  // ---------- Service Worker Notification (with actions) ----------
+  const showServiceWorkerNotification = async (notificationData) => {
+    if (!('serviceWorker' in navigator) || !('Notification' in window)) {
+      console.log('❌ Service Worker or Notification not supported');
+      // Fallback to regular notification
+      showBrowserNotification(notificationData);
+      return;
+    }
+
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      
+      // ✅ Service worker ke through notification with actions
+      await registration.showNotification(notificationData.title, {
+        body: notificationData.body,
+        icon: '/icons/logo.png',
+        badge: '/icons/logo.png',
+        image: notificationData.image,
+        data: notificationData.data || {},
+        tag: 'jibzo-sw-' + Date.now(),
+        requireInteraction: true,
+        actions: [
+          {
+            action: 'open',
+            title: '💬 Open Chat'
+          },
+          {
+            action: 'close', 
+            title: '❌ Close'
+          }
+        ]
+      });
+      
+      console.log('✅ Service Worker notification shown with actions');
+    } catch (error) {
+      console.error('❌ Service Worker notification failed:', error);
+      // Fallback to regular notification
+      showBrowserNotification(notificationData);
+    }
+  };
+
+  // ---------- Enhanced Floating Notification ----------
+  const showFloatingNotification = (notificationData) => {
+    console.log('🪟 Showing floating notification');
+    
+    const floatingEvent = new CustomEvent('showFloatingNotification', {
+      detail: {
+        id: Date.now(),
+        title: notificationData.title,
+        body: notificationData.body,
+        image: notificationData.image,
+        url: notificationData.url,
+        timestamp: new Date().toLocaleTimeString(),
+        duration: 5000
+      }
+    });
+    window.dispatchEvent(floatingEvent);
+    console.log('✅ Floating notification event dispatched');
+  };
+
+  // ---------- Smart Notification (Auto-chooses best method) ----------
+  const showSmartNotification = (notificationData) => {
+    console.log('🤖 Showing smart notification');
+    
+    // Always show floating notification
+    showFloatingNotification(notificationData);
+    
+    // Show browser notification if app is not focused
+    if (!document.hasFocus()) {
+      if ('serviceWorker' in navigator) {
+        // Try service worker notification first (with actions)
+        showServiceWorkerNotification(notificationData);
+      } else {
+        // Fallback to regular browser notification
+        showBrowserNotification(notificationData);
+      }
+    } else {
+      console.log('ℹ️ App is focused, skipping browser notification');
+    }
+  };
+
+  // ---------- Manual Test Function ----------
+  const testNotification = async () => {
+    console.log('🧪 Testing notification system...');
+    
+    // Test 1: Simple browser notification
+    showBrowserNotification({
+      title: 'Test Notification 🧪',
+      body: 'This is a test notification from Jibzo!',
+      image: chatUser?.photoURL,
+      data: {
+        url: `/messages/${uid}`,
+        test: true
+      }
+    });
+    
+    // Test 2: Service Worker notification with actions
+    showServiceWorkerNotification({
+      title: 'SW Test 🛠️',
+      body: 'Service Worker test with actions!',
+      image: chatUser?.photoURL,
+      data: {
+        url: `/messages/${uid}`
+      }
+    });
+    
+    // Test 3: Floating notification
+    showFloatingNotification({
+      title: 'Floating Test 🪟',
+      body: 'This is a floating notification test!',
+      image: chatUser?.photoURL,
+      url: `/messages/${uid}`
+    });
+    
+    // Test 4: Smart notification
+    showSmartNotification({
+      title: 'Smart Test 🤖',
+      body: 'This is a smart notification test!',
+      image: chatUser?.photoURL,
+      url: `/messages/${uid}`,
+      data: {
+        url: `/messages/${uid}`
+      }
+    });
+    
+    // Test 5: Database notification
+    if (notificationService) {
+      const testNotifId = await notificationService.createNotification({
+        type: "test",
+        fromId: "test_user",
+        chatId: "test_chat_" + Date.now(),
+        text: "This is a test notification",
+        senderName: "Test User",
+        senderPhoto: "/logo.png",
+        pushTitle: "Test Notification",
+        pushBody: "This is a test push notification"
+      });
+      console.log('✅ Test notification created with ID:', testNotifId);
+    }
+    
+    const token = await requestNotificationPermission();
+    console.log('🔑 FCM Token:', token);
+  };
+
+  // ---------- Emergency Test Function ----------
+  const emergencyNotificationTest = () => {
+    console.log('🚨 EMERGENCY NOTIFICATION TEST');
+    
+    // Test 1: Direct browser notification (simple)
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try {
+        new Notification('Jibzo Test 🚨', {
+          body: 'Yeh DIRECT browser notification aa raha hai?',
+          icon: '/icons/logo.png',
+          tag: 'emergency-test-' + Date.now()
+        });
+        console.log('✅ Direct browser notification shown');
+      } catch (error) {
+        console.error('❌ Direct notification failed:', error);
+      }
+    }
+    
+    // Test 2: Our custom notification
+    showBrowserNotification({
+      title: 'Custom Test 🔔',
+      body: 'Yeh CUSTOM notification aa raha hai?',
+      image: chatUser?.photoURL,
+      data: { 
+        url: `/messages/${uid}`,
+        chatId: chatId,
+        fromId: uid
+      }
+    });
+    
+    // Test 3: Service Worker notification (with actions)
+    showServiceWorkerNotification({
+      title: 'SW Test 🛠️',
+      body: 'Yeh SERVICE WORKER notification aa raha hai?',
+      image: '/logo.png',
+      data: {
+        url: `/messages/${uid}`
+      }
+    });
+    
+    // Test 4: Floating notification
+    showFloatingNotification({
+      title: 'Floating Test 🪟',
+      body: 'Yeh FLOATING notification aa raha hai?',
+      image: '/logo.png',
+      url: `/messages/${uid}`
+    });
+
+    // Test 5: Smart notification
+    showSmartNotification({
+      title: 'Smart Test 🤖',
+      body: 'Yeh SMART notification aa raha hai?',
+      image: '/logo.png',
+      url: `/messages/${uid}`,
+      data: {
+        url: `/messages/${uid}`
+      }
+    });
+
+    // Test 6: Create test notification in database
+    if (notificationService) {
+      notificationService.createNotification({
+        type: "emergency_test",
+        fromId: "system",
+        chatId: "test_chat_emergency",
+        text: "Emergency test notification",
+        senderName: "Test System",
+        senderPhoto: "/logo.png",
+        pushTitle: "Emergency Test",
+        pushBody: "This is an emergency test notification",
+        timestamp: Date.now()
+      });
+    }
+
+    alert('🚨 Emergency test complete! Check ALL notification types in console!');
+  };
+
+  // ========== MAIN COMPONENT LOGIC ==========
+
   // ---------- Check Permissions on Load ----------
   useEffect(() => {
     const storedPermissions = localStorage.getItem('appPermissions');
@@ -99,7 +379,7 @@ export default function Messages() {
     console.log('Current User:', currentUid);
     console.log('Notification Permission:', Notification.permission);
     console.log('Service Worker Support:', 'serviceWorker' in navigator);
-
+    
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then(registrations => {
         console.log('Service Worker Registrations:', registrations.length);
@@ -116,7 +396,7 @@ export default function Messages() {
   useEffect(() => {
     const setupNotifications = async () => {
       if (!currentUid || currentUid.startsWith('guest_')) return;
-
+      
       try {
         const service = await initializeNotifications(currentUid);
         setNotificationService(service);
@@ -150,8 +430,8 @@ export default function Messages() {
       }
     };
   }, [currentUid, uid]);
-
-  // Listen for New Notifications - FINAL WORKING VERSION
+ 
+  // ---------- Listen for New Notifications - FINAL WORKING VERSION ----------
   useEffect(() => {
     if (!notificationService || !currentUid) return;
 
@@ -160,40 +440,24 @@ export default function Messages() {
     notificationService.listenForNotifications((newNotifications) => {
       console.log('📨 New notifications received:', newNotifications);
       setUnreadCount(newNotifications.length);
-
+      
       newNotifications.forEach(notification => {
         if (notification.type === 'message' && !notification.seen) {
           console.log('💬 New message notification:', notification);
-
-          // ✅ ALWAYS show floating notification
-          showFloatingNotification({
+          
+          // ✅ SMART NOTIFICATION: Use the best method automatically
+          showSmartNotification({
             title: 'New Message 💬',
             body: `${notification.senderName || 'Someone'}: ${notification.text || 'Sent a message'}`,
             image: notification.senderPhoto || '/logo.png',
             url: `/messages/${notification.fromId}`,
+            data: {
+              url: `/messages/${notification.fromId}`,
+              chatId: notification.chatId,
+              fromId: notification.fromId
+            },
             notificationId: notification.id
           });
-
-          // ✅ Try Service Worker notification first (with actions)
-          if (Notification.permission === 'granted') {
-            const shouldShowNotification =
-              !document.hasFocus() ||
-              chatId !== notification.chatId;
-
-            if (shouldShowNotification) {
-              console.log('🛠️ Showing Service Worker notification');
-              showServiceWorkerNotification({
-                title: 'New Message 💬',
-                body: `${notification.senderName || 'Someone'}: ${notification.text || 'Sent a message'}`,
-                image: notification.senderPhoto,
-                data: {
-                  url: `/messages/${notification.fromId}`,
-                  chatId: notification.chatId,
-                  fromId: notification.fromId
-                }
-              });
-            }
-          }
 
           // Mark as seen after showing
           setTimeout(() => {
@@ -204,173 +468,22 @@ export default function Messages() {
       });
     });
   }, [notificationService, currentUid, uid, chatId]);
-  // ---------- Enhanced Browser Notification - 100% WORKING ----------
-  // ---------- Enhanced Browser Notification - FIXED VERSION ----------
-  const showBrowserNotification = (notificationData) => {
-    if (!("Notification" in window)) {
-      console.log("❌ Browser doesn't support notifications");
-      return;
-    }
-
-    if (Notification.permission !== "granted") {
-      console.log("❌ Notification permission not granted");
-      return;
-    }
-
-    console.log('🖥️ Creating browser notification:', notificationData);
-
-    try {
-      // ✅ FIXED: Remove actions from regular browser notifications
-      const notificationOptions = {
-        body: notificationData.body,
-        icon: '/icons/logo.png',
-        badge: '/icons/logo.png',
-        image: notificationData.image,
-        data: notificationData.data || {},
-        tag: 'jibzo-message-' + Date.now(), // Unique tag for each notification
-        requireInteraction: true,
-        // ❌ REMOVED: actions - they only work with service worker notifications
-      };
-
-      const notification = new Notification(notificationData.title, notificationOptions);
-
-      notification.onclick = () => {
-        console.log('🔔 Browser notification clicked');
-        window.focus();
-        notification.close();
-
-        if (notificationData.data?.url) {
-          console.log('📍 Navigating to:', notificationData.data.url);
-          window.location.href = notificationData.data.url;
-        }
-      };
-
-      notification.onclose = () => {
-        console.log('🔔 Browser notification closed');
-      };
-
-      // Auto close after 10 seconds
-      setTimeout(() => {
-        notification.close();
-      }, 10000);
-
-      console.log('✅ Browser notification shown successfully');
-
-    } catch (error) {
-      console.error('❌ Error showing browser notification:', error);
-
-      // ✅ FALLBACK: Try without requireInteraction
-      try {
-        const fallbackOptions = {
-          body: notificationData.body,
-          icon: '/icons/logo.png',
-          data: notificationData.data || {},
-        };
-
-        const fallbackNotification = new Notification(notificationData.title, fallbackOptions);
-
-        fallbackNotification.onclick = () => {
-          window.focus();
-          fallbackNotification.close();
-          if (notificationData.data?.url) {
-            window.location.href = notificationData.data.url;
-          }
-        };
-
-        console.log('✅ Fallback notification shown');
-      } catch (fallbackError) {
-        console.error('❌ Fallback notification also failed:', fallbackError);
-      }
-    }
-  };
-
-  // ---------- Manual Test Function ----------
-  // ---------- Manual Test Function - UPDATED ----------
-  const testNotification = async () => {
-    console.log('🧪 Testing notification system...');
-
-    // Test 1: Simple browser notification
-    showBrowserNotification({
-      title: 'Test Notification 🧪',
-      body: 'This is a test notification from Jibzo!',
-      image: chatUser?.photoURL,
-      data: {
-        url: `/messages/${uid}`,
-        test: true
-      }
-    });
-
-    // Test 2: Service Worker notification with actions
-    showServiceWorkerNotification({
-      title: 'SW Test 🛠️',
-      body: 'Service Worker test with actions!',
-      image: chatUser?.photoURL,
-      data: {
-        url: `/messages/${uid}`
-      }
-    });
-
-    // Test 3: Floating notification
-    showFloatingNotification({
-      title: 'Floating Test 🪟',
-      body: 'This is a floating notification test!',
-      image: chatUser?.photoURL,
-      url: `/messages/${uid}`
-    });
-
-    // Test 4: Database notification
-    if (notificationService) {
-      const testNotifId = await notificationService.createNotification({
-        type: "test",
-        fromId: "test_user",
-        chatId: "test_chat_" + Date.now(),
-        text: "This is a test notification",
-        senderName: "Test User",
-        senderPhoto: "/logo.png",
-        pushTitle: "Test Notification",
-        pushBody: "This is a test push notification"
-      });
-      console.log('✅ Test notification created with ID:', testNotifId);
-    }
-
-    const token = await requestNotificationPermission();
-    console.log('🔑 FCM Token:', token);
-  };
-  // ---------- Enhanced Floating Notification - 100% WORKING ----------
-  const showFloatingNotification = (notificationData) => {
-    console.log('🪟 Attempting to show floating notification');
-
-    // Always show floating notification
-    const floatingEvent = new CustomEvent('showFloatingNotification', {
-      detail: {
-        id: Date.now(),
-        title: notificationData.title,
-        body: notificationData.body,
-        image: notificationData.image,
-        url: notificationData.url,
-        timestamp: new Date().toLocaleTimeString(),
-        duration: 5000
-      }
-    });
-    window.dispatchEvent(floatingEvent);
-    console.log('✅ Floating notification event dispatched');
-  };
 
   // ---------- Push Notification Trigger ----------
   const triggerPushNotification = async (recipientUid, notificationData) => {
     try {
       console.log('📤 Triggering push notification for:', recipientUid);
-
+      
       const userRef = dbRef(db, `users/${recipientUid}`);
       const snapshot = await get(userRef);
-
+      
       if (snapshot.exists()) {
         const userData = snapshot.val();
         const fcmToken = userData.fcmToken;
-
+        
         if (fcmToken) {
           console.log('✅ FCM Token found, sending push notification');
-
+          
           const pushRef = push(dbRef(db, `pushQueue`));
           await set(pushRef, {
             to: fcmToken,
@@ -384,7 +497,7 @@ export default function Messages() {
             timestamp: Date.now(),
             recipient: recipientUid
           });
-
+          
           console.log('✅ Push notification queued');
         } else {
           console.log('❌ No FCM token found for user');
@@ -398,13 +511,13 @@ export default function Messages() {
   // ---------- Debug Functions ----------
   const debugFCMStatus = async () => {
     console.group('🔍 FCM DEBUG INFO');
-
+    
     // 1. Check VAPID Key
     console.log('🔑 VAPID Key:', import.meta.env.VITE_FIREBASE_VAPID_KEY ? '✅ Present' : '❌ Missing');
-
+    
     // 2. Check current FCM token
     console.log('📱 Current FCM Token:', fcmToken);
-
+    
     // 3. Get new token with VAPID
     try {
       const messagingInstance = await getFirebaseMessaging();
@@ -417,7 +530,7 @@ export default function Messages() {
     } catch (error) {
       console.error('❌ Error getting new token:', error);
     }
-
+    
     // 4. Check service worker
     if ('serviceWorker' in navigator) {
       const registrations = await navigator.serviceWorker.getRegistrations();
@@ -426,13 +539,13 @@ export default function Messages() {
         console.log('   Scope:', reg.scope, 'State:', reg.active ? 'active' : 'inactive');
       });
     }
-
+    
     console.groupEnd();
   };
 
   const debugNotificationCheck = async () => {
     console.group('🔔 NOTIFICATION DEBUG CHECK');
-
+    
     // 1. Check current notification status
     const status = {
       permission: Notification.permission,
@@ -445,20 +558,20 @@ export default function Messages() {
       unreadCount: unreadCount
     };
     console.log('📊 Current Status:', status);
-
+    
     // 2. Check notifications in database
     if (currentUid && !currentUid.startsWith('guest_')) {
       try {
         const notifRef = dbRef(db, `notifications/${currentUid}`);
         const snapshot = await get(notifRef);
-
+        
         if (snapshot.exists()) {
           const notifications = Object.entries(snapshot.val()).map(([id, data]) => ({
             id,
             ...data
           }));
           console.log('📨 Notifications in database:', notifications);
-
+          
           const unread = notifications.filter(n => !n.seen);
           console.log('🆕 Unread notifications:', unread.length);
         } else {
@@ -468,7 +581,7 @@ export default function Messages() {
         console.error('❌ Error fetching notifications:', error);
       }
     }
-
+    
     // 3. Test notification creation
     if (notificationService) {
       const testNotifId = await notificationService.createNotification({
@@ -484,7 +597,7 @@ export default function Messages() {
       });
       console.log('🧪 Test notification created with ID:', testNotifId);
     }
-
+    
     // 4. Check service worker
     if ('serviceWorker' in navigator) {
       const registrations = await navigator.serviceWorker.getRegistrations();
@@ -497,78 +610,11 @@ export default function Messages() {
         });
       });
     }
-
+    
     console.groupEnd();
-
+    
     // Show results in alert
     alert(`Notification Debug Complete!\nCheck console for details.\nPermission: ${status.permission}\nUnread: ${unreadCount}`);
-  };
-
-  // ---------- Emergency Test Function ----------
-  // ---------- Emergency Test Function - UPDATED ----------
-  const emergencyNotificationTest = () => {
-    console.log('🚨 EMERGENCY NOTIFICATION TEST');
-
-    // Test 1: Direct browser notification (simple)
-    if ('Notification' in window && Notification.permission === 'granted') {
-      try {
-        new Notification('Jibzo Test 🚨', {
-          body: 'Yeh DIRECT browser notification aa raha hai?',
-          icon: '/icons/logo.png',
-          tag: 'emergency-test-' + Date.now()
-        });
-        console.log('✅ Direct browser notification shown');
-      } catch (error) {
-        console.error('❌ Direct notification failed:', error);
-      }
-    }
-
-    // Test 2: Our custom notification (FIXED - without actions)
-    showBrowserNotification({
-      title: 'Custom Test 🔔',
-      body: 'Yeh CUSTOM notification aa raha hai?',
-      image: chatUser?.photoURL,
-      data: {
-        url: `/messages/${uid}`,
-        chatId: chatId,
-        fromId: uid
-      }
-    });
-
-    // Test 3: Service Worker notification (with actions)
-    showServiceWorkerNotification({
-      title: 'SW Test 🛠️',
-      body: 'Yeh SERVICE WORKER notification aa raha hai?',
-      image: '/logo.png',
-      data: {
-        url: `/messages/${uid}`
-      }
-    });
-
-    // Test 4: Floating notification
-    showFloatingNotification({
-      title: 'Floating Test 🪟',
-      body: 'Yeh FLOATING notification aa raha hai?',
-      image: '/logo.png',
-      url: `/messages/${uid}`
-    });
-
-    // Test 5: Create test notification in database
-    if (notificationService) {
-      notificationService.createNotification({
-        type: "emergency_test",
-        fromId: "system",
-        chatId: "test_chat_emergency",
-        text: "Emergency test notification",
-        senderName: "Test System",
-        senderPhoto: "/logo.png",
-        pushTitle: "Emergency Test",
-        pushBody: "This is an emergency test notification",
-        timestamp: Date.now()
-      });
-    }
-
-    alert('🚨 Emergency test complete! Check:\n1. Browser notification\n2. Service Worker notification\n3. Floating notification\n4. Console for details');
   };
 
   // ---------- Camera Permission Handler ----------
@@ -585,16 +631,16 @@ export default function Messages() {
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
         setHasCameraPermission(true);
-
+        
         const storedPermissions = JSON.parse(localStorage.getItem('appPermissions') || '{}');
         localStorage.setItem('appPermissions', JSON.stringify({
           ...storedPermissions,
           camera: true
         }));
-
+        
         stream.getTracks().forEach(track => track.stop());
         setShowCameraModal(false);
-
+        
         await openCamera();
       }
     } catch (error) {
@@ -631,16 +677,16 @@ export default function Messages() {
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         setHasMicrophonePermission(true);
-
+        
         const storedPermissions = JSON.parse(localStorage.getItem('appPermissions') || '{}');
         localStorage.setItem('appPermissions', JSON.stringify({
           ...storedPermissions,
           microphone: true
         }));
-
+        
         stream.getTracks().forEach(track => track.stop());
         setShowMicrophoneModal(false);
-
+        
         await startVoiceRecording();
       }
     } catch (error) {
@@ -713,7 +759,7 @@ export default function Messages() {
       if (snap.exists()) {
         const userData = snap.val();
         setChatUser(userData);
-
+        
         if (currentUid && !currentUid.startsWith('guest_')) {
           const chatRef = dbRef(db, `userChats/${currentUid}/${chatId}`);
           update(chatRef, {
@@ -838,7 +884,7 @@ export default function Messages() {
         const recipientUid = uid;
         if (recipientUid && !recipientUid.startsWith("guest_")) {
           console.log('🚀 Sending notification to:', recipientUid);
-
+          
           const notifRef = push(dbRef(db, `notifications/${recipientUid}`));
           const notifObj = {
             type: "message",
@@ -855,7 +901,7 @@ export default function Messages() {
             pushImage: chatUser?.photoURL,
             pushUrl: `/messages/${currentUid}`
           };
-
+          
           await set(notifRef, notifObj);
           console.log('✅ Notification saved to database');
 
@@ -873,10 +919,10 @@ export default function Messages() {
           };
 
           await updateChat(currentUid, uid, chatUser);
-
+          
           if (currentUid && !currentUid.startsWith('guest_')) {
             const currentUserData = {
-              username: auth.currentUser?.displayName || "You",
+              username: auth.currentUser?.displayName || "You", 
               photoURL: auth.currentUser?.photoURL || "/logo.png"
             };
             await updateChat(uid, currentUid, currentUserData);
@@ -1408,31 +1454,31 @@ export default function Messages() {
         )}
       </div>
 
-      {/* Debug buttons - Only show in development */}
+      {/* Debug buttons */}
       <div className="position-fixed" style={{ bottom: '120px', right: '20px', zIndex: 1000 }}>
-        <button
-          onClick={debugFCMStatus}
+        <button 
+          onClick={debugFCMStatus} 
           className="btn btn-info btn-sm me-2 mb-1"
           style={{ fontSize: '12px', padding: '5px 10px' }}
         >
           🔍 FCM Debug
         </button>
-        <button
-          onClick={testNotification}
+        <button 
+          onClick={testNotification} 
           className="btn btn-warning btn-sm me-2 mb-1"
           style={{ fontSize: '12px', padding: '5px 10px' }}
         >
           🧪 Test Notifs
         </button>
-        <button
-          onClick={debugNotificationCheck}
+        <button 
+          onClick={debugNotificationCheck} 
           className="btn btn-secondary btn-sm me-2 mb-1"
           style={{ fontSize: '12px', padding: '5px 10px' }}
         >
           📨 Notif Check
         </button>
-        <button
-          onClick={emergencyNotificationTest}
+        <button 
+          onClick={emergencyNotificationTest} 
           className="btn btn-danger btn-sm mb-1"
           style={{ fontSize: '12px', padding: '5px 10px' }}
         >
@@ -1456,14 +1502,14 @@ export default function Messages() {
               </div>
             </div>
             <div className="modal-footer">
-              <button
-                className="btn btn-secondary"
+              <button 
+                className="btn btn-secondary" 
                 onClick={() => setShowCameraModal(false)}
               >
                 Not Now
               </button>
-              <button
-                className="btn btn-primary"
+              <button 
+                className="btn btn-primary" 
                 onClick={requestCameraPermission}
               >
                 Allow Camera Access
@@ -1489,14 +1535,14 @@ export default function Messages() {
               </div>
             </div>
             <div className="modal-footer">
-              <button
-                className="btn btn-secondary"
+              <button 
+                className="btn btn-secondary" 
                 onClick={() => setShowMicrophoneModal(false)}
               >
                 Not Now
               </button>
-              <button
-                className="btn btn-primary"
+              <button 
+                className="btn btn-primary" 
                 onClick={requestMicrophonePermission}
               >
                 Allow Microphone Access
