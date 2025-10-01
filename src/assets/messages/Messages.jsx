@@ -65,11 +65,21 @@ export default function Messages() {
 
   const chatId = currentUid && uid ? [currentUid, uid].sort().join("_") : null;
 
-  // ========== FORCED NOTIFICATION FUNCTIONS ==========
+  // ========== ENHANCED NOTIFICATION FUNCTIONS ==========
 
-  // ---------- Force Browser Notification ----------
-  const forceBrowserNotification = async (notificationData) => {
-    console.log('🔔 FORCE Browser Notification started');
+  // ---------- Detect Device Type ----------
+  const detectDeviceType = () => {
+    const userAgent = navigator.userAgent.toLowerCase();
+    if (/mobile|android|iphone|ipad/.test(userAgent)) {
+      return 'mobile';
+    } else {
+      return 'desktop';
+    }
+  };
+
+  // ---------- Enhanced Browser Notification ----------
+  const showBrowserNotification = async (notificationData) => {
+    console.log('🔔 Browser Notification started for:', detectDeviceType());
     
     if (!("Notification" in window)) {
       console.log("❌ Browser doesn't support notifications");
@@ -86,7 +96,7 @@ export default function Messages() {
       }
     }
 
-    console.log('🖥️ Creating FORCED browser notification:', notificationData);
+    console.log('🖥️ Creating browser notification:', notificationData);
 
     try {
       const notificationOptions = {
@@ -95,14 +105,14 @@ export default function Messages() {
         badge: '/icons/logo.png',
         image: notificationData.image,
         data: notificationData.data || {},
-        tag: 'jibzo-force-' + Date.now(),
+        tag: 'jibzo-' + Date.now(),
         requireInteraction: true,
       };
 
       const notification = new Notification(notificationData.title, notificationOptions);
 
       notification.onclick = () => {
-        console.log('🔔 FORCE Notification clicked');
+        console.log('🔔 Notification clicked');
         window.focus();
         notification.close();
         
@@ -112,157 +122,201 @@ export default function Messages() {
       };
 
       notification.onclose = () => {
-        console.log('🔔 FORCE Notification closed');
+        console.log('🔔 Notification closed');
       };
 
-      // Auto close after 10 seconds
+      // Auto close after 8 seconds
       setTimeout(() => {
         notification.close();
-      }, 10000);
+      }, 8000);
       
-      console.log('✅ FORCE Browser notification shown successfully');
+      console.log('✅ Browser notification shown successfully');
       return true;
       
     } catch (error) {
-      console.error('❌ Error showing FORCE browser notification:', error);
+      console.error('❌ Error showing browser notification:', error);
       return false;
     }
   };
 
-  // ---------- Force Service Worker Notification ----------
-  const forceServiceWorkerNotification = async (notificationData) => {
-    console.log('🛠️ FORCE Service Worker Notification started');
-    
-    if (!('serviceWorker' in navigator) || !('Notification' in window)) {
-      console.log('❌ Service Worker or Notification not supported');
+  // ---------- Enhanced Push Notification Trigger ----------
+  const triggerEnhancedPushNotification = async (recipientUid, notificationData) => {
+    try {
+      console.log('📤 Enhanced push notification for:', recipientUid);
+      
+      // Get recipient user data
+      const userRef = dbRef(db, `users/${recipientUid}`);
+      const snapshot = await get(userRef);
+      
+      if (snapshot.exists()) {
+        const userData = snapshot.val();
+        const fcmToken = userData.fcmToken;
+        
+        if (fcmToken) {
+          console.log('✅ FCM Token found:', fcmToken.substring(0, 20) + '...');
+          
+          // Enhanced notification data for different devices
+          const enhancedNotification = {
+            to: fcmToken,
+            notification: {
+              title: notificationData.title,
+              body: notificationData.body,
+              image: notificationData.image,
+              icon: '/icons/logo.png',
+              badge: '/icons/logo.png'
+            },
+            data: {
+              ...notificationData.data,
+              deviceType: detectDeviceType(),
+              timestamp: Date.now().toString(),
+              click_action: notificationData.data?.url || '/'
+            },
+            android: {
+              priority: "high",
+              notification: {
+                sound: "default",
+                channel_id: "jibzo_messages"
+              }
+            },
+            apns: {
+              payload: {
+                aps: {
+                  sound: "default",
+                  badge: 1
+                }
+              }
+            },
+            webpush: {
+              headers: {
+                Urgency: "high"
+              }
+            }
+          };
+          
+          const pushRef = push(dbRef(db, `pushQueue`));
+          await set(pushRef, {
+            ...enhancedNotification,
+            timestamp: Date.now(),
+            recipient: recipientUid,
+            sender: currentUid
+          });
+          
+          console.log('✅ Enhanced push notification queued');
+          return true;
+        } else {
+          console.log('❌ No FCM token found for user');
+          return false;
+        }
+      } else {
+        console.log('❌ User not found in database');
+        return false;
+      }
+    } catch (error) {
+      console.error('❌ Error triggering enhanced push notification:', error);
       return false;
     }
+  };
 
+  // ---------- Ultimate Notification System ----------
+  const sendUltimateNotification = async (recipientUid, notificationData) => {
+    console.log('🚀 ULTIMATE NOTIFICATION SYSTEM STARTED');
+    console.log('📱 Current Device:', detectDeviceType());
+    console.log('🎯 Recipient:', recipientUid);
+    
+    let results = {
+      pushNotification: false,
+      browserNotification: false,
+      databaseNotification: false
+    };
+
+    // Method 1: Push Notification (FCM)
     try {
-      const registration = await navigator.serviceWorker.ready;
+      results.pushNotification = await triggerEnhancedPushNotification(recipientUid, notificationData);
+      console.log('📱 Push Notification Result:', results.pushNotification);
+    } catch (error) {
+      console.error('❌ Push notification failed:', error);
+    }
+
+    // Method 2: Browser Notification (if same device)
+    try {
+      if (currentUid !== recipientUid) {
+        results.browserNotification = await showBrowserNotification(notificationData);
+        console.log('🖥️ Browser Notification Result:', results.browserNotification);
+      }
+    } catch (error) {
+      console.error('❌ Browser notification failed:', error);
+    }
+
+    // Method 3: Always save to database
+    try {
+      results.databaseNotification = await saveNotificationToDatabase(recipientUid, notificationData);
+      console.log('💾 Database Notification Result:', results.databaseNotification);
+    } catch (error) {
+      console.error('❌ Database notification failed:', error);
+    }
+
+    console.log('🎯 ULTIMATE NOTIFICATION RESULTS:', results);
+    
+    // Return true if any method worked
+    return Object.values(results).some(result => result === true);
+  };
+
+  // ---------- Save Notification to Database ----------
+  const saveNotificationToDatabase = async (recipientUid, notificationData) => {
+    try {
+      const notifRef = push(dbRef(db, `notifications/${recipientUid}`));
+      const notifObj = {
+        type: "message",
+        fromId: currentUid,
+        chatId: chatId,
+        messageId: notificationData.messageId || `msg_${Date.now()}`,
+        text: notificationData.body || 'New message',
+        timestamp: serverTimestamp(),
+        seen: false,
+        senderName: chatUser?.username || "User",
+        senderPhoto: chatUser?.photoURL || "/logo.png",
+        pushTitle: notificationData.title,
+        pushBody: notificationData.body,
+        pushImage: chatUser?.photoURL,
+        pushUrl: `/messages/${currentUid}`,
+        deviceType: detectDeviceType(),
+        delivered: false
+      };
       
-      await registration.showNotification(notificationData.title, {
-        body: notificationData.body,
-        icon: '/icons/logo.png',
-        badge: '/icons/logo.png',
-        image: notificationData.image,
-        data: notificationData.data || {},
-        tag: 'jibzo-sw-force-' + Date.now(),
-        requireInteraction: true,
-        actions: [
-          {
-            action: 'open',
-            title: '💬 Open Chat'
-          },
-          {
-            action: 'close', 
-            title: '❌ Close'
-          }
-        ]
-      });
-      
-      console.log('✅ FORCE Service Worker notification shown');
+      await set(notifRef, notifObj);
+      console.log('✅ Notification saved to database');
       return true;
     } catch (error) {
-      console.error('❌ FORCE Service Worker notification failed:', error);
+      console.error('❌ Error saving notification to database:', error);
       return false;
     }
-  };
-
-  // ---------- Force Floating Notification ----------
-  const forceFloatingNotification = (notificationData) => {
-    console.log('🪟 FORCE Floating notification');
-    
-    const floatingEvent = new CustomEvent('showFloatingNotification', {
-      detail: {
-        id: Date.now(),
-        title: notificationData.title,
-        body: notificationData.body,
-        image: notificationData.image,
-        url: notificationData.url,
-        timestamp: new Date().toLocaleTimeString(),
-        duration: 5000
-      }
-    });
-    window.dispatchEvent(floatingEvent);
-    console.log('✅ FORCE Floating notification event dispatched');
-  };
-
-  // ---------- ULTIMATE FORCE NOTIFICATION ----------
-  const ultimateForceNotification = async (notificationData) => {
-    console.log('🚀 ULTIMATE FORCE NOTIFICATION STARTED');
-    
-    let successCount = 0;
-    
-    // Method 1: Force Browser Notification
-    try {
-      const result1 = await forceBrowserNotification(notificationData);
-      if (result1) successCount++;
-    } catch (error) {
-      console.error('❌ Method 1 failed:', error);
-    }
-    
-    // Method 2: Force Service Worker Notification
-    try {
-      const result2 = await forceServiceWorkerNotification(notificationData);
-      if (result2) successCount++;
-    } catch (error) {
-      console.error('❌ Method 2 failed:', error);
-    }
-    
-    // Method 3: Force Floating Notification (always works)
-    forceFloatingNotification(notificationData);
-    successCount++;
-    
-    // Method 4: Direct Notification as last resort
-    try {
-      if ('Notification' in window && Notification.permission === 'granted') {
-        const notification = new Notification(notificationData.title, {
-          body: notificationData.body,
-          icon: '/icons/logo.png',
-          tag: 'direct-ultimate-' + Date.now()
-        });
-        console.log('✅ Direct ultimate notification shown');
-        successCount++;
-      }
-    } catch (error) {
-      console.error('❌ Direct ultimate failed:', error);
-    }
-    
-    console.log(`🎯 ULTIMATE FORCE COMPLETE: ${successCount}/4 methods successful`);
-    
-    // If no notifications shown, show alert
-    if (successCount === 0) {
-      alert('❌ No notification methods worked! Check browser permissions.');
-    } else {
-      console.log(`✅ ${successCount} notification methods worked!`);
-    }
-    
-    return successCount > 0;
   };
 
   // ---------- Test Notification Function ----------
   const testNotificationNow = async () => {
-    console.log('🧪 TEST NOTIFICATION NOW');
+    console.log('🧪 TEST NOTIFICATION - CROSS DEVICE');
     
     const testData = {
-      title: 'Test Notification ✅',
-      body: 'Yeh test notification aa raha hai!',
+      title: 'Cross-Device Test ✅',
+      body: `Testing ${detectDeviceType()} → ${detectDeviceType()} notification!`,
       image: chatUser?.photoURL || '/logo.png',
       url: `/messages/${uid}`,
       data: {
         url: `/messages/${uid}`,
-        test: true
+        test: true,
+        deviceType: detectDeviceType()
       }
     };
     
-    const result = await ultimateForceNotification(testData);
+    // Test self notification
+    const result = await sendUltimateNotification(currentUid, testData);
     
     if (result) {
-      console.log('🎉 TEST SUCCESSFUL - Notification should be visible');
+      console.log('🎉 TEST SUCCESSFUL - Notification systems working');
+      alert(`Test successful! Check notifications on ${detectDeviceType()}`);
     } else {
-      console.log('❌ TEST FAILED - No notifications shown');
-      alert('Test failed! Check browser notification permissions.');
+      console.log('❌ TEST FAILED - No notification methods worked');
+      alert('Test failed! Check console for details.');
     }
   };
 
@@ -296,37 +350,51 @@ export default function Messages() {
     setCurrentUid(auth.currentUser?.uid || guestId);
   }, []);
 
-  // ---------- Notification Setup ----------
+  // ---------- Enhanced Notification Setup ----------
   useEffect(() => {
-    const setupNotifications = async () => {
-      if (!currentUid || currentUid.startsWith('guest_')) return;
+    const setupEnhancedNotifications = async () => {
+      if (!currentUid || currentUid.startsWith('guest_')) {
+        console.log('🚫 Not setting up notifications for guest user');
+        return;
+      }
       
       try {
+        console.log('🔧 Setting up enhanced notifications for:', currentUid);
+        
+        // Initialize notification service
         const service = await initializeNotifications(currentUid);
         setNotificationService(service);
 
+        // Request and save FCM token
         const token = await requestNotificationPermission();
         if (token) {
           setFcmToken(token);
           await saveFCMToken(currentUid, token);
+          console.log('✅ FCM Token saved for:', currentUid);
+        } else {
+          console.log('❌ No FCM token received');
         }
 
+        // Setup foreground message listener
         onForegroundMessage((payload) => {
-          console.log('New message received in foreground:', payload);
-          forceFloatingNotification({
+          console.log('📨 New foreground message:', payload);
+          showBrowserNotification({
             title: payload.notification?.title || 'New Message',
             body: payload.notification?.body || 'You have a new message',
             image: chatUser?.photoURL || '/logo.png',
-            url: payload.data?.url || `/messages/${uid}`
+            url: payload.data?.url || `/messages/${uid}`,
+            data: payload.data
           });
         });
 
+        console.log('🎯 Enhanced notification setup complete');
+
       } catch (error) {
-        console.error('Notification setup error:', error);
+        console.error('❌ Enhanced notification setup error:', error);
       }
     };
 
-    setupNotifications();
+    setupEnhancedNotifications();
 
     return () => {
       if (notificationService) {
@@ -335,22 +403,22 @@ export default function Messages() {
     };
   }, [currentUid, uid]);
  
-  // ---------- Listen for New Notifications - FORCED VERSION ----------
+  // ---------- Listen for New Notifications - ENHANCED VERSION ----------
   useEffect(() => {
     if (!notificationService || !currentUid) return;
 
-    console.log('🎯 Starting FORCED notification listener...');
+    console.log('🎯 Starting enhanced notification listener...');
 
     notificationService.listenForNotifications((newNotifications) => {
-      console.log('📨 New notifications received:', newNotifications);
+      console.log('📨 New notifications received:', newNotifications.length);
       setUnreadCount(newNotifications.length);
       
       newNotifications.forEach(notification => {
         if (notification.type === 'message' && !notification.seen) {
-          console.log('💬 New message notification - FORCING DISPLAY:', notification);
+          console.log('💬 Processing message notification:', notification);
           
-          // ULTIMATE FORCE NOTIFICATION
-          ultimateForceNotification({
+          // Show browser notification
+          showBrowserNotification({
             title: 'New Message 💬',
             body: `${notification.senderName || 'Someone'}: ${notification.text || 'Sent a message'}`,
             image: notification.senderPhoto || '/logo.png',
@@ -359,8 +427,7 @@ export default function Messages() {
               url: `/messages/${notification.fromId}`,
               chatId: notification.chatId,
               fromId: notification.fromId
-            },
-            notificationId: notification.id
+            }
           });
 
           // Mark as seen after showing
@@ -372,45 +439,6 @@ export default function Messages() {
       });
     });
   }, [notificationService, currentUid, uid, chatId]);
-
-  // ---------- Push Notification Trigger ----------
-  const triggerPushNotification = async (recipientUid, notificationData) => {
-    try {
-      console.log('📤 Triggering push notification for:', recipientUid);
-      
-      const userRef = dbRef(db, `users/${recipientUid}`);
-      const snapshot = await get(userRef);
-      
-      if (snapshot.exists()) {
-        const userData = snapshot.val();
-        const fcmToken = userData.fcmToken;
-        
-        if (fcmToken) {
-          console.log('✅ FCM Token found, sending push notification');
-          
-          const pushRef = push(dbRef(db, `pushQueue`));
-          await set(pushRef, {
-            to: fcmToken,
-            notification: {
-              title: notificationData.title,
-              body: notificationData.body,
-              image: notificationData.image,
-              icon: '/icons/logo.png'
-            },
-            data: notificationData.data,
-            timestamp: Date.now(),
-            recipient: recipientUid
-          });
-          
-          console.log('✅ Push notification queued');
-        } else {
-          console.log('❌ No FCM token found for user');
-        }
-      }
-    } catch (error) {
-      console.error('❌ Error triggering push notification:', error);
-    }
-  };
 
   // ---------- Camera Permission Handler ----------
   const handleCameraClick = async () => {
@@ -641,7 +669,7 @@ export default function Messages() {
     }, 1500);
   };
 
-  // ---------- Send Message with Enhanced Notifications ----------
+  // ---------- Enhanced Send Message ----------
   const sendMessage = async (opts = {}) => {
     if (!currentUid || !chatId) return;
     const text = opts.text ?? input.trim();
@@ -678,28 +706,25 @@ export default function Messages() {
 
         const recipientUid = uid;
         if (recipientUid && !recipientUid.startsWith("guest_")) {
-          console.log('🚀 Sending notification to:', recipientUid);
+          console.log('🚀 Sending ULTIMATE notification to:', recipientUid);
           
-          const notifRef = push(dbRef(db, `notifications/${recipientUid}`));
-          const notifObj = {
-            type: "message",
-            fromId: currentUid,
-            chatId: chatId,
-            messageId: pushed.key,
-            text: (text || (opts.imageURL ? "📷 Image" : "Message")).slice(0, 200),
-            timestamp: serverTimestamp(),
-            seen: false,
-            senderName: chatUser?.username || "User",
-            senderPhoto: chatUser?.photoURL || "/logo.png",
-            pushTitle: "New Message",
-            pushBody: `${chatUser?.username || "Someone"}: ${text || "Sent a photo"}`,
-            pushImage: chatUser?.photoURL,
-            pushUrl: `/messages/${currentUid}`
-          };
-          
-          await set(notifRef, notifObj);
-          console.log('✅ Notification saved to database');
+          // Use ultimate notification system
+          await sendUltimateNotification(recipientUid, {
+            title: "New Message 💬",
+            body: `${chatUser?.username || "Someone"}: ${text || "Sent a photo"}`,
+            image: chatUser?.photoURL,
+            url: `/messages/${currentUid}`,
+            data: {
+              url: `/messages/${currentUid}`,
+              chatId: chatId,
+              fromId: currentUid,
+              type: "message",
+              messageId: pushed.key
+            },
+            messageId: pushed.key
+          });
 
+          // Update chat for both users
           const updateChat = async (userId, partnerId, partnerData) => {
             const userChatRef = dbRef(db, `userChats/${userId}/${chatId}`);
             await set(userChatRef, {
@@ -722,18 +747,6 @@ export default function Messages() {
             };
             await updateChat(uid, currentUid, currentUserData);
           }
-
-          await triggerPushNotification(recipientUid, {
-            title: "New Message 💬",
-            body: `${chatUser?.username || "Someone"}: ${text || "Sent a photo"}`,
-            image: chatUser?.photoURL,
-            data: {
-              url: `/messages/${currentUid}`,
-              chatId: chatId,
-              fromId: currentUid,
-              type: "message"
-            }
-          });
         }
       }
 
@@ -1032,7 +1045,7 @@ export default function Messages() {
                 className="py-2 px-3 dropdown-item"
                 onClick={testNotificationNow}
               >
-                Test Notification
+                Test Cross-Device
               </button>
             </div>
           )}
@@ -1261,6 +1274,7 @@ export default function Messages() {
           onClick={testNotificationNow} 
           className="btn btn-warning btn-sm"
           style={{ fontSize: '12px', padding: '8px 12px', borderRadius: '20px' }}
+          title="Test Cross-Device Notification"
         >
           🔔 Test
         </button>
