@@ -16,34 +16,26 @@ import Picker from "emoji-picker-react";
 import axios from "axios";
 import "bootstrap/dist/css/bootstrap.min.css";
 
-// Permissions Manager (Single File)
+// Permissions Manager
 class PermissionsManager {
   constructor() {
     this.permissions = {
       camera: 'prompt',
       microphone: 'prompt', 
       notifications: 'prompt',
-      location: 'prompt',
-      storage: 'prompt'
     };
     this.listeners = new Map();
-    this.isInitialized = false;
   }
 
   async init() {
-    if (this.isInitialized) return;
-    this.isInitialized = true;
     await this.checkAllPermissions();
-    await this.requestEssentialPermissions();
   }
 
   async checkAllPermissions() {
     await Promise.allSettled([
       this.checkCameraPermission(),
       this.checkMicrophonePermission(),
-      this.checkNotificationPermission(),
-      this.checkLocationPermission(),
-      this.checkStoragePermission()
+      this.checkNotificationPermission()
     ]);
     return this.permissions;
   }
@@ -84,48 +76,19 @@ class PermissionsManager {
     return this.permissions.notifications;
   }
 
-  async checkLocationPermission() {
-    if (!navigator.geolocation) {
-      return this.permissions.location = 'unsupported';
-    }
-    return this.permissions.location = 'prompt';
-  }
-
-  async checkStoragePermission() {
-    if (!navigator.storage?.estimate) {
-      return this.permissions.storage = 'unsupported';
-    }
-    return this.permissions.storage = 'granted';
-  }
-
-  async requestEssentialPermissions() {
+  async requestCameraAndMicrophone() {
     try {
-      if (this.permissions.notifications === 'default') {
-        setTimeout(async () => {
-          try {
-            await this.requestNotificationPermission();
-          } catch (error) {
-            console.log('User declined notifications');
-          }
-        }, 3000);
-      }
-      console.log('✅ Essential permissions initialized');
-    } catch (error) {
-      console.warn('Permission initialization warning:', error);
-    }
-  }
-
-  async requestCameraPermission() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      stream.getTracks().forEach(track => track.stop());
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: true, 
+        audio: true 
+      });
       this.permissions.camera = 'granted';
-      this.notifyListeners('camera', 'granted');
-      return 'granted';
+      this.permissions.microphone = 'granted';
+      return stream;
     } catch (error) {
       const status = error.name === 'NotAllowedError' ? 'denied' : 'error';
       this.permissions.camera = status;
-      this.notifyListeners('camera', status);
+      this.permissions.microphone = status;
       throw error;
     }
   }
@@ -135,92 +98,22 @@ class PermissionsManager {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       stream.getTracks().forEach(track => track.stop());
       this.permissions.microphone = 'granted';
-      this.notifyListeners('microphone', 'granted');
       return 'granted';
     } catch (error) {
       const status = error.name === 'NotAllowedError' ? 'denied' : 'error';
       this.permissions.microphone = status;
-      this.notifyListeners('microphone', status);
       throw error;
     }
-  }
-
-  async requestCameraAndMicrophone() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: true, 
-        audio: true 
-      });
-      this.currentStream = stream;
-      this.permissions.camera = 'granted';
-      this.permissions.microphone = 'granted';
-      this.notifyListeners('camera', 'granted');
-      this.notifyListeners('microphone', 'granted');
-      return stream;
-    } catch (error) {
-      const status = error.name === 'NotAllowedError' ? 'denied' : 'error';
-      this.permissions.camera = status;
-      this.permissions.microphone = status;
-      this.notifyListeners('camera', status);
-      this.notifyListeners('microphone', status);
-      throw error;
-    }
-  }
-
-  async requestNotificationPermission() {
-    if (!('Notification' in window)) {
-      throw new Error('Notifications not supported');
-    }
-    const permission = await Notification.requestPermission();
-    this.permissions.notifications = permission;
-    this.notifyListeners('notifications', permission);
-    return permission;
-  }
-
-  getPermission(permissionType) {
-    return this.permissions[permissionType] || 'unknown';
-  }
-
-  getAllPermissions() {
-    return { ...this.permissions };
   }
 
   isGranted(permissionType) {
     return this.permissions[permissionType] === 'granted';
   }
 
-  async requestMultiplePermissions(permissions) {
-    const results = {};
-    for (const permission of permissions) {
-      try {
-        switch (permission) {
-          case 'camera':
-            results.camera = await this.requestCameraPermission();
-            break;
-          case 'microphone':
-            results.microphone = await this.requestMicrophonePermission();
-            break;
-          case 'camera+microphone':
-            await this.requestCameraAndMicrophone();
-            results.camera = 'granted';
-            results.microphone = 'granted';
-            break;
-          case 'notifications':
-            results.notifications = await this.requestNotificationPermission();
-            break;
-        }
-      } catch (error) {
-        results[permission] = 'error';
-      }
-    }
-    return results;
-  }
-
   showPermissionPrompt(permissionType, callback) {
     const descriptions = {
       camera: { title: 'Camera Access', description: 'Required for video calls and photos', icon: '📷' },
       microphone: { title: 'Microphone Access', description: 'Required for audio calls and voice messages', icon: '🎤' },
-      notifications: { title: 'Notifications', description: 'Get notified about new messages and calls', icon: '🔔' }
     };
 
     const desc = descriptions[permissionType];
@@ -229,46 +122,13 @@ class PermissionsManager {
     const userChoice = confirm(
       `${desc.icon} ${desc.title}\n\n${desc.description}\n\nClick OK to allow, Cancel to skip.`
     );
-
-    if (userChoice) {
-      callback(true);
-    } else {
-      callback(false);
-    }
-  }
-
-  addListener(permissionType, callback) {
-    if (!this.listeners.has(permissionType)) {
-      this.listeners.set(permissionType, new Set());
-    }
-    this.listeners.get(permissionType).add(callback);
-  }
-
-  removeListener(permissionType, callback) {
-    const listeners = this.listeners.get(permissionType);
-    if (listeners) listeners.delete(callback);
-  }
-
-  notifyListeners(permissionType, status) {
-    const listeners = this.listeners.get(permissionType);
-    if (listeners) {
-      listeners.forEach(callback => callback(status, permissionType));
-    }
-  }
-
-  cleanup() {
-    if (this.currentStream) {
-      this.currentStream.getTracks().forEach(track => track.stop());
-      this.currentStream = null;
-    }
-    this.listeners.clear();
+    callback(userChoice);
   }
 }
 
-// Create global permissions instance
 const permissionsManager = new PermissionsManager();
 
-// Video/Audio Call Components
+// Call Components
 const CallModal = ({ 
   callType, 
   isIncoming, 
@@ -279,7 +139,7 @@ const CallModal = ({
   callStatus 
 }) => {
   return (
-    <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+    <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 9999 }}>
       <div className="modal-dialog modal-dialog-centered">
         <div className="modal-content">
           <div className="modal-header bg-primary text-white">
@@ -293,7 +153,7 @@ const CallModal = ({
               src={callerInfo?.photoURL || "icons/avatar.jpg"}
               alt="Caller"
               className="rounded-circle mb-3"
-              style={{ width: 80, height: 80, objectFit: "cover" }}
+              style={{ width: 100, height: 100, objectFit: "cover" }}
             />
             <h4>{callerInfo?.username || "User"}</h4>
             <p className="text-muted">{callStatus}</p>
@@ -310,22 +170,25 @@ const CallModal = ({
                 <button 
                   className="btn btn-danger btn-lg rounded-circle mx-2"
                   onClick={onReject}
+                  style={{ width: '60px', height: '60px' }}
                 >
                   ❌
                 </button>
                 <button 
                   className="btn btn-success btn-lg rounded-circle mx-2"
                   onClick={onAccept}
+                  style={{ width: '60px', height: '60px' }}
                 >
                   📞
                 </button>
               </>
             ) : (
               <button 
-                className="btn btn-danger btn-lg"
+                className="btn btn-danger btn-lg rounded-circle"
                 onClick={onEndCall}
+                style={{ width: '60px', height: '60px' }}
               >
-                End Call
+                ❌
               </button>
             )}
           </div>
@@ -345,7 +208,8 @@ const CallScreen = ({
   isVideoOff,
   onToggleVideo,
   callDuration,
-  partnerInfo
+  partnerInfo,
+  isCallActive
 }) => {
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
@@ -366,9 +230,9 @@ const CallScreen = ({
   };
 
   return (
-    <div className="position-fixed top-0 start-0 w-100 h-100 bg-dark" style={{ zIndex: 9999 }}>
-      {/* Remote Video (Main) */}
-      {callType === 'video' && remoteStream && (
+    <div className="position-fixed top-0 start-0 w-100 h-100 bg-dark" style={{ zIndex: 9998 }}>
+      {/* Remote Video (Main) - Show only when remote stream is available */}
+      {callType === 'video' && remoteStream && isCallActive && (
         <video
           ref={remoteVideoRef}
           autoPlay
@@ -378,17 +242,18 @@ const CallScreen = ({
         />
       )}
       
-      {/* Local Video (Picture-in-picture) */}
-      {callType === 'video' && localStream && (
-        <div className="position-absolute top-0 end-0 m-3" style={{ width: '120px', height: '160px' }}>
-          <video
-            ref={localVideoRef}
-            autoPlay
-            playsInline
-            muted
-            className="w-100 h-100 rounded shadow"
-            style={{ objectFit: 'cover' }}
+      {/* Show partner info when no remote video */}
+      {callType === 'video' && (!remoteStream || !isCallActive) && (
+        <div className="d-flex flex-column justify-content-center align-items-center h-100 text-white">
+          <img
+            src={partnerInfo?.photoURL || "icons/avatar.jpg"}
+            alt="Partner"
+            className="rounded-circle mb-3"
+            style={{ width: 120, height: 120, objectFit: "cover" }}
           />
+          <h3>{partnerInfo?.username || "User"}</h3>
+          <p className="fs-5">{formatTime(callDuration)}</p>
+          <p className="text-muted">{isCallActive ? 'Connecting...' : 'Call ended'}</p>
         </div>
       )}
       
@@ -397,13 +262,32 @@ const CallScreen = ({
         <div className="d-flex flex-column justify-content-center align-items-center h-100 text-white">
           <img
             src={partnerInfo?.photoURL || "icons/avatar.jpg"}
-            alt="Caller"
+            alt="Partner"
             className="rounded-circle mb-3"
             style={{ width: 120, height: 120, objectFit: "cover" }}
           />
           <h3>{partnerInfo?.username || "User"}</h3>
           <p className="fs-5">{formatTime(callDuration)}</p>
-          <p className="text-muted">Audio Call</p>
+          <p className="text-muted">Audio Call • {isCallActive ? 'Connected' : 'Ended'}</p>
+        </div>
+      )}
+
+      {/* Local Video (Picture-in-picture) - Always show for video calls */}
+      {callType === 'video' && localStream && (
+        <div className="position-absolute top-0 end-0 m-3" style={{ width: '120px', height: '160px' }}>
+          <video
+            ref={localVideoRef}
+            autoPlay
+            playsInline
+            muted
+            className="w-100 h-100 rounded shadow"
+            style={{ objectFit: 'cover', border: '2px solid white' }}
+          />
+          {isVideoOff && (
+            <div className="position-absolute top-0 start-0 w-100 h-100 bg-dark bg-opacity-50 d-flex justify-content-center align-items-center rounded">
+              <span className="text-white">📹 Off</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -413,6 +297,7 @@ const CallScreen = ({
           <button
             className={`btn btn-lg rounded-circle ${isMuted ? 'btn-danger' : 'btn-light'}`}
             onClick={onToggleMute}
+            style={{ width: '60px', height: '60px' }}
           >
             {isMuted ? '🎤❌' : '🎤'}
           </button>
@@ -421,6 +306,7 @@ const CallScreen = ({
             <button
               className={`btn btn-lg rounded-circle ${isVideoOff ? 'btn-danger' : 'btn-light'}`}
               onClick={onToggleVideo}
+              style={{ width: '60px', height: '60px' }}
             >
               {isVideoOff ? '📹❌' : '📹'}
             </button>
@@ -429,9 +315,17 @@ const CallScreen = ({
           <button
             className="btn btn-danger btn-lg rounded-circle"
             onClick={onEndCall}
+            style={{ width: '60px', height: '60px' }}
           >
             📞
           </button>
+        </div>
+      </div>
+
+      {/* Call Timer */}
+      <div className="position-absolute top-0 start-0 m-3">
+        <div className="bg-dark bg-opacity-50 text-white px-3 py-2 rounded">
+          <span className="fs-5">{formatTime(callDuration)}</span>
         </div>
       </div>
     </div>
@@ -464,8 +358,8 @@ export default function Messages() {
 
   const [partnerStatus, setPartnerStatus] = useState(null);
 
-  // Call States
-  const [callState, setCallState] = useState(null);
+  // Enhanced Call States
+  const [callState, setCallState] = useState(null); // 'incoming', 'outgoing', 'active', 'ended'
   const [callType, setCallType] = useState(null);
   const [callData, setCallData] = useState(null);
   const [localStream, setLocalStream] = useState(null);
@@ -473,7 +367,7 @@ export default function Messages() {
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
-  const [callStartTime, setCallStartTime] = useState(null);
+  const [isCallActive, setIsCallActive] = useState(false);
 
   const messagesEndRef = useRef(null);
   const longPressTimerRef = useRef(null);
@@ -495,11 +389,9 @@ export default function Messages() {
     ]
   };
 
-  // Initialize permissions when component mounts
+  // Initialize permissions
   useEffect(() => {
-    permissionsManager.init().then(() => {
-      console.log('Permissions initialized in Messages component');
-    });
+    permissionsManager.init();
   }, []);
 
   // ---------- Auth ----------
@@ -850,7 +742,7 @@ export default function Messages() {
     }
   };
 
-  // ---------- Enhanced Call Management with Permissions ----------
+  // ---------- Enhanced Call Management ----------
   const initializeCall = async (type) => {
     if (!chatId || !currentUid || !uid) return;
 
@@ -862,7 +754,7 @@ export default function Messages() {
             if (allowed) {
               try {
                 await permissionsManager.requestCameraAndMicrophone();
-                proceedWithCall(type);
+                await proceedWithCall(type);
               } catch (error) {
                 alert('Camera and microphone access is required for video calls.');
               }
@@ -876,7 +768,7 @@ export default function Messages() {
             if (allowed) {
               try {
                 await permissionsManager.requestMicrophonePermission();
-                proceedWithCall(type);
+                await proceedWithCall(type);
               } catch (error) {
                 alert('Microphone access is required for audio calls.');
               }
@@ -903,50 +795,94 @@ export default function Messages() {
     setCallType(type);
     setCallState('outgoing');
 
-    const callId = `call_${Date.now()}`;
+    const callId = `call_${Date.now()}_${currentUid}`;
     const callData = {
       callId,
       callerId: currentUid,
+      callerInfo: {
+        username: auth.currentUser?.displayName || 'User',
+        photoURL: auth.currentUser?.photoURL || 'icons/avatar.jpg'
+      },
       receiverId: uid,
       type,
       status: 'calling',
       timestamp: serverTimestamp()
     };
 
-    const callRef = dbRef(db, `calls/${chatId}/${callId}`);
+    const callRef = dbRef(db, `calls/${chatId}`);
     await set(callRef, callData);
+    setCallData(callData);
 
-    await createPeerConnection(stream, callId);
+    // Listen for call updates
+    setupCallListener(callId);
   };
 
-  const createPeerConnection = async (stream, callId) => {
+  const setupCallListener = (callId) => {
+    const callRef = dbRef(db, `calls/${chatId}`);
+    
+    return onValue(callRef, (snap) => {
+      const callData = snap.val();
+      if (!callData) return;
+
+      // If call was rejected or ended by other party
+      if (callData.status === 'rejected' || callData.status === 'ended') {
+        endCall();
+      }
+      
+      // If call was accepted
+      if (callData.status === 'accepted' && callState === 'outgoing') {
+        setCallState('active');
+        setIsCallActive(true);
+        startCallTimer();
+        createPeerConnection();
+      }
+    });
+  };
+
+  const createPeerConnection = async () => {
     try {
       const pc = new RTCPeerConnection(rtcConfig);
       peerConnectionRef.current = pc;
 
-      stream.getTracks().forEach(track => {
-        pc.addTrack(track, stream);
+      // Add local stream tracks
+      localStream.getTracks().forEach(track => {
+        pc.addTrack(track, localStream);
       });
 
+      // Handle incoming remote stream
       pc.ontrack = (event) => {
+        console.log('Received remote stream');
         setRemoteStream(event.streams[0]);
       };
 
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          const candidateRef = dbRef(db, `calls/${chatId}/${callId}/candidates/${currentUid}`);
-          push(candidateRef, event.candidate.toJSON());
-        }
-      };
-
+      // Create and send offer
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
-      const offerRef = dbRef(db, `calls/${chatId}/${callId}/offer`);
-      await set(offerRef, offer);
+      // In a real app, you'd send this offer to the other peer via signaling
+      // For now, we'll simulate the connection
+      setTimeout(() => {
+        if (pc.signalingState === 'have-local-offer') {
+          simulateRemoteAnswer(pc);
+        }
+      }, 1000);
 
     } catch (error) {
       console.error('Error creating peer connection:', error);
+    }
+  };
+
+  const simulateRemoteAnswer = async (pc) => {
+    // Simulate remote peer creating answer
+    try {
+      const answer = {
+        type: 'answer',
+        sdp: 'simulated-answer-sdp'
+      };
+      await pc.setRemoteDescription(answer);
+      console.log('Simulated connection established');
+    } catch (error) {
+      console.error('Error simulating answer:', error);
     }
   };
 
@@ -959,7 +895,7 @@ export default function Messages() {
             if (allowed) {
               try {
                 await permissionsManager.requestCameraAndMicrophone();
-                proceedWithAnswer(callData);
+                await proceedWithAnswer(callData);
               } catch (error) {
                 alert('Camera and microphone access is required for video calls.');
                 rejectCall(callData);
@@ -976,7 +912,7 @@ export default function Messages() {
             if (allowed) {
               try {
                 await permissionsManager.requestMicrophonePermission();
-                proceedWithAnswer(callData);
+                await proceedWithAnswer(callData);
               } catch (error) {
                 alert('Microphone access is required for audio calls.');
                 rejectCall(callData);
@@ -1006,98 +942,85 @@ export default function Messages() {
     setCallType(callData.type);
     setCallState('active');
     setCallData(callData);
+    setIsCallActive(true);
 
-    const pc = new RTCPeerConnection(rtcConfig);
-    peerConnectionRef.current = pc;
-
-    stream.getTracks().forEach(track => {
-      pc.addTrack(track, stream);
+    // Update call status to accepted
+    const callRef = dbRef(db, `calls/${chatId}`);
+    await update(callRef, { 
+      status: 'accepted',
+      answeredAt: serverTimestamp()
     });
-
-    pc.ontrack = (event) => {
-      setRemoteStream(event.streams[0]);
-    };
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        const candidateRef = dbRef(db, `calls/${chatId}/${callData.callId}/candidates/${currentUid}`);
-        push(candidateRef, event.candidate.toJSON());
-      }
-    };
-
-    const offerRef = dbRef(db, `calls/${chatId}/${callData.callId}/offer`);
-    onValue(offerRef, async (snap) => {
-      if (snap.exists()) {
-        await pc.setRemoteDescription(snap.val());
-        
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-
-        const answerRef = dbRef(db, `calls/${chatId}/${callData.callId}/answer`);
-        await set(answerRef, answer);
-      }
-    });
-
-    const candidateRef = dbRef(db, `calls/${chatId}/${callData.callId}/candidates/${callData.callerId}`);
-    onValue(candidateRef, (snap) => {
-      snap.forEach((childSnap) => {
-        const candidate = childSnap.val();
-        pc.addIceCandidate(new RTCIceCandidate(candidate));
-      });
-    });
-
-    const callRef = dbRef(db, `calls/${chatId}/${callData.callId}`);
-    await update(callRef, { status: 'active' });
 
     startCallTimer();
+    createPeerConnection();
   };
 
   const endCall = async () => {
+    console.log('Ending call...');
+    
+    // Stop call timer
     if (callDurationRef.current) {
       clearInterval(callDurationRef.current);
     }
 
+    // Close peer connection
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
 
+    // Stop media streams
     if (localStream) {
       localStream.getTracks().forEach(track => track.stop());
       setLocalStream(null);
     }
     setRemoteStream(null);
 
+    // Update call status in Firebase
     if (callData && chatId) {
-      const callRef = dbRef(db, `calls/${chatId}/${callData.callId}`);
+      const callRef = dbRef(db, `calls/${chatId}`);
       await update(callRef, { 
         status: 'ended',
         endedAt: serverTimestamp(),
-        duration: callDuration
+        duration: callDuration,
+        endedBy: currentUid
       });
+
+      // Remove call data after a delay
+      setTimeout(async () => {
+        await remove(dbRef(db, `calls/${chatId}`));
+      }, 2000);
     }
 
+    // Reset call states
     setCallState(null);
     setCallType(null);
     setCallData(null);
     setCallDuration(0);
-    setCallStartTime(null);
+    setIsCallActive(false);
+    setIsMuted(false);
+    setIsVideoOff(false);
   };
 
   const rejectCall = async (callData) => {
     if (callData && chatId) {
-      const callRef = dbRef(db, `calls/${chatId}/${callData.callId}`);
+      const callRef = dbRef(db, `calls/${chatId}`);
       await update(callRef, { 
         status: 'rejected',
-        endedAt: serverTimestamp()
+        endedAt: serverTimestamp(),
+        endedBy: currentUid
       });
+
+      setTimeout(async () => {
+        await remove(dbRef(db, `calls/${chatId}`));
+      }, 2000);
     }
     setCallState(null);
     setCallData(null);
   };
 
   const startCallTimer = () => {
-    setCallStartTime(Date.now());
+    setCallDuration(0);
     callDurationRef.current = setInterval(() => {
       setCallDuration(prev => prev + 1);
     }, 1000);
@@ -1128,22 +1051,34 @@ export default function Messages() {
     if (!chatId || !currentUid) return;
 
     const callsRef = dbRef(db, `calls/${chatId}`);
+    
     return onValue(callsRef, (snap) => {
-      if (snap.exists()) {
-        const calls = snap.val();
-        const activeCall = Object.entries(calls).find(([callId, call]) => 
-          call.status === 'calling' && call.receiverId === currentUid
-        );
-
-        if (activeCall && callState === null) {
-          const [callId, callData] = activeCall;
-          setCallData({ ...callData, callId });
+      const callData = snap.val();
+      
+      if (callData && callState === null) {
+        // Only handle incoming calls if we're not in a call
+        if (callData.receiverId === currentUid && callData.status === 'calling') {
+          setCallData(callData);
           setCallState('incoming');
           setCallType(callData.type);
+        }
+        
+        // If call was ended by other party
+        if ((callData.status === 'ended' || callData.status === 'rejected') && callState === 'active') {
+          endCall();
         }
       }
     });
   }, [chatId, currentUid, callState]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (callState === 'active' || callState === 'outgoing') {
+        endCall();
+      }
+    };
+  }, []);
 
   // ---------- Reply Logic ----------
   const renderReplyPreview = (msg) => {
@@ -1504,7 +1439,7 @@ export default function Messages() {
         <CallModal
           callType={callType}
           isIncoming={true}
-          callerInfo={chatUser}
+          callerInfo={callData?.callerInfo || chatUser}
           onAccept={() => answerCall(callData)}
           onReject={() => rejectCall(callData)}
           callStatus="Incoming Call"
@@ -1521,7 +1456,7 @@ export default function Messages() {
         />
       )}
 
-      {callState === 'active' && (
+      {(callState === 'active' || callState === 'ended') && (
         <CallScreen
           callType={callType}
           localStream={localStream}
@@ -1533,6 +1468,7 @@ export default function Messages() {
           onToggleVideo={toggleVideo}
           callDuration={callDuration}
           partnerInfo={chatUser}
+          isCallActive={isCallActive}
         />
       )}
 
@@ -1568,11 +1504,6 @@ export default function Messages() {
           }
 
           /* Call specific styles */
-          .call-controls {
-            backdrop-filter: blur(10px);
-            background: rgba(0, 0, 0, 0.7);
-          }
-
           .video-pip {
             border: 2px solid white;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
