@@ -5,7 +5,6 @@ import "./index.css";
 import { BrowserRouter } from "react-router-dom";
 import permissionsManager from "./assets/utils/PermissionsManager.js";
 
-// Initialize permissions when app starts
 console.log("🚀 Starting app with permissions management...");
 permissionsManager.init().then(() => {
   console.log("✅ App permissions initialized successfully");
