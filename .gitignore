@@ -10,6 +10,7 @@ lerna-debug.log*
 .env
 .env.local
 src/assets/utils/serviceAccountKey.json
+serviceAccountKey.json
 
 node_modules
 dist
