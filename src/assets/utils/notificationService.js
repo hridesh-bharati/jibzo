@@ -1,373 +1,295 @@
+import { ref, push, set, onValue, remove, get } from 'firebase/database';
 import { db } from './firebaseConfig';
-import { ref as dbRef, set, onValue, off, update, get, push, remove } from 'firebase/database';
+import { getFirebaseMessaging } from './firebaseConfig';
+import { getToken, onMessage } from 'firebase/messaging';
 
 export class NotificationService {
-  constructor(currentUid) {
-    this.currentUid = currentUid;
-    this.unsubscribe = null;
-    this.listeners = new Set();
+  // Send notification to database
+  static async sendNotification(toUserId, fromUserId, type, data = {}) {
+    try {
+      const notificationRef = ref(db, `notifications/${toUserId}`);
+      const newNotificationRef = push(notificationRef);
+      
+      const notificationData = {
+        id: newNotificationRef.key,
+        type, // 'follow_request', 'follow_accept', 'message', 'like'
+        fromUserId,
+        timestamp: Date.now(),
+        read: false,
+        data
+      };
+
+      await set(newNotificationRef, notificationData);
+      
+      return newNotificationRef.key;
+    } catch (error) {
+      console.error('Send notification error:', error);
+      throw error;
+    }
   }
 
-  // Add notification listener
-  addListener(callback) {
-    this.listeners.add(callback);
-  }
-
-  // Remove notification listener
-  removeListener(callback) {
-    this.listeners.delete(callback);
-  }
-
-  // Notify all listeners
-  notifyListeners(notifications) {
-    this.listeners.forEach(callback => {
-      try {
-        callback(notifications);
-      } catch (error) {
-        console.error('❌ Notification listener error:', error);
-      }
-    });
-  }
-
-  // Listen for new notifications
-  listenForNotifications() {
-    if (!this.currentUid) {
-      console.log('❌ No current user ID for notifications');
+  // Show browser/system notification
+  static async showBrowserNotification(title, body, icon = '/icon.png') {
+    // Check if browser supports notifications
+    if (!('Notification' in window)) {
+      console.log('This browser does not support notifications');
       return;
     }
 
-    console.log('👂 Listening for notifications for user:', this.currentUid);
+    // Check permission
+    let permission = Notification.permission;
     
-    const notificationsRef = dbRef(db, `notifications/${this.currentUid}`);
-    
-    this.unsubscribe = onValue(notificationsRef, (snapshot) => {
-      try {
-        if (snapshot.exists()) {
-          const notificationsData = snapshot.val();
-          const notifications = Object.entries(notificationsData)
-            .map(([id, data]) => ({
-              id,
-              ...data
-            }))
-            .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-          
-          console.log('📨 Notifications found:', notifications.length);
-          
-          // Get unseen notifications
-          const newNotifications = notifications.filter(n => !n.seen);
-          const allNotifications = notifications;
-          
-          // Notify listeners
-          this.notifyListeners({
-            all: allNotifications,
-            new: newNotifications,
-            total: notifications.length,
-            unread: newNotifications.length
-          });
-
-        } else {
-          console.log('ℹ️ No notifications found');
-          this.notifyListeners({
-            all: [],
-            new: [],
-            total: 0,
-            unread: 0
-          });
-        }
-      } catch (error) {
-        console.error('❌ Error processing notifications:', error);
-        this.notifyListeners({
-          all: [],
-          new: [],
-          total: 0,
-          unread: 0,
-          error: error.message
-        });
-      }
-    }, (error) => {
-      console.error('❌ Error listening to notifications:', error);
-      this.notifyListeners({
-        all: [],
-        new: [],
-        total: 0,
-        unread: 0,
-        error: error.message
-      });
-    });
-  }
-
-  // Mark notification as seen
-  async markAsSeen(notificationId) {
-    if (!this.currentUid || !notificationId) {
-      console.log('❌ Missing user ID or notification ID');
-      return false;
+    if (permission === 'default') {
+      permission = await Notification.requestPermission();
     }
 
-    try {
-      await update(dbRef(db, `notifications/${this.currentUid}/${notificationId}`), {
-        seen: true,
-        seenAt: Date.now()
-      });
-      console.log('✅ Notification marked as seen:', notificationId);
-      return true;
-    } catch (error) {
-      console.error('❌ Error marking notification as seen:', error);
-      return false;
-    }
-  }
-
-  // Mark all notifications as seen
-  async markAllAsSeen() {
-    if (!this.currentUid) {
-      console.log('❌ No current user ID');
-      return false;
-    }
-
-    try {
-      const notificationsRef = dbRef(db, `notifications/${this.currentUid}`);
-      const snapshot = await get(notificationsRef);
-      
-      if (snapshot.exists()) {
-        const updates = {};
-        const notifications = snapshot.val();
-        
-        Object.keys(notifications).forEach(id => {
-          if (!notifications[id].seen) {
-            updates[`${id}/seen`] = true;
-            updates[`${id}/seenAt`] = Date.now();
+    if (permission === 'granted') {
+      // Create and show notification
+      const notification = new Notification(title, {
+        body,
+        icon: icon,
+        badge: '/badge.png',
+        image: icon,
+        tag: 'social-app',
+        requireInteraction: false,
+        silent: false,
+        actions: [
+          {
+            action: 'open',
+            title: 'Open App'
+          },
+          {
+            action: 'close', 
+            title: 'Close'
           }
+        ]
+      });
+
+      // Handle notification click
+      notification.onclick = () => {
+        window.focus();
+        notification.close();
+        // You can navigate to specific page based on notification type
+      };
+
+      // Auto close after 5 seconds
+      setTimeout(() => {
+        notification.close();
+      }, 5000);
+
+      return notification;
+    }
+  }
+
+  // Send follow request notification
+  static async sendFollowRequestNotification(toUserId, fromUserId) {
+    try {
+      // Get user details
+      const [fromUserSnap, toUserSnap] = await Promise.all([
+        get(ref(db, `usersData/${fromUserId}`)),
+        get(ref(db, `usersData/${toUserId}`))
+      ]);
+
+      const fromUserData = fromUserSnap.val() || {};
+      const toUserData = toUserSnap.val() || {};
+
+      const fromUserName = fromUserData.displayName || fromUserData.username || 'Someone';
+      
+      // Save to database
+      await this.sendNotification(toUserId, fromUserId, 'follow_request');
+      
+      // Show browser notification
+      await this.showBrowserNotification(
+        'New Follow Request',
+        `${fromUserName} wants to follow you`,
+        fromUserData.photoURL || '/icon.png'
+      );
+
+    } catch (error) {
+      console.error('Follow request notification error:', error);
+    }
+  }
+
+  // Send follow accept notification
+  static async sendFollowAcceptNotification(toUserId, fromUserId) {
+    try {
+      // Get user details
+      const [fromUserSnap, toUserSnap] = await Promise.all([
+        get(ref(db, `usersData/${fromUserId}`)),
+        get(ref(db, `usersData/${toUserId}`))
+      ]);
+
+      const fromUserData = fromUserSnap.val() || {};
+      const toUserData = toUserSnap.val() || {};
+
+      const fromUserName = fromUserData.displayName || fromUserData.username || 'Someone';
+      
+      // Save to database
+      await this.sendNotification(toUserId, fromUserId, 'follow_accept');
+      
+      // Show browser notification
+      await this.showBrowserNotification(
+        'Follow Request Accepted',
+        `${fromUserName} accepted your follow request`,
+        fromUserData.photoURL || '/icon.png'
+      );
+
+    } catch (error) {
+      console.error('Follow accept notification error:', error);
+    }
+  }
+
+  // Send message notification
+  static async sendMessageNotification(toUserId, fromUserId, messageText) {
+    try {
+      const [fromUserSnap] = await Promise.all([
+        get(ref(db, `usersData/${fromUserId}`))
+      ]);
+
+      const fromUserData = fromUserSnap.val() || {};
+      const fromUserName = fromUserData.displayName || fromUserData.username || 'Someone';
+      
+      // Save to database
+      await this.sendNotification(toUserId, fromUserId, 'message', {
+        message: messageText
+      });
+      
+      // Show browser notification
+      await this.showBrowserNotification(
+        `Message from ${fromUserName}`,
+        messageText.length > 50 ? messageText.substring(0, 50) + '...' : messageText,
+        fromUserData.photoURL || '/icon.png'
+      );
+
+    } catch (error) {
+      console.error('Message notification error:', error);
+    }
+  }
+
+  // Initialize FCM for push notifications
+  static async initializeFCM(userId) {
+    try {
+      const messaging = await getFirebaseMessaging();
+      if (!messaging) {
+        console.log('FCM not supported, using browser notifications');
+        return null;
+      }
+
+      let permission = Notification.permission;
+      if (permission === 'default') {
+        permission = await Notification.requestPermission();
+      }
+
+      if (permission === 'granted') {
+        const token = await getToken(messaging, {
+          vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY
         });
         
-        if (Object.keys(updates).length > 0) {
-          await update(notificationsRef, updates);
-          console.log('✅ All notifications marked as seen');
-        } else {
-          console.log('ℹ️ No unread notifications to mark');
+        if (token) {
+          console.log('FCM Token:', token);
+          await set(ref(db, `fcmTokens/${userId}`), {
+            token,
+            createdAt: Date.now()
+          });
+
+          // Handle foreground messages
+          onMessage(messaging, (payload) => {
+            console.log('Foreground message:', payload);
+            if (payload.notification) {
+              this.showBrowserNotification(
+                payload.notification.title,
+                payload.notification.body,
+                payload.notification.icon
+              );
+            }
+          });
+
+          return token;
         }
-      } else {
-        console.log('ℹ️ No notifications found to mark as seen');
       }
-      return true;
-    } catch (error) {
-      console.error('❌ Error marking all notifications as seen:', error);
-      return false;
-    }
-  }
-
-  // Create a new notification
-  async createNotification(notificationData) {
-    if (!this.currentUid) {
-      console.log('❌ No current user ID for creating notification');
       return null;
-    }
-
-    try {
-      const notifRef = push(dbRef(db, `notifications/${this.currentUid}`));
-      const notificationId = notifRef.key;
-      
-      const completeNotification = {
-        ...notificationData,
-        id: notificationId,
-        timestamp: Date.now(),
-        seen: false,
-        userId: this.currentUid
-      };
-      
-      await set(notifRef, completeNotification);
-      
-      console.log('✅ Notification created:', completeNotification);
-      return notificationId;
     } catch (error) {
-      console.error('❌ Error creating notification:', error);
+      console.error('FCM initialization error:', error);
       return null;
     }
   }
 
-  // Delete a notification
-  async deleteNotification(notificationId) {
-    if (!this.currentUid || !notificationId) {
-      console.log('❌ Missing user ID or notification ID');
-      return false;
+  // Listen to notifications from database
+  static listenToNotifications(userId, callback) {
+    if (!userId) {
+      console.log('No user ID provided for notifications');
+      return () => {};
     }
+    
+    const notificationsRef = ref(db, `notifications/${userId}`);
+    
+    const unsubscribe = onValue(notificationsRef, (snapshot) => {
+      const data = snapshot.val() || {};
+      const notifications = Object.entries(data)
+        .map(([id, notification]) => ({
+          id,
+          ...notification
+        }))
+        .sort((a, b) => b.timestamp - a.timestamp);
+      
+      callback(notifications);
+    }, (error) => {
+      console.error('Notifications listener error:', error);
+    });
 
+    return unsubscribe;
+  }
+
+  // Mark as read
+  static async markAsRead(userId, notificationId) {
     try {
-      await remove(dbRef(db, `notifications/${this.currentUid}/${notificationId}`));
-      console.log('🗑️ Notification deleted:', notificationId);
-      return true;
+      await set(ref(db, `notifications/${userId}/${notificationId}/read`), true);
     } catch (error) {
-      console.error('❌ Error deleting notification:', error);
-      return false;
+      console.error('Mark as read error:', error);
+      throw error;
+    }
+  }
+
+  // Mark all as read
+  static async markAllAsRead(userId) {
+    try {
+      const notificationsRef = ref(db, `notifications/${userId}`);
+      const snapshot = await get(notificationsRef);
+      const data = snapshot.val() || {};
+      
+      const updates = {};
+      Object.keys(data).forEach(id => {
+        if (!data[id].read) {
+          updates[`notifications/${userId}/${id}/read`] = true;
+        }
+      });
+      
+      if (Object.keys(updates).length > 0) {
+        await set(ref(db), updates);
+      }
+    } catch (error) {
+      console.error('Mark all as read error:', error);
+      throw error;
+    }
+  }
+
+  // Delete notification
+  static async deleteNotification(userId, notificationId) {
+    try {
+      await remove(ref(db, `notifications/${userId}/${notificationId}`));
+    } catch (error) {
+      console.error('Delete notification error:', error);
+      throw error;
     }
   }
 
   // Clear all notifications
-  async clearAllNotifications() {
-    if (!this.currentUid) {
-      console.log('❌ No current user ID');
-      return false;
-    }
-
+  static async clearAllNotifications(userId) {
     try {
-      await remove(dbRef(db, `notifications/${this.currentUid}`));
-      console.log('🗑️ All notifications cleared');
-      return true;
+      await remove(ref(db, `notifications/${userId}`));
     } catch (error) {
-      console.error('❌ Error clearing all notifications:', error);
-      return false;
+      console.error('Clear all notifications error:', error);
+      throw error;
     }
-  }
-
-  // Get notification count
-  async getNotificationCount() {
-    if (!this.currentUid) {
-      return { total: 0, unread: 0 };
-    }
-
-    try {
-      const snapshot = await get(dbRef(db, `notifications/${this.currentUid}`));
-      
-      if (snapshot.exists()) {
-        const notifications = snapshot.val();
-        const notificationArray = Object.values(notifications);
-        
-        return {
-          total: notificationArray.length,
-          unread: notificationArray.filter(n => !n.seen).length
-        };
-      }
-      
-      return { total: 0, unread: 0 };
-    } catch (error) {
-      console.error('❌ Error getting notification count:', error);
-      return { total: 0, unread: 0, error: error.message };
-    }
-  }
-
-  // Cleanup
-  unsubscribeFromNotifications() {
-    if (this.unsubscribe) {
-      this.unsubscribe();
-      this.unsubscribe = null;
-      console.log('🔇 Unsubscribed from notifications');
-    }
-    
-    this.listeners.clear();
   }
 }
-
-// Initialize notifications
-export const initializeNotifications = async (currentUid) => {
-  console.log('🔄 Initializing notifications for user:', currentUid);
-  
-  if (!currentUid) {
-    console.log('❌ No user ID provided for notifications');
-    return null;
-  }
-
-  // Check browser support
-  if (!("Notification" in window)) {
-    console.log("❌ This browser does not support notifications");
-    return null;
-  }
-
-  try {
-    // Create notification service instance
-    const notificationService = new NotificationService(currentUid);
-    
-    // Start listening for notifications
-    notificationService.listenForNotifications();
-    
-    console.log('✅ Notifications initialized successfully');
-    return notificationService;
-  } catch (error) {
-    console.error('❌ Error initializing notifications:', error);
-    return null;
-  }
-};
-
-// Check and request notification permission
-export const checkAndRequestNotificationPermission = async () => {
-  try {
-    if (!("Notification" in window)) {
-      throw new Error("Notifications not supported");
-    }
-
-    let permission = Notification.permission;
-    
-    if (permission === 'default') {
-      console.log('🟡 Requesting notification permission...');
-      permission = await Notification.requestPermission();
-    }
-
-    console.log('📋 Notification permission:', permission);
-    
-    const result = {
-      granted: permission === 'granted',
-      permission: permission,
-      supported: true
-    };
-    
-    // Store in localStorage
-    localStorage.setItem('notificationPermission', permission);
-    
-    return result;
-  } catch (error) {
-    console.error('❌ Error in notification permission check:', error);
-    return {
-      granted: false,
-      permission: Notification.permission,
-      supported: 'Notification' in window,
-      error: error.message
-    };
-  }
-};
-
-// Save FCM token to user profile
-export const saveFCMToken = async (userId, token) => {
-  if (!userId || !token) {
-    console.log('❌ Invalid user ID or token');
-    return false;
-  }
-  
-  try {
-    await set(dbRef(db, `users/${userId}/fcmToken`), token);
-    localStorage.setItem('fcmToken', token);
-    console.log('💾 FCM token saved for user:', userId);
-    return true;
-  } catch (error) {
-    console.error('❌ Error saving FCM token:', error);
-    return false;
-  }
-};
-
-// Remove FCM token
-export const removeFCMToken = async (userId) => {
-  if (!userId) {
-    console.log('❌ No user ID provided for token removal');
-    return false;
-  }
-  
-  try {
-    await set(dbRef(db, `users/${userId}/fcmToken`), null);
-    localStorage.removeItem('fcmToken');
-    console.log('🗑️ FCM token removed for user:', userId);
-    return true;
-  } catch (error) {
-    console.error('❌ Error removing FCM token:', error);
-    return false;
-  }
-};
-
-// Debug function to check notification status
-export const checkNotificationStatus = () => {
-  const status = {
-    supported: 'Notification' in window,
-    permission: Notification.permission,
-    serviceWorker: 'serviceWorker' in navigator,
-    currentToken: localStorage.getItem('fcmToken'),
-    storedPermission: localStorage.getItem('notificationPermission')
-  };
-  
-  console.log('🔍 Notification Status:', status);
-  return status;
-};

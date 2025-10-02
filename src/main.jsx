@@ -1,9 +1,17 @@
-// src/main.jsx
 import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.jsx";
 import "./index.css";
 import { BrowserRouter } from "react-router-dom";
+import permissionsManager from "./assets/utils/PermissionsManager.js";
+
+// Initialize permissions when app starts
+console.log("🚀 Starting app with permissions management...");
+permissionsManager.init().then(() => {
+  console.log("✅ App permissions initialized successfully");
+}).catch(error => {
+  console.warn("⚠️ Permission initialization warning:", error);
+});
 
 // Error boundary component
 class ErrorBoundary extends React.Component {
@@ -36,48 +44,26 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// ✅ FIXED SERVICE WORKER REGISTRATION
+// Service Worker registration
 const registerServiceWorker = async () => {
   if ('serviceWorker' in navigator) {
     try {
-      console.log('🔄 Registering service worker...');
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      console.log("✅ Service Worker registered:", registration);
       
-      // Pehle existing registrations clear karo
-      const existingRegistrations = await navigator.serviceWorker.getRegistrations();
-      for (let registration of existingRegistrations) {
-        await registration.unregister();
-        console.log('🗑️ Unregistered old SW:', registration.scope);
-      }
-
-      // Single service worker register karo
-      const registration = await navigator.serviceWorker.register('/sw.js', {
-        scope: '/',
-        updateViaCache: 'none'
-      });
-      
-      console.log("✅ Service Worker registered:", registration.scope);
-
-      // Update tracking
       registration.addEventListener('updatefound', () => {
         const newWorker = registration.installing;
-        console.log('🆕 New service worker found...');
+        console.log('New service worker found...');
         
         newWorker.addEventListener('statechange', () => {
-          console.log('🔄 Service Worker state:', newWorker.state);
           if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            console.log('🆕 New content available; please refresh.');
+            console.log('New content available; please refresh.');
           }
         });
       });
-
-      return registration;
     } catch (error) {
       console.error("❌ Service Worker registration failed:", error);
-      return null;
     }
-  } else {
-    console.log("❌ Service Workers not supported in this browser");
-    return null;
   }
 };
 
@@ -93,20 +79,5 @@ root.render(
   </React.StrictMode>
 );
 
-// ✅ ENHANCED INITIALIZATION
-const initializeApp = async () => {
-  console.log('🚀 Initializing Jibzo App...');
-  
-  // Service worker register karo
-  await registerServiceWorker();
-  
-  // Additional initialization can go here
-  console.log('✅ App initialization complete');
-};
-
-// DOM load hone ke baad initialize karo
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initializeApp);
-} else {
-  initializeApp();
-}
+// Register service worker after initial render
+registerServiceWorker();

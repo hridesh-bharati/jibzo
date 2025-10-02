@@ -1,7 +1,6 @@
-// src/assets/messages/Messages.jsx
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { db, auth, requestNotificationPermission, onForegroundMessage, getFirebaseMessaging } from "../../assets/utils/firebaseConfig";
+import { db, auth } from "../../assets/utils/firebaseConfig";
 import {
   ref as dbRef,
   onValue,
@@ -11,14 +10,433 @@ import {
   update,
   serverTimestamp,
   onDisconnect,
-  get
 } from "firebase/database";
 import { onAuthStateChanged } from "firebase/auth";
-import { getToken } from "firebase/messaging";
 import Picker from "emoji-picker-react";
 import axios from "axios";
-import { NotificationService, initializeNotifications, saveFCMToken } from "../../assets/utils/notificationService";
 import "bootstrap/dist/css/bootstrap.min.css";
+
+// Permissions Manager (Single File)
+class PermissionsManager {
+  constructor() {
+    this.permissions = {
+      camera: 'prompt',
+      microphone: 'prompt', 
+      notifications: 'prompt',
+      location: 'prompt',
+      storage: 'prompt'
+    };
+    this.listeners = new Map();
+    this.isInitialized = false;
+  }
+
+  async init() {
+    if (this.isInitialized) return;
+    this.isInitialized = true;
+    await this.checkAllPermissions();
+    await this.requestEssentialPermissions();
+  }
+
+  async checkAllPermissions() {
+    await Promise.allSettled([
+      this.checkCameraPermission(),
+      this.checkMicrophonePermission(),
+      this.checkNotificationPermission(),
+      this.checkLocationPermission(),
+      this.checkStoragePermission()
+    ]);
+    return this.permissions;
+  }
+
+  async checkCameraPermission() {
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        return this.permissions.camera = 'unsupported';
+      }
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const hasCamera = devices.some(device => device.kind === 'videoinput');
+      this.permissions.camera = hasCamera ? 'prompt' : 'unsupported';
+      return this.permissions.camera;
+    } catch (error) {
+      return this.permissions.camera = 'error';
+    }
+  }
+
+  async checkMicrophonePermission() {
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        return this.permissions.microphone = 'unsupported';
+      }
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const hasMic = devices.some(device => device.kind === 'audioinput');
+      this.permissions.microphone = hasMic ? 'prompt' : 'unsupported';
+      return this.permissions.microphone;
+    } catch (error) {
+      return this.permissions.microphone = 'error';
+    }
+  }
+
+  async checkNotificationPermission() {
+    if (!('Notification' in window)) {
+      return this.permissions.notifications = 'unsupported';
+    }
+    this.permissions.notifications = Notification.permission;
+    return this.permissions.notifications;
+  }
+
+  async checkLocationPermission() {
+    if (!navigator.geolocation) {
+      return this.permissions.location = 'unsupported';
+    }
+    return this.permissions.location = 'prompt';
+  }
+
+  async checkStoragePermission() {
+    if (!navigator.storage?.estimate) {
+      return this.permissions.storage = 'unsupported';
+    }
+    return this.permissions.storage = 'granted';
+  }
+
+  async requestEssentialPermissions() {
+    try {
+      if (this.permissions.notifications === 'default') {
+        setTimeout(async () => {
+          try {
+            await this.requestNotificationPermission();
+          } catch (error) {
+            console.log('User declined notifications');
+          }
+        }, 3000);
+      }
+      console.log('✅ Essential permissions initialized');
+    } catch (error) {
+      console.warn('Permission initialization warning:', error);
+    }
+  }
+
+  async requestCameraPermission() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      stream.getTracks().forEach(track => track.stop());
+      this.permissions.camera = 'granted';
+      this.notifyListeners('camera', 'granted');
+      return 'granted';
+    } catch (error) {
+      const status = error.name === 'NotAllowedError' ? 'denied' : 'error';
+      this.permissions.camera = status;
+      this.notifyListeners('camera', status);
+      throw error;
+    }
+  }
+
+  async requestMicrophonePermission() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(track => track.stop());
+      this.permissions.microphone = 'granted';
+      this.notifyListeners('microphone', 'granted');
+      return 'granted';
+    } catch (error) {
+      const status = error.name === 'NotAllowedError' ? 'denied' : 'error';
+      this.permissions.microphone = status;
+      this.notifyListeners('microphone', status);
+      throw error;
+    }
+  }
+
+  async requestCameraAndMicrophone() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: true, 
+        audio: true 
+      });
+      this.currentStream = stream;
+      this.permissions.camera = 'granted';
+      this.permissions.microphone = 'granted';
+      this.notifyListeners('camera', 'granted');
+      this.notifyListeners('microphone', 'granted');
+      return stream;
+    } catch (error) {
+      const status = error.name === 'NotAllowedError' ? 'denied' : 'error';
+      this.permissions.camera = status;
+      this.permissions.microphone = status;
+      this.notifyListeners('camera', status);
+      this.notifyListeners('microphone', status);
+      throw error;
+    }
+  }
+
+  async requestNotificationPermission() {
+    if (!('Notification' in window)) {
+      throw new Error('Notifications not supported');
+    }
+    const permission = await Notification.requestPermission();
+    this.permissions.notifications = permission;
+    this.notifyListeners('notifications', permission);
+    return permission;
+  }
+
+  getPermission(permissionType) {
+    return this.permissions[permissionType] || 'unknown';
+  }
+
+  getAllPermissions() {
+    return { ...this.permissions };
+  }
+
+  isGranted(permissionType) {
+    return this.permissions[permissionType] === 'granted';
+  }
+
+  async requestMultiplePermissions(permissions) {
+    const results = {};
+    for (const permission of permissions) {
+      try {
+        switch (permission) {
+          case 'camera':
+            results.camera = await this.requestCameraPermission();
+            break;
+          case 'microphone':
+            results.microphone = await this.requestMicrophonePermission();
+            break;
+          case 'camera+microphone':
+            await this.requestCameraAndMicrophone();
+            results.camera = 'granted';
+            results.microphone = 'granted';
+            break;
+          case 'notifications':
+            results.notifications = await this.requestNotificationPermission();
+            break;
+        }
+      } catch (error) {
+        results[permission] = 'error';
+      }
+    }
+    return results;
+  }
+
+  showPermissionPrompt(permissionType, callback) {
+    const descriptions = {
+      camera: { title: 'Camera Access', description: 'Required for video calls and photos', icon: '📷' },
+      microphone: { title: 'Microphone Access', description: 'Required for audio calls and voice messages', icon: '🎤' },
+      notifications: { title: 'Notifications', description: 'Get notified about new messages and calls', icon: '🔔' }
+    };
+
+    const desc = descriptions[permissionType];
+    if (!desc) return;
+
+    const userChoice = confirm(
+      `${desc.icon} ${desc.title}\n\n${desc.description}\n\nClick OK to allow, Cancel to skip.`
+    );
+
+    if (userChoice) {
+      callback(true);
+    } else {
+      callback(false);
+    }
+  }
+
+  addListener(permissionType, callback) {
+    if (!this.listeners.has(permissionType)) {
+      this.listeners.set(permissionType, new Set());
+    }
+    this.listeners.get(permissionType).add(callback);
+  }
+
+  removeListener(permissionType, callback) {
+    const listeners = this.listeners.get(permissionType);
+    if (listeners) listeners.delete(callback);
+  }
+
+  notifyListeners(permissionType, status) {
+    const listeners = this.listeners.get(permissionType);
+    if (listeners) {
+      listeners.forEach(callback => callback(status, permissionType));
+    }
+  }
+
+  cleanup() {
+    if (this.currentStream) {
+      this.currentStream.getTracks().forEach(track => track.stop());
+      this.currentStream = null;
+    }
+    this.listeners.clear();
+  }
+}
+
+// Create global permissions instance
+const permissionsManager = new PermissionsManager();
+
+// Video/Audio Call Components
+const CallModal = ({ 
+  callType, 
+  isIncoming, 
+  callerInfo, 
+  onAccept, 
+  onReject, 
+  onEndCall,
+  callStatus 
+}) => {
+  return (
+    <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+      <div className="modal-dialog modal-dialog-centered">
+        <div className="modal-content">
+          <div className="modal-header bg-primary text-white">
+            <h5 className="modal-title">
+              {callType === 'video' ? '📹' : '📞'} 
+              {isIncoming ? 'Incoming Call' : 'Outgoing Call'}
+            </h5>
+          </div>
+          <div className="modal-body text-center">
+            <img
+              src={callerInfo?.photoURL || "icons/avatar.jpg"}
+              alt="Caller"
+              className="rounded-circle mb-3"
+              style={{ width: 80, height: 80, objectFit: "cover" }}
+            />
+            <h4>{callerInfo?.username || "User"}</h4>
+            <p className="text-muted">{callStatus}</p>
+            
+            {callType === 'video' ? (
+              <p>Video Call {isIncoming ? 'from' : 'to'} {callerInfo?.username}</p>
+            ) : (
+              <p>Audio Call {isIncoming ? 'from' : 'to'} {callerInfo?.username}</p>
+            )}
+          </div>
+          <div className="modal-footer justify-content-center">
+            {isIncoming ? (
+              <>
+                <button 
+                  className="btn btn-danger btn-lg rounded-circle mx-2"
+                  onClick={onReject}
+                >
+                  ❌
+                </button>
+                <button 
+                  className="btn btn-success btn-lg rounded-circle mx-2"
+                  onClick={onAccept}
+                >
+                  📞
+                </button>
+              </>
+            ) : (
+              <button 
+                className="btn btn-danger btn-lg"
+                onClick={onEndCall}
+              >
+                End Call
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const CallScreen = ({ 
+  callType, 
+  localStream, 
+  remoteStream, 
+  onEndCall, 
+  isMuted, 
+  onToggleMute,
+  isVideoOff,
+  onToggleVideo,
+  callDuration,
+  partnerInfo
+}) => {
+  const localVideoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
+
+  useEffect(() => {
+    if (localVideoRef.current && localStream) {
+      localVideoRef.current.srcObject = localStream;
+    }
+    if (remoteVideoRef.current && remoteStream) {
+      remoteVideoRef.current.srcObject = remoteStream;
+    }
+  }, [localStream, remoteStream]);
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="position-fixed top-0 start-0 w-100 h-100 bg-dark" style={{ zIndex: 9999 }}>
+      {/* Remote Video (Main) */}
+      {callType === 'video' && remoteStream && (
+        <video
+          ref={remoteVideoRef}
+          autoPlay
+          playsInline
+          className="w-100 h-100"
+          style={{ objectFit: 'cover' }}
+        />
+      )}
+      
+      {/* Local Video (Picture-in-picture) */}
+      {callType === 'video' && localStream && (
+        <div className="position-absolute top-0 end-0 m-3" style={{ width: '120px', height: '160px' }}>
+          <video
+            ref={localVideoRef}
+            autoPlay
+            playsInline
+            muted
+            className="w-100 h-100 rounded shadow"
+            style={{ objectFit: 'cover' }}
+          />
+        </div>
+      )}
+      
+      {/* Audio Call UI */}
+      {callType === 'audio' && (
+        <div className="d-flex flex-column justify-content-center align-items-center h-100 text-white">
+          <img
+            src={partnerInfo?.photoURL || "icons/avatar.jpg"}
+            alt="Caller"
+            className="rounded-circle mb-3"
+            style={{ width: 120, height: 120, objectFit: "cover" }}
+          />
+          <h3>{partnerInfo?.username || "User"}</h3>
+          <p className="fs-5">{formatTime(callDuration)}</p>
+          <p className="text-muted">Audio Call</p>
+        </div>
+      )}
+
+      {/* Call Controls */}
+      <div className="position-absolute bottom-0 start-50 translate-middle-x mb-4">
+        <div className="d-flex gap-3">
+          <button
+            className={`btn btn-lg rounded-circle ${isMuted ? 'btn-danger' : 'btn-light'}`}
+            onClick={onToggleMute}
+          >
+            {isMuted ? '🎤❌' : '🎤'}
+          </button>
+          
+          {callType === 'video' && (
+            <button
+              className={`btn btn-lg rounded-circle ${isVideoOff ? 'btn-danger' : 'btn-light'}`}
+              onClick={onToggleVideo}
+            >
+              {isVideoOff ? '📹❌' : '📹'}
+            </button>
+          )}
+          
+          <button
+            className="btn btn-danger btn-lg rounded-circle"
+            onClick={onEndCall}
+          >
+            📞
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default function Messages() {
   const { uid } = useParams();
@@ -45,376 +463,43 @@ export default function Messages() {
   const [uploadProgress, setUploadProgress] = useState(0);
 
   const [partnerStatus, setPartnerStatus] = useState(null);
-  const [notificationService, setNotificationService] = useState(null);
-  const [fcmToken, setFcmToken] = useState(null);
-  const [unreadCount, setUnreadCount] = useState(0);
 
-  // Permission states
-  const [hasCameraPermission, setHasCameraPermission] = useState(false);
-  const [hasMicrophonePermission, setHasMicrophonePermission] = useState(false);
-  const [showCameraModal, setShowCameraModal] = useState(false);
-  const [showMicrophoneModal, setShowMicrophoneModal] = useState(false);
+  // Call States
+  const [callState, setCallState] = useState(null);
+  const [callType, setCallType] = useState(null);
+  const [callData, setCallData] = useState(null);
+  const [localStream, setLocalStream] = useState(null);
+  const [remoteStream, setRemoteStream] = useState(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isVideoOff, setIsVideoOff] = useState(false);
+  const [callDuration, setCallDuration] = useState(0);
+  const [callStartTime, setCallStartTime] = useState(null);
 
   const messagesEndRef = useRef(null);
   const longPressTimerRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const inputRef = useRef(null);
+  const peerConnectionRef = useRef(null);
+  const callDurationRef = useRef(null);
 
   const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_NAME;
   const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
   const chatId = currentUid && uid ? [currentUid, uid].sort().join("_") : null;
 
-  // ========== UTILITY FUNCTIONS ==========
-
-  // ---------- Detect Device Type ----------
-  const detectDeviceType = () => {
-    const userAgent = navigator.userAgent.toLowerCase();
-    if (/mobile|android|iphone|ipad/.test(userAgent)) {
-      return 'mobile';
-    } else {
-      return 'desktop';
-    }
+  // WebRTC Configuration
+  const rtcConfig = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
+    ]
   };
 
-  // ========== FIXED NOTIFICATION FUNCTIONS ==========
-
-  // ---------- Fixed Browser Notification ----------
-  const forceBrowserNotification = async (notificationData) => {
-    console.log('🔔 FORCE Browser Notification started');
-    
-    // 🚨 CRITICAL: Don't show notification if it's from current user
-    if (notificationData.data?.fromId === currentUid) {
-      console.log('🚫 Skipping self browser notification');
-      return false;
-    }
-
-    if (!("Notification" in window)) {
-      console.log("❌ Browser doesn't support notifications");
-      return false;
-    }
-
-    // Request permission if not granted
-    if (Notification.permission !== "granted") {
-      console.log("📋 Requesting notification permission...");
-      const permission = await Notification.requestPermission();
-      if (permission !== "granted") {
-        console.log("❌ Notification permission denied");
-        return false;
-      }
-    }
-
-    console.log('🖥️ Creating FORCED browser notification:', notificationData);
-
-    try {
-      const notificationOptions = {
-        body: notificationData.body,
-        icon: '/icons/logo.png',
-        badge: '/icons/logo.png',
-        image: notificationData.image,
-        data: notificationData.data || {},
-        tag: 'jibzo-force-' + Date.now(),
-        requireInteraction: true,
-      };
-
-      const notification = new Notification(notificationData.title, notificationOptions);
-
-      notification.onclick = () => {
-        console.log('🔔 FORCE Notification clicked');
-        window.focus();
-        notification.close();
-        
-        if (notificationData.data?.url) {
-          window.location.href = notificationData.data.url;
-        }
-      };
-
-      notification.onclose = () => {
-        console.log('🔔 FORCE Notification closed');
-      };
-
-      // Auto close after 10 seconds
-      setTimeout(() => {
-        notification.close();
-      }, 10000);
-      
-      console.log('✅ FORCE Browser notification shown successfully');
-      return true;
-      
-    } catch (error) {
-      console.error('❌ Error showing FORCE browser notification:', error);
-      return false;
-    }
-  };
-
-  // ---------- Force Service Worker Notification ----------
-  const forceServiceWorkerNotification = async (notificationData) => {
-    console.log('🛠️ FORCE Service Worker Notification started');
-    
-    if (!('serviceWorker' in navigator) || !('Notification' in window)) {
-      console.log('❌ Service Worker or Notification not supported');
-      return false;
-    }
-
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      
-      await registration.showNotification(notificationData.title, {
-        body: notificationData.body,
-        icon: '/icons/logo.png',
-        badge: '/icons/logo.png',
-        image: notificationData.image,
-        data: {
-          ...notificationData.data,
-          currentUserId: currentUid // 🚨 IMPORTANT: Current user ID bhejo
-        },
-        tag: 'jibzo-sw-force-' + Date.now(),
-        requireInteraction: true,
-        actions: [
-          {
-            action: 'open',
-            title: '💬 Open Chat'
-          },
-          {
-            action: 'close', 
-            title: '❌ Close'
-          }
-        ]
-      });
-      
-      console.log('✅ FORCE Service Worker notification shown');
-      return true;
-    } catch (error) {
-      console.error('❌ FORCE Service Worker notification failed:', error);
-      return false;
-    }
-  };
-
-  // ---------- Force Floating Notification ----------
-  const forceFloatingNotification = (notificationData) => {
-    console.log('🪟 FORCE Floating notification');
-    
-    const floatingEvent = new CustomEvent('showFloatingNotification', {
-      detail: {
-        id: Date.now(),
-        title: notificationData.title,
-        body: notificationData.body,
-        image: notificationData.image,
-        url: notificationData.url,
-        timestamp: new Date().toLocaleTimeString(),
-        duration: 5000
-      }
-    });
-    window.dispatchEvent(floatingEvent);
-    console.log('✅ FORCE Floating notification event dispatched');
-  };
-
-  // ---------- ULTIMATE FORCE NOTIFICATION ----------
-  const ultimateForceNotification = async (notificationData) => {
-    console.log('🚀 ULTIMATE FORCE NOTIFICATION STARTED');
-    
-    // 🚨 CRITICAL: Don't show notification if it's from current user
-    if (notificationData.data?.fromId === currentUid) {
-      console.log('🚫 BLOCKED: Self notification prevented in ultimate force');
-      return false;
-    }
-
-    let successCount = 0;
-    
-    // Method 1: Force Browser Notification
-    try {
-      const result1 = await forceBrowserNotification(notificationData);
-      if (result1) successCount++;
-    } catch (error) {
-      console.error('❌ Method 1 failed:', error);
-    }
-    
-    // Method 2: Force Service Worker Notification
-    try {
-      const result2 = await forceServiceWorkerNotification(notificationData);
-      if (result2) successCount++;
-    } catch (error) {
-      console.error('❌ Method 2 failed:', error);
-    }
-    
-    // Method 3: Force Floating Notification (always works)
-    forceFloatingNotification(notificationData);
-    successCount++;
-    
-    // Method 4: Direct Notification as last resort
-    try {
-      if ('Notification' in window && Notification.permission === 'granted') {
-        // 🚨 CRITICAL: Don't show notification if it's from current user
-        if (notificationData.data?.fromId !== currentUid) {
-          const notification = new Notification(notificationData.title, {
-            body: notificationData.body,
-            icon: '/icons/logo.png',
-            tag: 'direct-ultimate-' + Date.now()
-          });
-          console.log('✅ Direct ultimate notification shown');
-          successCount++;
-        }
-      }
-    } catch (error) {
-      console.error('❌ Direct ultimate failed:', error);
-    }
-    
-    console.log(`🎯 ULTIMATE FORCE COMPLETE: ${successCount}/4 methods successful`);
-    
-    // If no notifications shown, show alert
-    if (successCount === 0) {
-      console.log('❌ No notification methods worked!');
-    } else {
-      console.log(`✅ ${successCount} notification methods worked!`);
-    }
-    
-    return successCount > 0;
-  };
-
-  // ---------- Fixed Push Notification ----------
-  const triggerFixedPushNotification = async (recipientUid, notificationData) => {
-    try {
-      console.log('📤 Fixed push notification for:', recipientUid);
-      
-      // 🚨 CRITICAL: Check if recipient is same as sender
-      if (recipientUid === currentUid) {
-        console.log('🚫 Skipping push notification to self');
-        return false;
-      }
-
-      // Get recipient's FCM token
-      const userRef = dbRef(db, `users/${recipientUid}`);
-      const snapshot = await get(userRef);
-      
-      if (snapshot.exists()) {
-        const userData = snapshot.val();
-        const fcmToken = userData.fcmToken;
-        
-        if (fcmToken && fcmToken.length > 10) {
-          console.log('✅ Valid FCM Token found for recipient');
-          
-          const pushNotification = {
-            to: fcmToken,
-            notification: {
-              title: notificationData.title,
-              body: notificationData.body,
-              image: notificationData.image,
-              icon: '/icons/logo.png',
-              badge: '/icons/logo.png'
-            },
-            data: {
-              ...notificationData.data,
-              deviceType: detectDeviceType(),
-              timestamp: Date.now().toString(),
-              click_action: notificationData.data?.url || '/',
-              currentUserId: recipientUid // 🚨 IMPORTANT: Recipient ka ID bhejo
-            },
-            android: {
-              priority: "high"
-            },
-            apns: {
-              payload: {
-                aps: {
-                  sound: "default",
-                  badge: 1
-                }
-              }
-            },
-            webpush: {
-              headers: {
-                Urgency: "high"
-              }
-            }
-          };
-          
-          const pushRef = push(dbRef(db, `pushQueue`));
-          await set(pushRef, {
-            ...pushNotification,
-            timestamp: Date.now(),
-            recipient: recipientUid,
-            sender: currentUid,
-            status: 'pending'
-          });
-          
-          console.log('✅ Fixed push notification queued for:', recipientUid);
-          return true;
-        } else {
-          console.log('❌ Invalid or missing FCM token for recipient');
-          return false;
-        }
-      } else {
-        console.log('❌ Recipient not found in database');
-        return false;
-      }
-    } catch (error) {
-      console.error('❌ Error triggering fixed push notification:', error);
-      return false;
-    }
-  };
-
-  // ---------- Test Notification Function ----------
-  const testNotificationNow = async () => {
-    console.log('🧪 TEST NOTIFICATION NOW');
-    
-    const testData = {
-      title: 'Test Notification ✅',
-      body: 'Yeh test notification aa raha hai!',
-      image: chatUser?.photoURL || '/logo.png',
-      url: `/messages/${uid}`,
-      data: {
-        url: `/messages/${uid}`,
-        test: true,
-        fromId: currentUid
-      }
-    };
-    
-    const result = await ultimateForceNotification(testData);
-    
-    if (result) {
-      console.log('🎉 TEST SUCCESSFUL - Notification should be visible');
-    } else {
-      console.log('❌ TEST FAILED - No notifications shown');
-    }
-  };
-
-  // ---------- Debug FCM Tokens ----------
-  const debugFCMTokens = async () => {
-    console.group('🔍 FCM TOKENS DEBUG');
-    
-    // Check current user's token
-    console.log('📱 Current User FCM Token:', fcmToken);
-    console.log('👤 Current User ID:', currentUid);
-    
-    // Check recipient's token
-    if (uid) {
-      try {
-        const userRef = dbRef(db, `users/${uid}`);
-        const snapshot = await get(userRef);
-        if (snapshot.exists()) {
-          const userData = snapshot.val();
-          console.log('🎯 Recipient FCM Token:', userData.fcmToken);
-          console.log('👤 Recipient UID:', uid);
-        } else {
-          console.log('❌ Recipient not found in users node');
-        }
-      } catch (error) {
-        console.error('Error fetching recipient token:', error);
-      }
-    }
-    
-    console.groupEnd();
-  };
-
-  // ========== MAIN COMPONENT LOGIC ==========
-
-  // ---------- Check Permissions on Load ----------
+  // Initialize permissions when component mounts
   useEffect(() => {
-    const storedPermissions = localStorage.getItem('appPermissions');
-    if (storedPermissions) {
-      const permissions = JSON.parse(storedPermissions);
-      setHasCameraPermission(permissions.camera || false);
-      setHasMicrophonePermission(permissions.microphone || false);
-    }
+    permissionsManager.init().then(() => {
+      console.log('Permissions initialized in Messages component');
+    });
   }, []);
 
   // ---------- Auth ----------
@@ -434,279 +519,6 @@ export default function Messages() {
     }
     setCurrentUid(auth.currentUser?.uid || guestId);
   }, []);
-
-  // ---------- Notification Setup ----------
-  useEffect(() => {
-    const setupNotifications = async () => {
-      if (!currentUid || currentUid.startsWith('guest_')) return;
-      
-      try {
-        const service = await initializeNotifications(currentUid);
-        setNotificationService(service);
-
-        const token = await requestNotificationPermission();
-        if (token) {
-          setFcmToken(token);
-          await saveFCMToken(currentUid, token);
-        }
-
-        onForegroundMessage((payload) => {
-          console.log('New message received in foreground:', payload);
-          
-          // 🚨 CRITICAL: Don't show notification if it's from current user
-          if (payload.data?.fromId !== currentUid) {
-            forceFloatingNotification({
-              title: payload.notification?.title || 'New Message',
-              body: payload.notification?.body || 'You have a new message',
-              image: chatUser?.photoURL || '/logo.png',
-              url: payload.data?.url || `/messages/${uid}`
-            });
-          }
-        });
-
-      } catch (error) {
-        console.error('Notification setup error:', error);
-      }
-    };
-
-    setupNotifications();
-
-    return () => {
-      if (notificationService) {
-        notificationService.unsubscribeFromNotifications();
-      }
-    };
-  }, [currentUid, uid]);
- 
-  // ---------- Listen for New Notifications - FIXED VERSION ----------
-  useEffect(() => {
-    if (!notificationService || !currentUid) return;
-
-    console.log('🎯 Starting FIXED notification listener...');
-
-    notificationService.listenForNotifications((newNotifications) => {
-      console.log('📨 New notifications received:', newNotifications);
-      setUnreadCount(newNotifications.length);
-      
-      newNotifications.forEach(notification => {
-        if (notification.type === 'message' && !notification.seen) {
-          console.log('💬 New message notification - FORCING DISPLAY:', notification);
-          
-          // 🚨 CRITICAL: Only show if notification is from another user
-          if (notification.fromId !== currentUid) {
-            // ULTIMATE FORCE NOTIFICATION
-            ultimateForceNotification({
-              title: 'New Message 💬',
-              body: `${notification.senderName || 'Someone'}: ${notification.text || 'Sent a message'}`,
-              image: notification.senderPhoto || '/logo.png',
-              url: `/messages/${notification.fromId}`,
-              data: {
-                url: `/messages/${notification.fromId}`,
-                chatId: notification.chatId,
-                fromId: notification.fromId
-              },
-              notificationId: notification.id
-            });
-          }
-
-          // Mark as seen after showing
-          setTimeout(() => {
-            notificationService.markAsSeen(notification.id);
-            console.log('✅ Notification marked as seen:', notification.id);
-          }, 3000);
-        }
-      });
-    });
-  }, [notificationService, currentUid, uid, chatId]);
-
-  // ---------- Enhanced Send Message ----------
-  const sendMessage = async (opts = {}) => {
-    if (!currentUid || !chatId) return;
-    const text = opts.text ?? input.trim();
-    if (!text && !opts.imageURL) return;
-
-    setInput("");
-    setReplyTo(null);
-    setPreviewImage(null);
-    setEditingMsgId(null);
-
-    setIsTyping(false);
-    setTyping(false);
-
-    const msgPayload = {
-      sender: currentUid,
-      text: text || "",
-      imageURL: opts.imageURL || null,
-      replyTo: opts.replyTo || replyTo?.id || null,
-      reactions: {},
-      timestamp: serverTimestamp(),
-      deletedFor: [],
-      status: "sent",
-      read: false,
-    };
-
-    try {
-      if (editingMsgId) {
-        await update(
-          dbRef(db, `chats/${chatId}/messages/${editingMsgId}`),
-          { text }
-        );
-      } else {
-        const pushed = await push(dbRef(db, `chats/${chatId}/messages`), msgPayload);
-
-        const recipientUid = uid;
-        if (recipientUid && !recipientUid.startsWith("guest_")) {
-          console.log('🚀 Sending FIXED notification to:', recipientUid);
-          
-          // Use FIXED push notification
-          await triggerFixedPushNotification(recipientUid, {
-            title: "New Message 💬",
-            body: `${chatUser?.username || "Someone"}: ${text || "Sent a photo"}`,
-            image: chatUser?.photoURL,
-            data: {
-              url: `/messages/${currentUid}`,
-              chatId: chatId,
-              fromId: currentUid,
-              type: "message"
-            }
-          });
-
-          // Save notification to database
-          const notifRef = push(dbRef(db, `notifications/${recipientUid}`));
-          const notifObj = {
-            type: "message",
-            fromId: currentUid,
-            chatId: chatId,
-            messageId: pushed.key,
-            text: (text || (opts.imageURL ? "📷 Image" : "Message")).slice(0, 200),
-            timestamp: serverTimestamp(),
-            seen: false,
-            senderName: chatUser?.username || "User",
-            senderPhoto: chatUser?.photoURL || "/logo.png",
-            pushTitle: "New Message",
-            pushBody: `${chatUser?.username || "Someone"}: ${text || "Sent a photo"}`,
-            pushImage: chatUser?.photoURL,
-            pushUrl: `/messages/${currentUid}`
-          };
-          
-          await set(notifRef, notifObj);
-          console.log('✅ Notification saved to database');
-
-          // Update chat for both users
-          const updateChat = async (userId, partnerId, partnerData) => {
-            const userChatRef = dbRef(db, `userChats/${userId}/${chatId}`);
-            await set(userChatRef, {
-              lastMessage: text || "📷 Image",
-              timestamp: serverTimestamp(),
-              partnerId: partnerId,
-              partnerPhoto: partnerData?.photoURL,
-              partnerName: partnerData?.username,
-              unread: userId !== currentUid ? 1 : 0,
-              lastMessageTime: Date.now()
-            });
-          };
-
-          await updateChat(currentUid, uid, chatUser);
-          
-          if (currentUid && !currentUid.startsWith('guest_')) {
-            const currentUserData = {
-              username: auth.currentUser?.displayName || "You", 
-              photoURL: auth.currentUser?.photoURL || "/logo.png"
-            };
-            await updateChat(uid, currentUid, currentUserData);
-          }
-        }
-      }
-
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 100);
-    } catch (err) {
-      console.error("sendMessage error:", err);
-    }
-  };
-
-  // ---------- Camera Permission Handler ----------
-  const handleCameraClick = async () => {
-    if (!hasCameraPermission) {
-      setShowCameraModal(true);
-      return;
-    }
-    await openCamera();
-  };
-
-  const requestCameraPermission = async () => {
-    try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        setHasCameraPermission(true);
-        
-        const storedPermissions = JSON.parse(localStorage.getItem('appPermissions') || '{}');
-        localStorage.setItem('appPermissions', JSON.stringify({
-          ...storedPermissions,
-          camera: true
-        }));
-        
-        stream.getTracks().forEach(track => track.stop());
-        setShowCameraModal(false);
-        
-        await openCamera();
-      }
-    } catch (error) {
-      console.error('Camera permission denied:', error);
-      alert('Camera permission is required to take photos');
-    }
-  };
-
-  const openCamera = async () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.capture = 'environment';
-    input.onchange = (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        handleImageUpload(file);
-      }
-    };
-    input.click();
-  };
-
-  // ---------- Microphone Permission Handler ----------
-  const handleMicrophoneClick = async () => {
-    if (!hasMicrophonePermission) {
-      setShowMicrophoneModal(true);
-      return;
-    }
-    await startVoiceRecording();
-  };
-
-  const requestMicrophonePermission = async () => {
-    try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        setHasMicrophonePermission(true);
-        
-        const storedPermissions = JSON.parse(localStorage.getItem('appPermissions') || '{}');
-        localStorage.setItem('appPermissions', JSON.stringify({
-          ...storedPermissions,
-          microphone: true
-        }));
-        
-        stream.getTracks().forEach(track => track.stop());
-        setShowMicrophoneModal(false);
-        
-        await startVoiceRecording();
-      }
-    } catch (error) {
-      console.error('Microphone permission denied:', error);
-      alert('Microphone permission is required for voice messages');
-    }
-  };
-
-  const startVoiceRecording = async () => {
-    alert('Voice message feature coming soon! 🎤');
-  };
 
   // ---------- Auto focus input on mount ----------
   useEffect(() => {
@@ -731,7 +543,7 @@ export default function Messages() {
     };
     updateStatus("online");
     window.addEventListener("focus", () => updateStatus("online"));
-    window.addEventListener("blur", () => updateStatus("away"));
+    window.addEventListener("blur", () => updateStatus("offline"));
     onDisconnect(statusRef).set({
       state: "offline",
       last_changed: serverTimestamp(),
@@ -740,7 +552,7 @@ export default function Messages() {
     });
     return () => {
       window.removeEventListener("focus", () => updateStatus("online"));
-      window.removeEventListener("blur", () => updateStatus("away"));
+      window.removeEventListener("blur", () => updateStatus("offline"));
     };
   }, [currentUid, privacyHide]);
 
@@ -765,22 +577,9 @@ export default function Messages() {
     if (!uid) return;
     const userRef = dbRef(db, `usersData/${uid}`);
     return onValue(userRef, (snap) => {
-      if (snap.exists()) {
-        const userData = snap.val();
-        setChatUser(userData);
-        
-        if (currentUid && !currentUid.startsWith('guest_')) {
-          const chatRef = dbRef(db, `userChats/${currentUid}/${chatId}`);
-          update(chatRef, {
-            lastMessage: `Chat with ${userData.username}`,
-            timestamp: serverTimestamp(),
-            partnerPhoto: userData.photoURL,
-            partnerName: userData.username
-          }).catch(console.warn);
-        }
-      }
+      if (snap.exists()) setChatUser(snap.val());
     });
-  }, [uid, currentUid, chatId]);
+  }, [uid]);
 
   // ---------- Partner presence ----------
   useEffect(() => {
@@ -855,6 +654,74 @@ export default function Messages() {
     }, 1500);
   };
 
+  // ---------- Send Message ----------
+  const sendMessage = async (opts = {}) => {
+    if (!currentUid || !chatId) return;
+    const text = opts.text ?? input.trim();
+    if (!text && !opts.imageURL) return;
+
+    setInput("");
+    setReplyTo(null);
+    setPreviewImage(null);
+    setEditingMsgId(null);
+
+    setIsTyping(false);
+    setTyping(false);
+
+    const msgPayload = {
+      sender: currentUid,
+      text: text || "",
+      imageURL: opts.imageURL || null,
+      replyTo: opts.replyTo || replyTo?.id || null,
+      reactions: {},
+      timestamp: serverTimestamp(),
+      deletedFor: [],
+      status: "sent",
+      read: false,
+    };
+
+    try {
+      if (editingMsgId) {
+        await update(
+          dbRef(db, `chats/${chatId}/messages/${editingMsgId}`),
+          { text }
+        );
+      } else {
+        const pushed = await push(dbRef(db, `chats/${chatId}/messages`), msgPayload);
+
+        const recipientUid = uid;
+        if (recipientUid && !recipientUid.startsWith("guest_")) {
+          const floatingEvent = new CustomEvent('showFloatingNotification', {
+            detail: {
+              title: "New Message",
+              body: `${chatUser?.username || "Someone"}: ${text || "Sent an image"}`,
+              image: chatUser?.photoURL || '/logo.png',
+              url: `/messages/${currentUid}`
+            }
+          });
+          window.dispatchEvent(floatingEvent);
+
+          const notifRef = push(dbRef(db, `notifications/${recipientUid}`));
+          const notifObj = {
+            type: "message",
+            fromId: currentUid,
+            chatId,
+            text: (text || (opts.imageURL ? "Image" : "")).slice(0, 200),
+            timestamp: serverTimestamp(),
+            seen: false
+          };
+          await set(notifRef, notifObj);
+        }
+      }
+
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+    } catch (err) {
+      console.error("sendMessage error:", err);
+    }
+  };
+
   // ---------- Cloudinary Upload ----------
   const handleImageUpload = async (file) => {
     if (!file) return;
@@ -887,7 +754,6 @@ export default function Messages() {
       setPreviewImage(null);
     } catch (err) {
       console.error(err);
-      alert("Image upload failed. Please try again.");
     }
     setIsUploading(false);
   };
@@ -936,14 +802,10 @@ export default function Messages() {
     const updates = {};
     msgs.forEach((m) => {
       if (m.sender === currentUid) return;
-      if (m.status !== "seen") {
-        updates[`chats/${chatId}/messages/${m.id}/status`] = "seen";
-        updates[`chats/${chatId}/messages/${m.id}/read`] = true;
-      }
+      updates[`chats/${chatId}/messages/${m.id}/status`] = "seen";
+      updates[`chats/${chatId}/messages/${m.id}/read`] = true;
     });
-    if (Object.keys(updates).length) {
-      await update(dbRef(db), updates);
-    }
+    if (Object.keys(updates).length) await update(dbRef(db), updates);
   };
 
   const renderStatus = (msg) => {
@@ -987,6 +849,301 @@ export default function Messages() {
       inputRef.current?.focus();
     }
   };
+
+  // ---------- Enhanced Call Management with Permissions ----------
+  const initializeCall = async (type) => {
+    if (!chatId || !currentUid || !uid) return;
+
+    try {
+      // Check permissions first
+      if (type === 'video') {
+        if (!permissionsManager.isGranted('camera') || !permissionsManager.isGranted('microphone')) {
+          permissionsManager.showPermissionPrompt('camera', async (allowed) => {
+            if (allowed) {
+              try {
+                await permissionsManager.requestCameraAndMicrophone();
+                proceedWithCall(type);
+              } catch (error) {
+                alert('Camera and microphone access is required for video calls.');
+              }
+            }
+          });
+          return;
+        }
+      } else {
+        if (!permissionsManager.isGranted('microphone')) {
+          permissionsManager.showPermissionPrompt('microphone', async (allowed) => {
+            if (allowed) {
+              try {
+                await permissionsManager.requestMicrophonePermission();
+                proceedWithCall(type);
+              } catch (error) {
+                alert('Microphone access is required for audio calls.');
+              }
+            }
+          });
+          return;
+        }
+      }
+
+      await proceedWithCall(type);
+    } catch (error) {
+      console.error('Error initializing call:', error);
+      alert('Error starting call. Please check your camera/microphone permissions.');
+    }
+  };
+
+  const proceedWithCall = async (type) => {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: type === 'video',
+      audio: true
+    });
+    
+    setLocalStream(stream);
+    setCallType(type);
+    setCallState('outgoing');
+
+    const callId = `call_${Date.now()}`;
+    const callData = {
+      callId,
+      callerId: currentUid,
+      receiverId: uid,
+      type,
+      status: 'calling',
+      timestamp: serverTimestamp()
+    };
+
+    const callRef = dbRef(db, `calls/${chatId}/${callId}`);
+    await set(callRef, callData);
+
+    await createPeerConnection(stream, callId);
+  };
+
+  const createPeerConnection = async (stream, callId) => {
+    try {
+      const pc = new RTCPeerConnection(rtcConfig);
+      peerConnectionRef.current = pc;
+
+      stream.getTracks().forEach(track => {
+        pc.addTrack(track, stream);
+      });
+
+      pc.ontrack = (event) => {
+        setRemoteStream(event.streams[0]);
+      };
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          const candidateRef = dbRef(db, `calls/${chatId}/${callId}/candidates/${currentUid}`);
+          push(candidateRef, event.candidate.toJSON());
+        }
+      };
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      const offerRef = dbRef(db, `calls/${chatId}/${callId}/offer`);
+      await set(offerRef, offer);
+
+    } catch (error) {
+      console.error('Error creating peer connection:', error);
+    }
+  };
+
+  const answerCall = async (callData) => {
+    try {
+      // Check permissions before answering
+      if (callData.type === 'video') {
+        if (!permissionsManager.isGranted('camera') || !permissionsManager.isGranted('microphone')) {
+          permissionsManager.showPermissionPrompt('camera', async (allowed) => {
+            if (allowed) {
+              try {
+                await permissionsManager.requestCameraAndMicrophone();
+                proceedWithAnswer(callData);
+              } catch (error) {
+                alert('Camera and microphone access is required for video calls.');
+                rejectCall(callData);
+              }
+            } else {
+              rejectCall(callData);
+            }
+          });
+          return;
+        }
+      } else {
+        if (!permissionsManager.isGranted('microphone')) {
+          permissionsManager.showPermissionPrompt('microphone', async (allowed) => {
+            if (allowed) {
+              try {
+                await permissionsManager.requestMicrophonePermission();
+                proceedWithAnswer(callData);
+              } catch (error) {
+                alert('Microphone access is required for audio calls.');
+                rejectCall(callData);
+              }
+            } else {
+              rejectCall(callData);
+            }
+          });
+          return;
+        }
+      }
+
+      await proceedWithAnswer(callData);
+    } catch (error) {
+      console.error('Error answering call:', error);
+      rejectCall(callData);
+    }
+  };
+
+  const proceedWithAnswer = async (callData) => {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: callData.type === 'video',
+      audio: true
+    });
+
+    setLocalStream(stream);
+    setCallType(callData.type);
+    setCallState('active');
+    setCallData(callData);
+
+    const pc = new RTCPeerConnection(rtcConfig);
+    peerConnectionRef.current = pc;
+
+    stream.getTracks().forEach(track => {
+      pc.addTrack(track, stream);
+    });
+
+    pc.ontrack = (event) => {
+      setRemoteStream(event.streams[0]);
+    };
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        const candidateRef = dbRef(db, `calls/${chatId}/${callData.callId}/candidates/${currentUid}`);
+        push(candidateRef, event.candidate.toJSON());
+      }
+    };
+
+    const offerRef = dbRef(db, `calls/${chatId}/${callData.callId}/offer`);
+    onValue(offerRef, async (snap) => {
+      if (snap.exists()) {
+        await pc.setRemoteDescription(snap.val());
+        
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        const answerRef = dbRef(db, `calls/${chatId}/${callData.callId}/answer`);
+        await set(answerRef, answer);
+      }
+    });
+
+    const candidateRef = dbRef(db, `calls/${chatId}/${callData.callId}/candidates/${callData.callerId}`);
+    onValue(candidateRef, (snap) => {
+      snap.forEach((childSnap) => {
+        const candidate = childSnap.val();
+        pc.addIceCandidate(new RTCIceCandidate(candidate));
+      });
+    });
+
+    const callRef = dbRef(db, `calls/${chatId}/${callData.callId}`);
+    await update(callRef, { status: 'active' });
+
+    startCallTimer();
+  };
+
+  const endCall = async () => {
+    if (callDurationRef.current) {
+      clearInterval(callDurationRef.current);
+    }
+
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+
+    if (localStream) {
+      localStream.getTracks().forEach(track => track.stop());
+      setLocalStream(null);
+    }
+    setRemoteStream(null);
+
+    if (callData && chatId) {
+      const callRef = dbRef(db, `calls/${chatId}/${callData.callId}`);
+      await update(callRef, { 
+        status: 'ended',
+        endedAt: serverTimestamp(),
+        duration: callDuration
+      });
+    }
+
+    setCallState(null);
+    setCallType(null);
+    setCallData(null);
+    setCallDuration(0);
+    setCallStartTime(null);
+  };
+
+  const rejectCall = async (callData) => {
+    if (callData && chatId) {
+      const callRef = dbRef(db, `calls/${chatId}/${callData.callId}`);
+      await update(callRef, { 
+        status: 'rejected',
+        endedAt: serverTimestamp()
+      });
+    }
+    setCallState(null);
+    setCallData(null);
+  };
+
+  const startCallTimer = () => {
+    setCallStartTime(Date.now());
+    callDurationRef.current = setInterval(() => {
+      setCallDuration(prev => prev + 1);
+    }, 1000);
+  };
+
+  const toggleMute = () => {
+    if (localStream) {
+      const audioTracks = localStream.getAudioTracks();
+      audioTracks.forEach(track => {
+        track.enabled = !track.enabled;
+      });
+      setIsMuted(!isMuted);
+    }
+  };
+
+  const toggleVideo = () => {
+    if (localStream && callType === 'video') {
+      const videoTracks = localStream.getVideoTracks();
+      videoTracks.forEach(track => {
+        track.enabled = !track.enabled;
+      });
+      setIsVideoOff(!isVideoOff);
+    }
+  };
+
+  // ---------- Listen for incoming calls ----------
+  useEffect(() => {
+    if (!chatId || !currentUid) return;
+
+    const callsRef = dbRef(db, `calls/${chatId}`);
+    return onValue(callsRef, (snap) => {
+      if (snap.exists()) {
+        const calls = snap.val();
+        const activeCall = Object.entries(calls).find(([callId, call]) => 
+          call.status === 'calling' && call.receiverId === currentUid
+        );
+
+        if (activeCall && callState === null) {
+          const [callId, callData] = activeCall;
+          setCallData({ ...callData, callId });
+          setCallState('incoming');
+          setCallType(callData.type);
+        }
+      }
+    });
+  }, [chatId, currentUid, callState]);
 
   // ---------- Reply Logic ----------
   const renderReplyPreview = (msg) => {
@@ -1093,65 +1250,59 @@ export default function Messages() {
           </div>
         </Link>
 
-        {/* Three-dot menu */}
-        <div className="position-relative">
+        <div className="d-flex align-items-center gap-2">
+          {/* Call Buttons */}
           <button
-            className="btn btn-sm btn-transparent text-white position-relative"
-            onClick={() => setShowMenu((prev) => !prev)}
+            className="btn btn-sm btn-light rounded-circle"
+            onClick={() => initializeCall('audio')}
+            title="Audio Call"
+            disabled={callState !== null}
           >
-            <i className="bi bi-three-dots-vertical fs-5"></i>
-            {unreadCount > 0 && (
-              <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
-                {unreadCount}
-              </span>
-            )}
+            📞
           </button>
-          {showMenu && (
-            <div
-              className="position-absolute bg-white text-dark shadow rounded"
-              style={{ right: 0, top: 40, zIndex: 9 }}
+          <button
+            className="btn btn-sm btn-light rounded-circle"
+            onClick={() => initializeCall('video')}
+            title="Video Call"
+            disabled={callState !== null}
+          >
+            📹
+          </button>
+
+          {/* Three-dot menu */}
+          <div className="position-relative">
+            <button
+              className="btn btn-sm btn-transparent text-white"
+              onClick={() => setShowMenu((prev) => !prev)}
             >
-              <button
-                className="py-2 px-3 dropdown-item"
-                onClick={() => {
-                  messages.forEach((m) => removeForMe(m.id));
-                  setShowMenu(false);
-                }}
+              <i className="bi bi-three-dots-vertical fs-5"></i>
+            </button>
+            {showMenu && (
+              <div
+                className="position-absolute bg-white text-dark shadow rounded"
+                style={{ right: 0, top: 40, zIndex: 9 }}
               >
-                Clear Chat
-              </button>
-              <button
-                className="py-2 px-3 dropdown-item"
-                onClick={() => {
-                  setPrivacyHide((prev) => !prev);
-                  setShowMenu(false);
-                }}
-              >
-                {privacyHide ? "Show Online / Last Seen" : "Hide Online / Last Seen"}
-              </button>
-              <button
-                className="py-2 px-3 dropdown-item"
-                onClick={() => {
-                  notificationService?.markAllAsSeen();
-                  setShowMenu(false);
-                }}
-              >
-                Mark All as Read
-              </button>
-              <button
-                className="py-2 px-3 dropdown-item"
-                onClick={testNotificationNow}
-              >
-                Test Notification
-              </button>
-              <button
-                className="py-2 px-3 dropdown-item"
-                onClick={debugFCMTokens}
-              >
-                Debug FCM Tokens
-              </button>
-            </div>
-          )}
+                <button
+                  className="py-2 px-3 dropdown-item"
+                  onClick={() => {
+                    messages.forEach((m) => removeForMe(m.id));
+                    setShowMenu(false);
+                  }}
+                >
+                  Clear Chat
+                </button>
+                <button
+                  className="py-2 px-3 dropdown-item"
+                  onClick={() => {
+                    setPrivacyHide((prev) => !prev);
+                    setShowMenu(false);
+                  }}
+                >
+                  {privacyHide ? "Show Online / Last Seen" : "Hide Online / Last Seen"}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1292,17 +1443,6 @@ export default function Messages() {
         )}
 
         <div className="d-flex align-items-center gap-2">
-          {/* Camera Button with Permission Check */}
-          <button
-            className="btn btn-light"
-            onClick={handleCameraClick}
-            type="button"
-            title={hasCameraPermission ? "Take Photo" : "Camera Permission Required"}
-          >
-            📷
-          </button>
-
-          {/* Emoji Button */}
           <button
             className="btn btn-light"
             onClick={toggleEmojiPicker}
@@ -1311,7 +1451,6 @@ export default function Messages() {
             😀
           </button>
 
-          {/* Input Field */}
           <input
             ref={inputRef}
             type="text"
@@ -1330,16 +1469,6 @@ export default function Messages() {
             autoCorrect="on"
             autoCapitalize="sentences"
           />
-
-          {/* Microphone Button with Permission Check */}
-          <button
-            className="btn btn-light"
-            onClick={handleMicrophoneClick}
-            type="button"
-            title={hasMicrophonePermission ? "Voice Message" : "Microphone Permission Required"}
-          >
-            🎤
-          </button>
 
           <label className="btn btn-light mb-0">
             📎
@@ -1360,7 +1489,6 @@ export default function Messages() {
           </button>
         </div>
 
-        {/* Emoji Picker */}
         {showEmojiPicker && window.innerWidth > 768 && (
           <div
             className="position-absolute"
@@ -1371,93 +1499,44 @@ export default function Messages() {
         )}
       </div>
 
-      {/* Debug Buttons */}
-      <div className="position-fixed" style={{ bottom: '120px', right: '20px', zIndex: 1000 }}>
-        <button 
-          onClick={testNotificationNow} 
-          className="btn btn-warning btn-sm mb-1"
-          style={{ fontSize: '12px', padding: '8px 12px', borderRadius: '20px' }}
-          title="Test Notification"
-        >
-          🔔 Test
-        </button>
-        <button 
-          onClick={debugFCMTokens} 
-          className="btn btn-info btn-sm"
-          style={{ fontSize: '12px', padding: '8px 12px', borderRadius: '20px' }}
-          title="Debug FCM Tokens"
-        >
-          🔍 Debug
-        </button>
-      </div>
-
-      {/* Camera Permission Modal */}
-      {showCameraModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h5 className="modal-title">📷 Camera Access Required</h5>
-            </div>
-            <div className="modal-body">
-              <p>Jibzo needs camera access to let you take photos and share them with friends.</p>
-              <div className="permission-features">
-                <div className="feature">✅ Take photos in chat</div>
-                <div className="feature">✅ Share instant pictures</div>
-                <div className="feature">✅ Better messaging experience</div>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button 
-                className="btn btn-secondary" 
-                onClick={() => setShowCameraModal(false)}
-              >
-                Not Now
-              </button>
-              <button 
-                className="btn btn-primary" 
-                onClick={requestCameraPermission}
-              >
-                Allow Camera Access
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Call Modals */}
+      {callState === 'incoming' && (
+        <CallModal
+          callType={callType}
+          isIncoming={true}
+          callerInfo={chatUser}
+          onAccept={() => answerCall(callData)}
+          onReject={() => rejectCall(callData)}
+          callStatus="Incoming Call"
+        />
       )}
 
-      {/* Microphone Permission Modal */}
-      {showMicrophoneModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h5 className="modal-title">🎤 Microphone Access Required</h5>
-            </div>
-            <div className="modal-body">
-              <p>Jibzo needs microphone access for voice messages and audio calls.</p>
-              <div className="permission-features">
-                <div className="feature">✅ Send voice messages</div>
-                <div className="feature">✅ Make audio calls</div>
-                <div className="feature">✅ Better communication</div>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button 
-                className="btn btn-secondary" 
-                onClick={() => setShowMicrophoneModal(false)}
-              >
-                Not Now
-              </button>
-              <button 
-                className="btn btn-primary" 
-                onClick={requestMicrophonePermission}
-              >
-                Allow Microphone Access
-              </button>
-            </div>
-          </div>
-        </div>
+      {callState === 'outgoing' && (
+        <CallModal
+          callType={callType}
+          isIncoming={false}
+          callerInfo={chatUser}
+          onEndCall={endCall}
+          callStatus="Calling..."
+        />
       )}
 
-      {/* CSS remains the same */}
+      {callState === 'active' && (
+        <CallScreen
+          callType={callType}
+          localStream={localStream}
+          remoteStream={remoteStream}
+          onEndCall={endCall}
+          isMuted={isMuted}
+          onToggleMute={toggleMute}
+          isVideoOff={isVideoOff}
+          onToggleVideo={toggleVideo}
+          callDuration={callDuration}
+          partnerInfo={chatUser}
+        />
+      )}
+
+      {/* CSS for typing dots */}
       <style>
         {`
           .typing-dots {
@@ -1478,6 +1557,7 @@ export default function Messages() {
             40% { transform: scale(1); opacity: 1; }
           }
           
+          /* Mobile optimizations */
           @media (max-width: 768px) {
             .container {
               height: 100vh !important;
@@ -1487,82 +1567,25 @@ export default function Messages() {
             }
           }
 
-          .badge {
-            font-size: 0.6rem;
-            padding: 0.25em 0.4em;
+          /* Call specific styles */
+          .call-controls {
+            backdrop-filter: blur(10px);
+            background: rgba(0, 0, 0, 0.7);
           }
 
-          .overflow-auto::-webkit-scrollbar {
-            width: 6px;
-          }
-          .overflow-auto::-webkit-scrollbar-track {
-            background: #f1f1f1;
-          }
-          .overflow-auto::-webkit-scrollbar-thumb {
-            background: #c1c1c1;
-            border-radius: 3px;
-          }
-          .overflow-auto::-webkit-scrollbar-thumb:hover {
-            background: #a8a8a8;
+          .video-pip {
+            border: 2px solid white;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
           }
 
-          .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 10000;
+          @keyframes ring {
+            0%, 100% { transform: rotate(0deg); }
+            25% { transform: rotate(5deg); }
+            75% { transform: rotate(-5deg); }
           }
-          
-          .modal-content {
-            background: white;
-            border-radius: 12px;
-            padding: 0;
-            max-width: 400px;
-            width: 90%;
-            animation: modalSlideIn 0.3s ease;
-          }
-          
-          .modal-header {
-            padding: 20px 20px 10px;
-            border-bottom: none;
-            text-align: center;
-          }
-          
-          .modal-body {
-            padding: 10px 20px;
-          }
-          
-          .modal-footer {
-            padding: 20px;
-            border-top: 1px solid #eee;
-            display: flex;
-            gap: 10px;
-          }
-          
-          .permission-features {
-            margin: 15px 0;
-          }
-          
-          .feature {
-            padding: 8px 0;
-            color: #666;
-          }
-          
-          @keyframes modalSlideIn {
-            from {
-              opacity: 0;
-              transform: translateY(-20px);
-            }
-            to {
-              opacity: 1;
-              transform: translateY(0);
-            }
+
+          .ringing {
+            animation: ring 0.5s ease-in-out infinite;
           }
         `}
       </style>
