@@ -150,7 +150,7 @@ const CallModal = ({
           </div>
           <div className="modal-body text-center">
             <img
-              src={callerInfo?.photoURL || "icons/avatar.jpg"}
+              src={callerInfo?.photoURL || "/icons/avatar.jpg"}
               alt="Caller"
               className="rounded-circle mb-3"
               style={{ width: 100, height: 100, objectFit: "cover" }}
@@ -168,14 +168,14 @@ const CallModal = ({
             {isIncoming ? (
               <>
                 <button 
-                  className="btn btn-danger btn-lg rounded-circle mx-2"
+                  className="btn btn-danger btn-lg rounded-circle mx-2 ringing"
                   onClick={onReject}
                   style={{ width: '60px', height: '60px' }}
                 >
                   ❌
                 </button>
                 <button 
-                  className="btn btn-success btn-lg rounded-circle mx-2"
+                  className="btn btn-success btn-lg rounded-circle mx-2 ringing"
                   onClick={onAccept}
                   style={{ width: '60px', height: '60px' }}
                 >
@@ -231,7 +231,7 @@ const CallScreen = ({
 
   return (
     <div className="position-fixed top-0 start-0 w-100 h-100 bg-dark" style={{ zIndex: 9998 }}>
-      {/* Remote Video (Main) - Show only when remote stream is available */}
+      {/* Remote Video (Main) */}
       {callType === 'video' && remoteStream && isCallActive && (
         <video
           ref={remoteVideoRef}
@@ -246,7 +246,7 @@ const CallScreen = ({
       {callType === 'video' && (!remoteStream || !isCallActive) && (
         <div className="d-flex flex-column justify-content-center align-items-center h-100 text-white">
           <img
-            src={partnerInfo?.photoURL || "icons/avatar.jpg"}
+            src={partnerInfo?.photoURL || "/icons/avatar.jpg"}
             alt="Partner"
             className="rounded-circle mb-3"
             style={{ width: 120, height: 120, objectFit: "cover" }}
@@ -261,7 +261,7 @@ const CallScreen = ({
       {callType === 'audio' && (
         <div className="d-flex flex-column justify-content-center align-items-center h-100 text-white">
           <img
-            src={partnerInfo?.photoURL || "icons/avatar.jpg"}
+            src={partnerInfo?.photoURL || "/icons/avatar.jpg"}
             alt="Partner"
             className="rounded-circle mb-3"
             style={{ width: 120, height: 120, objectFit: "cover" }}
@@ -272,16 +272,16 @@ const CallScreen = ({
         </div>
       )}
 
-      {/* Local Video (Picture-in-picture) - Always show for video calls */}
+      {/* Local Video (Picture-in-picture) */}
       {callType === 'video' && localStream && (
-        <div className="position-absolute top-0 end-0 m-3" style={{ width: '120px', height: '160px' }}>
+        <div className="position-absolute top-0 end-0 m-3 video-pip" style={{ width: '120px', height: '160px' }}>
           <video
             ref={localVideoRef}
             autoPlay
             playsInline
             muted
             className="w-100 h-100 rounded shadow"
-            style={{ objectFit: 'cover', border: '2px solid white' }}
+            style={{ objectFit: 'cover' }}
           />
           {isVideoOff && (
             <div className="position-absolute top-0 start-0 w-100 h-100 bg-dark bg-opacity-50 d-flex justify-content-center align-items-center rounded">
@@ -359,7 +359,7 @@ export default function Messages() {
   const [partnerStatus, setPartnerStatus] = useState(null);
 
   // Enhanced Call States
-  const [callState, setCallState] = useState(null); // 'incoming', 'outgoing', 'active', 'ended'
+  const [callState, setCallState] = useState(null);
   const [callType, setCallType] = useState(null);
   const [callData, setCallData] = useState(null);
   const [localStream, setLocalStream] = useState(null);
@@ -801,7 +801,7 @@ export default function Messages() {
       callerId: currentUid,
       callerInfo: {
         username: auth.currentUser?.displayName || 'User',
-        photoURL: auth.currentUser?.photoURL || 'icons/avatar.jpg'
+        photoURL: auth.currentUser?.photoURL || '/icons/avatar.jpg'
       },
       receiverId: uid,
       type,
@@ -1162,7 +1162,7 @@ export default function Messages() {
           className="d-flex align-items-center text-white text-decoration-none"
         >
           <img
-            src={chatUser?.photoURL || "icons/avatar.jpg"}
+            src={chatUser?.photoURL || "/icons/avatar.jpg"}
             alt="DP"
             className="rounded-circle me-2"
             style={{ width: 44, height: 44, objectFit: "cover" }}
