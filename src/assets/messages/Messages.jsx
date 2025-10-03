@@ -1281,7 +1281,7 @@ export default function Messages() {
                     setShowMenu(false);
                   }}
                 >
-                  Clear Chat
+                  Clear Chat...
                 </button>
                 <button
                   className="py-2 px-3 dropdown-item"
