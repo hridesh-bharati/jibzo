@@ -179,7 +179,7 @@ const CallModal = ({
                   onClick={onAccept}
                   style={{ width: '60px', height: '60px' }}
                 >
-                  📞
+                  {callType === 'video' ? '📹' : '📞'}
                 </button>
               </>
             ) : (
@@ -219,13 +219,10 @@ const CallScreen = ({
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream;
     }
-  }, [localStream]);
-
-  useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
       remoteVideoRef.current.srcObject = remoteStream;
     }
-  }, [remoteStream]);
+  }, [localStream, remoteStream]);
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
@@ -235,128 +232,142 @@ const CallScreen = ({
 
   return (
     <div className="position-fixed top-0 start-0 w-100 h-100 bg-dark" style={{ zIndex: 9998 }}>
-      {/* Remote Video (Main Screen - Shows OTHER person's face) */}
-      {callType === 'video' && (
-        <div className="w-100 h-100 position-relative">
-          {remoteStream && isCallActive ? (
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              className="w-100 h-100"
-              style={{ objectFit: 'cover' }}
-            />
-          ) : (
-            <div className="d-flex flex-column justify-content-center align-items-center h-100 text-white">
-              <img
-                src={partnerInfo?.photoURL || "/icons/avatar.jpg"}
-                alt="Partner"
-                className="rounded-circle mb-3"
-                style={{ width: 120, height: 120, objectFit: "cover" }}
-              />
-              <h3>{partnerInfo?.username || "User"}</h3>
-              <p className="fs-5">{formatTime(callDuration)}</p>
-              <p className="text-muted">{isCallActive ? 'Connecting...' : 'Waiting for response...'}</p>
-            </div>
-          )}
-        </div>
-      )}
-      
-      {/* Audio Call UI */}
-      {callType === 'audio' && (
-        <div className="d-flex flex-column justify-content-center align-items-center h-100 text-white">
-          <img
-            src={partnerInfo?.photoURL || "/icons/avatar.jpg"}
-            alt="Partner"
-            className="rounded-circle mb-3"
-            style={{ width: 120, height: 120, objectFit: "cover" }}
+      {/* Main Video Layout */}
+      <div className="w-100 h-100 position-relative">
+        
+        {/* Remote Video (Full Screen) */}
+        {callType === 'video' && remoteStream && isCallActive && (
+          <video
+            ref={remoteVideoRef}
+            autoPlay
+            playsInline
+            className="w-100 h-100"
+            style={{ objectFit: 'cover' }}
           />
-          <h3>{partnerInfo?.username || "User"}</h3>
-          <p className="fs-5">{formatTime(callDuration)}</p>
-          <p className="text-muted">Audio Call • {isCallActive ? 'Connected' : 'Connecting...'}</p>
-        </div>
-      )}
-
-      {/* Local Video (Picture-in-picture - Shows YOUR face) */}
-      {callType === 'video' && localStream && (
-        <div 
-          className="position-absolute video-pip" 
-          style={{ 
-            width: '150px', 
-            height: '200px',
-            top: '20px',
-            right: '20px',
-            zIndex: 10
-          }}
-        >
-          {!isVideoOff ? (
+        )}
+        
+        {/* Local Video (Picture-in-picture) */}
+        {callType === 'video' && localStream && (
+          <div className="position-absolute top-0 end-0 m-3 video-pip" style={{ width: '120px', height: '160px' }}>
             <video
               ref={localVideoRef}
               autoPlay
               playsInline
               muted
               className="w-100 h-100 rounded shadow"
-              style={{ objectFit: 'cover', transform: 'scaleX(-1)' }}
+              style={{ objectFit: 'cover' }}
             />
-          ) : (
-            <div className="w-100 h-100 bg-dark bg-opacity-75 d-flex flex-column justify-content-center align-items-center rounded shadow">
-              <img
-                src={currentUserInfo?.photoURL || "/icons/avatar.jpg"}
-                alt="You"
-                className="rounded-circle mb-2"
-                style={{ width: 60, height: 60, objectFit: "cover" }}
-              />
-              <span className="text-white small">Camera Off</span>
+            {isVideoOff && (
+              <div className="position-absolute top-0 start-0 w-100 h-100 bg-dark bg-opacity-75 d-flex justify-content-center align-items-center rounded">
+                <span className="text-white small">📹 Off</span>
+              </div>
+            )}
+            {/* Local user name */}
+            <div className="position-absolute bottom-0 start-0 w-100 bg-dark bg-opacity-50 text-white text-center py-1 rounded-bottom">
+              <small>You</small>
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
 
-      {/* Call Controls - Positioned at bottom */}
-      <div className="position-absolute w-100 d-flex justify-content-center" style={{ bottom: '30px' }}>
-        <div className="d-flex gap-3 bg-dark bg-opacity-50 p-3 rounded-pill">
-          <button
-            className={`btn btn-lg rounded-circle ${isMuted ? 'btn-danger' : 'btn-light'}`}
-            onClick={onToggleMute}
-            style={{ width: '60px', height: '60px' }}
-            title={isMuted ? 'Unmute' : 'Mute'}
-          >
-            {isMuted ? '🎤❌' : '🎤'}
-          </button>
-          
-          {callType === 'video' && (
+        {/* Show partner info when no remote video */}
+        {callType === 'video' && (!remoteStream || !isCallActive) && (
+          <div className="d-flex flex-column justify-content-center align-items-center h-100 text-white">
+            <img
+              src={partnerInfo?.photoURL || "/icons/avatar.jpg"}
+              alt="Partner"
+              className="rounded-circle mb-3"
+              style={{ width: 120, height: 120, objectFit: "cover" }}
+            />
+            <h3>{partnerInfo?.username || "User"}</h3>
+            <p className="fs-5">{formatTime(callDuration)}</p>
+            <p className="text-muted">{isCallActive ? 'Connecting...' : 'Call ended'}</p>
+          </div>
+        )}
+        
+        {/* Audio Call UI */}
+        {callType === 'audio' && (
+          <div className="d-flex flex-column justify-content-center align-items-center h-100 text-white">
+            <div className="row w-100 justify-content-center">
+              {/* Current User (You) */}
+              <div className="col-6 text-center">
+                <div className="bg-primary rounded-circle d-inline-flex justify-content-center align-items-center mb-2"
+                  style={{ width: 100, height: 100 }}>
+                  <img
+                    src={currentUserInfo?.photoURL || "/icons/avatar.jpg"}
+                    alt="You"
+                    className="rounded-circle"
+                    style={{ width: 90, height: 90, objectFit: "cover" }}
+                  />
+                </div>
+                <h5>You</h5>
+              </div>
+              
+              {/* Partner */}
+              <div className="col-6 text-center">
+                <div className="bg-success rounded-circle d-inline-flex justify-content-center align-items-center mb-2"
+                  style={{ width: 100, height: 100 }}>
+                  <img
+                    src={partnerInfo?.photoURL || "/icons/avatar.jpg"}
+                    alt="Partner"
+                    className="rounded-circle"
+                    style={{ width: 90, height: 90, objectFit: "cover" }}
+                  />
+                </div>
+                <h5>{partnerInfo?.username || "User"}</h5>
+              </div>
+            </div>
+            
+            <p className="fs-5 mt-4">{formatTime(callDuration)}</p>
+            <p className="text-muted">Audio Call • {isCallActive ? 'Connected' : 'Ended'}</p>
+          </div>
+        )}
+
+        {/* Remote User Name (for video calls) */}
+        {callType === 'video' && remoteStream && isCallActive && (
+          <div className="position-absolute top-0 start-0 m-3 bg-dark bg-opacity-50 text-white px-3 py-2 rounded">
+            <strong>{partnerInfo?.username || "User"}</strong>
+          </div>
+        )}
+
+        {/* Call Timer */}
+        <div className="position-absolute top-0 start-50 translate-middle-x mt-3">
+          <div className="bg-dark bg-opacity-75 text-white px-4 py-2 rounded-pill">
+            <span className="fs-5">{formatTime(callDuration)}</span>
+          </div>
+        </div>
+
+        {/* Call Controls */}
+        <div className="position-absolute bottom-0 start-50 translate-middle-x mb-4">
+          <div className="d-flex gap-3">
             <button
-              className={`btn btn-lg rounded-circle ${isVideoOff ? 'btn-danger' : 'btn-light'}`}
-              onClick={onToggleVideo}
+              className={`btn btn-lg rounded-circle ${isMuted ? 'btn-danger' : 'btn-light'}`}
+              onClick={onToggleMute}
               style={{ width: '60px', height: '60px' }}
-              title={isVideoOff ? 'Turn On Camera' : 'Turn Off Camera'}
+              title={isMuted ? 'Unmute' : 'Mute'}
             >
-              {isVideoOff ? '📹❌' : '📹'}
+              {isMuted ? '🎤❌' : '🎤'}
             </button>
-          )}
-          
-          <button
-            className="btn btn-danger btn-lg rounded-circle"
-            onClick={onEndCall}
-            style={{ width: '60px', height: '60px' }}
-            title="End Call"
-          >
-            📞❌
-          </button>
-        </div>
-      </div>
-
-      {/* Call Timer - Top left */}
-      <div className="position-absolute" style={{ top: '20px', left: '20px' }}>
-        <div className="bg-dark bg-opacity-75 text-white px-3 py-2 rounded">
-          <span className="fs-5">{formatTime(callDuration)}</span>
-        </div>
-      </div>
-
-      {/* Partner name - Top center */}
-      <div className="position-absolute w-100 d-flex justify-content-center" style={{ top: '20px' }}>
-        <div className="bg-dark bg-opacity-75 text-white px-4 py-2 rounded">
-          <span className="fs-6">{partnerInfo?.username || "User"}</span>
+            
+            {callType === 'video' && (
+              <button
+                className={`btn btn-lg rounded-circle ${isVideoOff ? 'btn-danger' : 'btn-light'}`}
+                onClick={onToggleVideo}
+                style={{ width: '60px', height: '60px' }}
+                title={isVideoOff ? 'Turn on camera' : 'Turn off camera'}
+              >
+                {isVideoOff ? '📹❌' : '📹'}
+              </button>
+            )}
+            
+            <button
+              className="btn btn-danger btn-lg rounded-circle"
+              onClick={onEndCall}
+              style={{ width: '60px', height: '60px' }}
+              title="End Call"
+            >
+              📞
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -368,7 +379,6 @@ export default function Messages() {
   const navigate = useNavigate();
 
   const [currentUid, setCurrentUid] = useState(null);
-  const [currentUserInfo, setCurrentUserInfo] = useState(null);
   const [messages, setMessages] = useState([]);
   const [chats, setChats] = useState([]);
   const [chatUser, setChatUser] = useState(null);
@@ -389,6 +399,7 @@ export default function Messages() {
   const [uploadProgress, setUploadProgress] = useState(0);
 
   const [partnerStatus, setPartnerStatus] = useState(null);
+  const [currentUserInfo, setCurrentUserInfo] = useState(null);
 
   // Enhanced Call States
   const [callState, setCallState] = useState(null);
@@ -407,7 +418,6 @@ export default function Messages() {
   const inputRef = useRef(null);
   const peerConnectionRef = useRef(null);
   const callDurationRef = useRef(null);
-  const signalingRef = useRef(null);
 
   const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_NAME;
   const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
@@ -418,14 +428,22 @@ export default function Messages() {
   const rtcConfig = {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' }
+      { urls: 'stun:stun1.l.google.com:19302' }
     ]
   };
 
-  // Initialize permissions
+  // Initialize permissions and user info
   useEffect(() => {
     permissionsManager.init();
+    
+    // Get current user info
+    const user = auth.currentUser;
+    if (user) {
+      setCurrentUserInfo({
+        username: user.displayName || 'You',
+        photoURL: user.photoURL || '/icons/avatar.jpg'
+      });
+    }
   }, []);
 
   // ---------- Auth ----------
@@ -434,12 +452,10 @@ export default function Messages() {
       if (user) {
         setCurrentUid(user.uid);
         setCurrentUserInfo({
-          username: user.displayName || 'User',
+          username: user.displayName || 'You',
           photoURL: user.photoURL || '/icons/avatar.jpg'
         });
-      } else {
-        navigate("/login");
-      }
+      } else navigate("/login");
     });
     return () => unsubscribe();
   }, [navigate]);
@@ -450,25 +466,8 @@ export default function Messages() {
       guestId = "guest_" + Math.random().toString(36).substring(2, 10);
       localStorage.setItem("guestUid", guestId);
     }
-    if (!auth.currentUser) {
-      setCurrentUid(guestId);
-      setCurrentUserInfo({
-        username: 'Guest',
-        photoURL: '/icons/avatar.jpg'
-      });
-    }
+    setCurrentUid(auth.currentUser?.uid || guestId);
   }, []);
-
-  // Fetch current user info
-  useEffect(() => {
-    if (!currentUid || currentUid.startsWith('guest_')) return;
-    const userRef = dbRef(db, `usersData/${currentUid}`);
-    return onValue(userRef, (snap) => {
-      if (snap.exists()) {
-        setCurrentUserInfo(snap.val());
-      }
-    });
-  }, [currentUid]);
 
   // ---------- Auto focus input on mount ----------
   useEffect(() => {
@@ -637,7 +636,7 @@ export default function Messages() {
           { text }
         );
       } else {
-        await push(dbRef(db, `chats/${chatId}/messages`), msgPayload);
+        const pushed = await push(dbRef(db, `chats/${chatId}/messages`), msgPayload);
 
         const recipientUid = uid;
         if (recipientUid && !recipientUid.startsWith("guest_")) {
@@ -800,55 +799,7 @@ export default function Messages() {
     }
   };
 
-  // ========== IMPROVED WEBRTC CALL MANAGEMENT ==========
-
-  // Setup signaling listener for WebRTC
-  const setupSignalingListener = useCallback(() => {
-    if (!chatId) return;
-
-    const signalingPath = `calls/${chatId}/signaling`;
-    signalingRef.current = dbRef(db, signalingPath);
-
-    return onValue(signalingRef.current, async (snap) => {
-      const data = snap.val();
-      if (!data || !peerConnectionRef.current) return;
-
-      try {
-        // Handle ICE candidates
-        if (data.candidate && data.candidateFor !== currentUid) {
-          await peerConnectionRef.current.addIceCandidate(
-            new RTCIceCandidate(data.candidate)
-          );
-        }
-
-        // Handle offer (for receiver)
-        if (data.offer && data.offerFor === currentUid) {
-          await peerConnectionRef.current.setRemoteDescription(
-            new RTCSessionDescription(data.offer)
-          );
-          const answer = await peerConnectionRef.current.createAnswer();
-          await peerConnectionRef.current.setLocalDescription(answer);
-          
-          // Send answer back
-          await update(dbRef(db, `calls/${chatId}/signaling`), {
-            answer: answer,
-            answerFor: data.offerFrom
-          });
-        }
-
-        // Handle answer (for caller)
-        if (data.answer && data.answerFor === currentUid) {
-          await peerConnectionRef.current.setRemoteDescription(
-            new RTCSessionDescription(data.answer)
-          );
-        }
-      } catch (error) {
-        console.error('Signaling error:', error);
-      }
-    });
-  }, [chatId, currentUid]);
-
-  // Initialize call
+  // ---------- Enhanced Call Management ----------
   const initializeCall = async (type) => {
     if (!chatId || !currentUid || !uid) return;
 
@@ -893,12 +844,8 @@ export default function Messages() {
 
   const proceedWithCall = async (type) => {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: type === 'video' ? { facingMode: 'user' } : false,
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true
-      }
+      video: type === 'video',
+      audio: true
     });
     
     setLocalStream(stream);
@@ -906,12 +853,12 @@ export default function Messages() {
     setCallState('outgoing');
 
     const callId = `call_${Date.now()}_${currentUid}`;
-    const callDataObj = {
+    const callData = {
       callId,
       callerId: currentUid,
-      callerInfo: {
-        username: currentUserInfo?.username || 'User',
-        photoURL: currentUserInfo?.photoURL || '/icons/avatar.jpg'
+      callerInfo: currentUserInfo || {
+        username: auth.currentUser?.displayName || 'User',
+        photoURL: auth.currentUser?.photoURL || '/icons/avatar.jpg'
       },
       receiverId: uid,
       type,
@@ -920,47 +867,41 @@ export default function Messages() {
     };
 
     const callRef = dbRef(db, `calls/${chatId}`);
-    await set(callRef, callDataObj);
-    setCallData(callDataObj);
-
-    // Setup signaling
-    setupSignalingListener();
+    await set(callRef, callData);
+    setCallData(callData);
 
     // Listen for call updates
-    setupCallListener();
+    setupCallListener(callId);
   };
 
-  const setupCallListener = useCallback(() => {
-    if (!chatId) return;
+  const setupCallListener = (callId) => {
     const callRef = dbRef(db, `calls/${chatId}`);
     
-    return onValue(callRef, async (snap) => {
+    return onValue(callRef, (snap) => {
       const callData = snap.val();
       if (!callData) return;
 
       // If call was rejected or ended by other party
       if (callData.status === 'rejected' || callData.status === 'ended') {
-        if (callData.endedBy !== currentUid) {
-          endCall();
-        }
+        endCall();
       }
       
-      // If call was accepted, start peer connection
+      // If call was accepted
       if (callData.status === 'accepted' && callState === 'outgoing') {
         setCallState('active');
         setIsCallActive(true);
         startCallTimer();
-        await createPeerConnection(true); // true = caller
+        createPeerConnection();
       }
     });
-  }, [chatId, currentUid, callState]);
+  };
 
-  const createPeerConnection = async (isCaller) => {
+  const createPeerConnection = async () => {
     try {
       const pc = new RTCPeerConnection(rtcConfig);
       peerConnectionRef.current = pc;
 
-      // Add local stream tracks to peer connection
+      // Add local stream tracks
       localStream.getTracks().forEach(track => {
         pc.addTrack(track, localStream);
       });
@@ -968,49 +909,37 @@ export default function Messages() {
       // Handle incoming remote stream
       pc.ontrack = (event) => {
         console.log('Received remote stream');
-        if (event.streams && event.streams[0]) {
-          setRemoteStream(event.streams[0]);
-        }
+        setRemoteStream(event.streams[0]);
       };
 
-      // Handle ICE candidates
-      pc.onicecandidate = async (event) => {
-        if (event.candidate) {
-          try {
-            await update(dbRef(db, `calls/${chatId}/signaling`), {
-              candidate: event.candidate.toJSON(),
-              candidateFor: uid // Send to the other user
-            });
-          } catch (error) {
-            console.error('Error sending ICE candidate:', error);
-          }
+      // Create and send offer
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      // In a real app, you'd send this offer to the other peer via signaling
+      // For now, we'll simulate the connection
+      setTimeout(() => {
+        if (pc.signalingState === 'have-local-offer') {
+          simulateRemoteAnswer(pc);
         }
-      };
-
-      // Monitor connection state
-      pc.onconnectionstatechange = () => {
-        console.log('Connection state:', pc.connectionState);
-        if (pc.connectionState === 'connected') {
-          setIsCallActive(true);
-        } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-          console.log('Connection failed or disconnected');
-        }
-      };
-
-      // If caller, create and send offer
-      if (isCaller) {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-
-        await update(dbRef(db, `calls/${chatId}/signaling`), {
-          offer: offer,
-          offerFrom: currentUid,
-          offerFor: uid
-        });
-      }
+      }, 1000);
 
     } catch (error) {
       console.error('Error creating peer connection:', error);
+    }
+  };
+
+  const simulateRemoteAnswer = async (pc) => {
+    // Simulate remote peer creating answer
+    try {
+      const answer = {
+        type: 'answer',
+        sdp: 'simulated-answer-sdp'
+      };
+      await pc.setRemoteDescription(answer);
+      console.log('Simulated connection established');
+    } catch (error) {
+      console.error('Error simulating answer:', error);
     }
   };
 
@@ -1062,12 +991,8 @@ export default function Messages() {
 
   const proceedWithAnswer = async (callData) => {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: callData.type === 'video' ? { facingMode: 'user' } : false,
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true
-      }
+      video: callData.type === 'video',
+      audio: true
     });
 
     setLocalStream(stream);
@@ -1083,11 +1008,8 @@ export default function Messages() {
       answeredAt: serverTimestamp()
     });
 
-    // Setup signaling
-    setupSignalingListener();
-
     startCallTimer();
-    await createPeerConnection(false); // false = receiver
+    createPeerConnection();
   };
 
   const endCall = async () => {
@@ -1109,10 +1031,7 @@ export default function Messages() {
       localStream.getTracks().forEach(track => track.stop());
       setLocalStream(null);
     }
-    if (remoteStream) {
-      remoteStream.getTracks().forEach(track => track.stop());
-      setRemoteStream(null);
-    }
+    setRemoteStream(null);
 
     // Update call status in Firebase
     if (callData && chatId) {
@@ -1123,9 +1042,6 @@ export default function Messages() {
         duration: callDuration,
         endedBy: currentUid
       });
-
-      // Clean up signaling data
-      await remove(dbRef(db, `calls/${chatId}/signaling`));
 
       // Remove call data after a delay
       setTimeout(async () => {
@@ -1154,7 +1070,6 @@ export default function Messages() {
 
       setTimeout(async () => {
         await remove(dbRef(db, `calls/${chatId}`));
-        await remove(dbRef(db, `calls/${chatId}/signaling`));
       }, 2000);
     }
     setCallState(null);
@@ -1203,6 +1118,11 @@ export default function Messages() {
           setCallData(callData);
           setCallState('incoming');
           setCallType(callData.type);
+        }
+        
+        // If call was ended by other party
+        if ((callData.status === 'ended' || callData.status === 'rejected') && callState === 'active') {
+          endCall();
         }
       }
     });
@@ -1593,7 +1513,7 @@ export default function Messages() {
         />
       )}
 
-      {callState === 'active' && (
+      {(callState === 'active' || callState === 'ended') && (
         <CallScreen
           callType={callType}
           localStream={localStream}
@@ -1605,12 +1525,12 @@ export default function Messages() {
           onToggleVideo={toggleVideo}
           callDuration={callDuration}
           partnerInfo={chatUser}
-          isCallActive={isCallActive}
           currentUserInfo={currentUserInfo}
+          isCallActive={isCallActive}
         />
       )}
 
-      {/* CSS for typing dots and call animations */}
+      {/* CSS for typing dots */}
       <style>
         {`
           .typing-dots {
@@ -1631,7 +1551,7 @@ export default function Messages() {
             40% { transform: scale(1); opacity: 1; }
           }
           
-          /* Mobile optimizations */}
+          /* Mobile optimizations */
           @media (max-width: 768px) {
             .container {
               height: 100vh !important;
@@ -1639,21 +1559,12 @@ export default function Messages() {
             input.form-control {
               font-size: 16px;
             }
-            .video-pip {
-              width: 100px !important;
-              height: 140px !important;
-            }
           }
 
-          /* Call specific styles */}
+          /* Call specific styles */
           .video-pip {
             border: 2px solid white;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-            transition: all 0.3s ease;
-          }
-
-          .video-pip:hover {
-            transform: scale(1.05);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
           }
 
           @keyframes ring {
