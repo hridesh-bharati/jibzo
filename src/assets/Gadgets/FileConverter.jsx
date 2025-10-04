@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect } from "react";
 import { jsPDF } from "jspdf";
 import * as pdfjsLib from "pdfjs-dist/build/pdf";
 import * as Tesseract from 'tesseract.js';
-
+import { FaFilePdf, FaFileImage, FaFileWord, FaSearch } from 'react-icons/fa';
+import { MdPhoto, MdPictureAsPdf, MdDescription, MdScanner } from 'react-icons/md';
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
 
 export default function FileConverter() {
@@ -15,20 +16,27 @@ export default function FileConverter() {
   const [ocrProgress, setOcrProgress] = useState(0);
   const [cameraActive, setCameraActive] = useState(false);
   const [capturedImages, setCapturedImages] = useState([]);
+  const [activeTab, setActiveTab] = useState("upload");
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const canvasRef = useRef(null);
 
+  // Mobile device detection
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
   // Camera functions
   const startCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          facingMode: 'environment' 
-        } 
-      });
+      const constraints = {
+        video: {
+          width: { ideal: isMobile ? 1280 : 1920 },
+          height: { ideal: isMobile ? 720 : 1080 },
+          facingMode: 'environment',
+          aspectRatio: isMobile ? 4 / 3 : 16 / 9
+        }
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
       videoRef.current.srcObject = stream;
       setCameraActive(true);
@@ -48,27 +56,32 @@ export default function FileConverter() {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     const context = canvas.getContext('2d');
-    
+
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
-    const imageData = canvas.toDataURL('image/jpeg', 1.0); // HD quality
+
+    const imageData = canvas.toDataURL('image/jpeg', 0.9);
     setCapturedImages(prev => [...prev, {
       id: Date.now(),
       data: imageData,
       name: `captured-${Date.now()}.jpg`
     }]);
+
+    // Haptic feedback for mobile
+    if (isMobile && navigator.vibrate) {
+      navigator.vibrate(50);
+    }
   };
 
   const useCapturedImage = () => {
-    const newImageFiles = capturedImages.map(img => 
+    const newImageFiles = capturedImages.map(img =>
       dataURLtoFile(img.data, img.name)
     );
     setImageFiles(prev => [...prev, ...newImageFiles]);
     setCapturedImages([]);
     stopCamera();
-    alert(`${newImageFiles.length} images added for conversion!`);
+    setActiveTab("upload");
   };
 
   const dataURLtoFile = (dataurl, filename) => {
@@ -83,28 +96,39 @@ export default function FileConverter() {
     return new File([u8arr], filename, { type: mime });
   };
 
-  // Preview functions
-  const PreviewImage = ({ src, onRemove, name, size }) => (
-    <div className="col-md-3 mb-3">
-      <div className="card h-100">
-        <img 
-          src={src} 
-          className="card-img-top" 
-          alt="Preview" 
-          style={{ height: '150px', objectFit: 'contain' }}
-        />
-        <div className="card-body p-2">
-          <small className="d-block text-truncate">{name}</small>
-          <small className="text-muted">{size}</small>
-        </div>
-        {onRemove && (
-          <button 
-            className="btn btn-danger btn-sm m-2"
+  // Mobile-optimized Preview Component
+  const PreviewImage = ({ src, onRemove, name, size, isCaptured = false }) => (
+    <div className="col-6 col-sm-4 col-md-3 mb-3">
+      <div className="card h-100 shadow-sm">
+        <div className="position-relative">
+          <img
+            src={src}
+            className="card-img-top"
+            alt="Preview"
+            style={{
+              height: isMobile ? '120px' : '150px',
+              objectFit: 'cover',
+              width: '100%'
+            }}
+          />
+          <button
+            className="btn btn-danger btn-sm position-absolute top-0 end-0 m-1"
             onClick={onRemove}
+            style={{
+              width: '30px',
+              height: '30px',
+              padding: '0',
+              borderRadius: '50%',
+              fontSize: '14px'
+            }}
           >
-            Remove
+            ×
           </button>
-        )}
+        </div>
+        <div className="card-body p-2 d-flex flex-column">
+          <small className="text-truncate">{name}</small>
+          <small className="text-muted mt-auto">{size}</small>
+        </div>
       </div>
     </div>
   );
@@ -117,25 +141,24 @@ export default function FileConverter() {
       reader.onerror = reject;
     });
 
-  const compressImage = (base64, quality = 0.9) => {
+  const compressImage = (base64, quality = 0.8) => {
     return new Promise((resolve) => {
       const img = new Image();
       img.src = base64;
       img.onload = () => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
-        
-        // Maintain HD quality but compress slightly
-        const maxWidth = 2000;
-        const maxHeight = 2000;
+
+        const maxWidth = isMobile ? 1200 : 2000;
+        const maxHeight = isMobile ? 1200 : 2000;
         let { width, height } = img;
-        
+
         if (width > maxWidth || height > maxHeight) {
           const ratio = Math.min(maxWidth / width, maxHeight / height);
           width *= ratio;
           height *= ratio;
         }
-        
+
         canvas.width = width;
         canvas.height = height;
         ctx.drawImage(img, 0, 0, width, height);
@@ -144,7 +167,7 @@ export default function FileConverter() {
     });
   };
 
-  // OCR Text Scanner Function - HD Quality
+  // OCR Text Scanner Function
   const handleTextScan = async () => {
     if (!imageFiles.length && !pdfFile && capturedImages.length === 0) {
       alert("Please select images, use camera, or upload PDF first!");
@@ -160,11 +183,10 @@ export default function FileConverter() {
       const allImages = [...imageFiles, ...capturedImages.map(img => dataURLtoFile(img.data, img.name))];
 
       if (allImages.length > 0) {
-        // Scan images with HD quality
         for (let i = 0; i < allImages.length; i++) {
           const result = await Tesseract.recognize(
             allImages[i],
-            'eng+hin', // English + Hindi support
+            'eng+hin',
             {
               logger: m => {
                 if (m.status === 'recognizing text') {
@@ -176,13 +198,12 @@ export default function FileConverter() {
           textResults.push(`--- Image ${i + 1} ---\n${result.data.text}\n`);
         }
       } else if (pdfFile) {
-        // Convert PDF to HD images and then scan
         const arrayBuffer = await pdfFile.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
         for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
           const page = await pdf.getPage(pageNum);
-          const viewport = page.getViewport({ scale: 3.0 }); // HD quality
+          const viewport = page.getViewport({ scale: isMobile ? 2.0 : 3.0 });
 
           const canvas = document.createElement("canvas");
           const ctx = canvas.getContext("2d");
@@ -190,9 +211,9 @@ export default function FileConverter() {
           canvas.height = viewport.height;
 
           await page.render({ canvasContext: ctx, viewport }).promise;
-          
-          const imageData = canvas.toDataURL("image/jpeg", 1.0);
-          
+
+          const imageData = canvas.toDataURL("image/jpeg", 0.9);
+
           const result = await Tesseract.recognize(
             imageData,
             'eng+hin',
@@ -204,7 +225,7 @@ export default function FileConverter() {
               }
             }
           );
-          
+
           textResults.push(`--- Page ${pageNum} ---\n${result.data.text}\n`);
         }
       }
@@ -217,7 +238,7 @@ export default function FileConverter() {
     setOcrProgress(0);
   };
 
-  // PDF to Word conversion - HD Quality
+  // PDF to Word conversion
   const handlePdfToWord = async () => {
     if (!pdfFile) {
       alert("Please select a PDF file first!");
@@ -237,7 +258,6 @@ export default function FileConverter() {
         fullText += `Page ${pageNum}:\n${pageText}\n\n`;
       }
 
-      // Create Word document with better formatting
       const wordContent = `
         <html xmlns:o="urn:schemas-microsoft-com:office:office" 
               xmlns:w="urn:schemas-microsoft-com:office:word" 
@@ -247,7 +267,6 @@ export default function FileConverter() {
             <title>Converted Document</title>
             <style>
               body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
-              .page-break { page-break-after: always; }
             </style>
           </head>
           <body>
@@ -256,8 +275,8 @@ export default function FileConverter() {
         </html>
       `;
 
-      const blob = new Blob([wordContent], { 
-        type: 'application/msword' 
+      const blob = new Blob([wordContent], {
+        type: 'application/msword'
       });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -285,15 +304,14 @@ export default function FileConverter() {
     setLoading(true);
     try {
       const text = await readWordFile(file);
-      
+
       const pdf = new jsPDF();
       pdf.setFontSize(12);
       pdf.setFont("helvetica", "normal");
-      
-      // Better text formatting for HD quality
+
       const lines = pdf.splitTextToSize(text, 180);
       pdf.text(lines, 10, 10);
-      
+
       pdf.save(`converted-${Date.now()}.pdf`);
 
     } catch (err) {
@@ -306,17 +324,17 @@ export default function FileConverter() {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
-        resolve(`Document: ${file.name}\n\nContent extracted from Word document. For better results, use specialized Word processing libraries.`);
+        resolve(`Document: ${file.name}\n\nContent extracted from Word document.`);
       };
       reader.onerror = reject;
       reader.readAsText(file);
     });
   };
 
-  // HD Quality Image to PDF
+  // Image to PDF
   const handleImagesToPdf = async () => {
     const allImages = [...imageFiles, ...capturedImages.map(img => dataURLtoFile(img.data, img.name))];
-    
+
     if (!allImages.length) {
       alert("Please select images or use camera first!");
       return;
@@ -328,7 +346,7 @@ export default function FileConverter() {
 
       for (let i = 0; i < allImages.length; i++) {
         const base64 = await toBase64(allImages[i]);
-        const compressed = await compressImage(base64, 0.95); // High quality
+        const compressed = await compressImage(base64, 0.9);
 
         const img = new Image();
         img.src = compressed;
@@ -351,7 +369,7 @@ export default function FileConverter() {
     setLoading(false);
   };
 
-  // HD Quality PDF to Images
+  // PDF to Images
   const handlePdfToJpg = async () => {
     if (!pdfFile) {
       alert("Please select a PDF file first!");
@@ -368,7 +386,7 @@ export default function FileConverter() {
 
       for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
         const page = await pdf.getPage(pageNum);
-        const viewport = page.getViewport({ scale: 3.0 }); // HD quality
+        const viewport = page.getViewport({ scale: isMobile ? 2.0 : 3.0 });
 
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
@@ -377,7 +395,7 @@ export default function FileConverter() {
 
         await page.render({ canvasContext: ctx, viewport }).promise;
         pages.push({
-          data: canvas.toDataURL("image/jpeg", 1.0), // Maximum quality
+          data: canvas.toDataURL("image/jpeg", 0.9),
           pageNumber: pageNum,
           width: viewport.width,
           height: viewport.height
@@ -411,7 +429,7 @@ export default function FileConverter() {
   const downloadImage = (data, page) => {
     const a = document.createElement("a");
     a.href = data;
-    a.download = `page-${page}-hd.jpg`;
+    a.download = `page-${page}.jpg`;
     a.click();
   };
 
@@ -436,7 +454,6 @@ export default function FileConverter() {
     URL.revokeObjectURL(url);
   };
 
-  // Format file size
   const formatFileSize = (bytes) => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -445,138 +462,228 @@ export default function FileConverter() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  return (
-    <div className="container my-4 myshadow p-2">
-      <h2 className="text-center mb-4 text-danger fw-bolder">HD File Converter with Camera</h2>
+  // Mobile-optimized conversion type buttons
+  const ConversionTypeButton = ({ type, label, icon }) => (
+    <button
+      className={`btn ${conversionType === type ? 'btn-primary' : 'btn-outline-primary'} d-flex flex-column align-items-center py-3`}
+      onClick={() => {
+        setConversionType(type);
+        clearFiles();
+        setActiveTab("upload");
+      }}
+      style={{
+        minHeight: '80px',
+        fontSize: isMobile ? '12px' : '14px'
+      }}
+    >
+      <span style={{ fontSize: '20px', marginBottom: '5px' }}>{icon}</span>
+      <span>{label}</span>
+    </button>
+  );
 
-      <div className="btn-group w-100 mb-4 flex-wrap">
-        <button className={`btn ${conversionType === "jpg-to-pdf" ? "btn-primary" : "btn-outline-primary"}`} onClick={() => { setConversionType("jpg-to-pdf"); clearFiles(); }}>Images → PDF</button>
-        <button className={`btn ${conversionType === "pdf-to-jpg" ? "btn-success" : "btn-outline-success"}`} onClick={() => { setConversionType("pdf-to-jpg"); clearFiles(); }}>PDF → Images</button>
-        <button className={`btn ${conversionType === "pdf-to-word" ? "btn-info" : "btn-outline-info"}`} onClick={() => { setConversionType("pdf-to-word"); clearFiles(); }}>PDF → Word</button>
-        <button className={`btn ${conversionType === "word-to-pdf" ? "btn-warning" : "btn-outline-warning"}`} onClick={() => { setConversionType("word-to-pdf"); clearFiles(); }}>Word → PDF</button>
-        <button className={`btn ${conversionType === "text-scanner" ? "btn-dark" : "btn-outline-dark"}`} onClick={() => { setConversionType("text-scanner"); clearFiles(); }}>Text Scanner (OCR)</button>
+  return (
+    <div className="container-fluid px-2 py-3" style={{
+      minHeight: '100vh',
+      backgroundColor: '#f8f9fa'
+    }}>
+      {/* Header */}
+      <div className="text-center mb-3">
+        <h1 className="h4 text-danger fw-bold mb-2">📱 File Converter</h1>
+        <p className="text-muted small">Convert files on the go</p>
       </div>
 
-      {/* Camera Section */}
+      {/* Conversion Type Selector - Simple Center */}
+      <div className="row g-1 mb-3 justify-content-center">
+        <div className="col-auto">
+          <ConversionTypeButton
+            type="jpg-to-pdf"
+            label="Images to PDF"
+            icon="🖼️"
+          />
+        </div>
+        <div className="col-auto">
+          <ConversionTypeButton
+            type="pdf-to-jpg"
+            label="PDF to Images"
+            icon="📄"
+          />
+        </div>
+        <div className="col-auto">
+          <ConversionTypeButton
+            type="pdf-to-word"
+            label="PDF to Word"
+            icon="📝"
+          />
+        </div>
+        <div className="col-auto">
+          <ConversionTypeButton
+            type="text-scanner"
+            label="Text Scanner"
+            icon="🔍"
+          />
+        </div>
+      </div>
+
+      {/* Input Methods Tabs */}
       {(conversionType === "jpg-to-pdf" || conversionType === "text-scanner") && (
-        <div className="card mb-4">
-          <div className="card-body">
-            <h5 className="card-title">📷 Camera Scanner</h5>
-            {!cameraActive ? (
-              <button className="btn btn-outline-primary w-100 mb-3" onClick={startCamera}>
-                Start Camera
+        <div className="card mb-3">
+          <div className="card-body p-0">
+            <div className="d-flex border-bottom">
+              <button
+                className={`btn flex-fill ${activeTab === "upload" ? "btn-primary" : "btn-light"} rounded-0`}
+                onClick={() => setActiveTab("upload")}
+              >
+                📁 Upload
               </button>
-            ) : (
-              <div>
-                <div className="text-center mb-3">
-                  <video ref={videoRef} autoPlay playsInline className="img-fluid rounded" style={{ maxHeight: '300px' }} />
-                  <canvas ref={canvasRef} style={{ display: 'none' }} />
+              <button
+                className={`btn flex-fill ${activeTab === "camera" ? "btn-primary" : "btn-light"} rounded-0`}
+                onClick={() => setActiveTab("camera")}
+              >
+                📷 Camera
+              </button>
+            </div>
+
+            <div className="p-3">
+              {activeTab === "upload" && (
+                <div>
+                  <input
+                    type="file"
+                    accept={conversionType === "text-scanner" ? "image/*,application/pdf" : "image/*"}
+                    multiple={conversionType !== "pdf-to-jpg" && conversionType !== "pdf-to-word"}
+                    className="form-control form-control-lg mb-3"
+                    onChange={(e) => {
+                      if (conversionType === "pdf-to-jpg" || conversionType === "pdf-to-word") {
+                        setPdfFile(e.target.files[0]);
+                      } else {
+                        setImageFiles([...e.target.files]);
+                      }
+                    }}
+                  />
                 </div>
-                <div className="d-flex gap-2 mb-3">
-                  <button className="btn btn-success flex-fill" onClick={captureImage}>
-                    Capture Image
-                  </button>
-                  <button className="btn btn-warning flex-fill" onClick={useCapturedImage}>
-                    Use Captured Images ({capturedImages.length})
-                  </button>
-                  <button className="btn btn-danger flex-fill" onClick={stopCamera}>
-                    Stop Camera
-                  </button>
-                </div>
-              </div>
-            )}
-            
-            {capturedImages.length > 0 && (
-              <div className="mt-3">
-                <h6>Captured Images Preview:</h6>
-                <div className="row">
-                  {capturedImages.map((img) => (
-                    <div key={img.id} className="col-md-3 mb-2">
-                      <div className="card">
-                        <img src={img.data} className="card-img-top" alt="Captured" style={{height: '100px', objectFit: 'cover'}} />
-                        <button className="btn btn-danger btn-sm" onClick={() => removeCapturedImage(img.id)}>
-                          Remove
-                        </button>
+              )}
+
+              {activeTab === "camera" && (
+                <div>
+                  {!cameraActive ? (
+                    <button
+                      className="btn btn-success w-100 btn-lg mb-3"
+                      onClick={startCamera}
+                    >
+                      📷 Start Camera
+                    </button>
+                  ) : (
+                    <div>
+                      <div className="text-center mb-3">
+                        <video
+                          ref={videoRef}
+                          autoPlay
+                          playsInline
+                          className="img-fluid rounded shadow"
+                          style={{
+                            maxHeight: isMobile ? '300px' : '400px',
+                            width: '100%'
+                          }}
+                        />
+                        <canvas ref={canvasRef} style={{ display: 'none' }} />
+                      </div>
+                      <div className="row g-2">
+                        <div className="col-4">
+                          <button
+                            className="btn btn-danger w-100"
+                            onClick={stopCamera}
+                          >
+                            Stop
+                          </button>
+                        </div>
+                        <div className="col-4">
+                          <button
+                            className="btn btn-warning w-100"
+                            onClick={captureImage}
+                          >
+                            Capture
+                          </button>
+                        </div>
+                        <div className="col-4">
+                          <button
+                            className="btn btn-success w-100"
+                            onClick={useCapturedImage}
+                            disabled={capturedImages.length === 0}
+                          >
+                            Use ({capturedImages.length})
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  ))}
+                  )}
                 </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* File Upload Sections */}
-      {conversionType === "jpg-to-pdf" && (
-        <div className="card mb-4">
-          <div className="card-body">
-            <input type="file" accept="image/jpeg,image/png,image/jpg" multiple className="form-control mb-3" onChange={(e) => setImageFiles([...e.target.files])} />
-            <button className="btn btn-primary w-100" disabled={(!imageFiles.length && !capturedImages.length) || loading} onClick={handleImagesToPdf}>
-              {loading ? "Converting..." : `Convert to PDF (${imageFiles.length + capturedImages.length} images)`}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {conversionType === "pdf-to-jpg" && (
-        <div className="card mb-4">
-          <div className="card-body">
-            <input type="file" accept="application/pdf" className="form-control mb-3" onChange={(e) => setPdfFile(e.target.files[0])} />
-            <button className="btn btn-success w-100" disabled={!pdfFile || loading} onClick={handlePdfToJpg}>
-              {loading ? "Extracting..." : "Extract HD Images"}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {conversionType === "pdf-to-word" && (
-        <div className="card mb-4">
-          <div className="card-body">
-            <input type="file" accept="application/pdf" className="form-control mb-3" onChange={(e) => setPdfFile(e.target.files[0])} />
-            <button className="btn btn-info w-100" disabled={!pdfFile || loading} onClick={handlePdfToWord}>
-              {loading ? "Converting..." : "Convert to Word"}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {conversionType === "word-to-pdf" && (
-        <div className="card mb-4">
-          <div className="card-body">
-            <input type="file" accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="form-control mb-3" onChange={handleWordToPdf} />
-          </div>
-        </div>
-      )}
-
-      {conversionType === "text-scanner" && (
-        <div className="card mb-4">
-          <div className="card-body">
-            <div className="row">
-              <div className="col-md-6 mb-3">
-                <label className="form-label">Upload Images</label>
-                <input type="file" accept="image/jpeg,image/png,image/jpg" multiple className="form-control" onChange={(e) => setImageFiles([...e.target.files])} />
-              </div>
-              <div className="col-md-6 mb-3">
-                <label className="form-label">Or Upload PDF</label>
-                <input type="file" accept="application/pdf" className="form-control" onChange={(e) => setPdfFile(e.target.files[0])} />
-              </div>
+              )}
             </div>
-            <button className="btn btn-dark w-100" disabled={(!imageFiles.length && !pdfFile && !capturedImages.length) || loading} onClick={handleTextScan}>
-              {loading ? `Scanning... ${ocrProgress}%` : "Scan Text (OCR)"}
-            </button>
           </div>
         </div>
       )}
 
-      {/* Preview Sections */}
-      {imageFiles.length > 0 && (
-        <div className="card mb-4">
+      {/* Other conversion types file input */}
+      {(conversionType === "pdf-to-jpg" || conversionType === "pdf-to-word") && (
+        <div className="card mb-3">
           <div className="card-body">
-            <h5>Uploaded Images Preview ({imageFiles.length})</h5>
+            <input
+              type="file"
+              accept="application/pdf"
+              className="form-control form-control-lg"
+              onChange={(e) => setPdfFile(e.target.files[0])}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Action Button */}
+      <div className="card mb-3">
+        <div className="card-body">
+          <button
+            className={`btn w-100 btn-lg ${conversionType === "jpg-to-pdf" ? "btn-primary" :
+              conversionType === "pdf-to-jpg" ? "btn-success" :
+                conversionType === "pdf-to-word" ? "btn-info" :
+                  "btn-dark"
+              }`}
+            disabled={
+              loading ||
+              (conversionType === "jpg-to-pdf" && imageFiles.length === 0 && capturedImages.length === 0) ||
+              ((conversionType === "pdf-to-jpg" || conversionType === "pdf-to-word") && !pdfFile) ||
+              (conversionType === "text-scanner" && imageFiles.length === 0 && !pdfFile && capturedImages.length === 0)
+            }
+            onClick={
+              conversionType === "jpg-to-pdf" ? handleImagesToPdf :
+                conversionType === "pdf-to-jpg" ? handlePdfToJpg :
+                  conversionType === "pdf-to-word" ? handlePdfToWord :
+                    handleTextScan
+            }
+            style={{ height: '60px', fontSize: '18px' }}
+          >
+            {loading ? (
+              <div className="d-flex align-items-center justify-content-center">
+                <div className="spinner-border spinner-border-sm me-2" role="status">
+                  <span className="visually-hidden">Loading...</span>
+                </div>
+                {conversionType === "text-scanner" ? `Scanning ${ocrProgress}%` : "Processing..."}
+              </div>
+            ) : (
+              conversionType === "jpg-to-pdf" ? `Convert to PDF (${imageFiles.length + capturedImages.length})` :
+                conversionType === "pdf-to-jpg" ? "Extract Images" :
+                  conversionType === "pdf-to-word" ? "Convert to Word" :
+                    "Scan Text"
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Previews */}
+      {imageFiles.length > 0 && (
+        <div className="card mb-3">
+          <div className="card-body">
+            <h6 className="card-title">📁 Uploaded Files ({imageFiles.length})</h6>
             <div className="row">
               {imageFiles.map((file, index) => (
-                <PreviewImage 
+                <PreviewImage
                   key={index}
                   src={URL.createObjectURL(file)}
                   name={file.name}
@@ -589,50 +696,80 @@ export default function FileConverter() {
         </div>
       )}
 
-      {pdfFile && (
-        <div className="card mb-4">
+      {capturedImages.length > 0 && (
+        <div className="card mb-3">
           <div className="card-body">
-            <h5>PDF File Preview</h5>
-            <div className="alert alert-info">
-              <strong>{pdfFile.name}</strong> - {formatFileSize(pdfFile.size)}
-              <button className="btn btn-sm btn-outline-danger ms-2" onClick={() => setPdfFile(null)}>
-                Remove
-              </button>
+            <h6 className="card-title">📷 Captured Images ({capturedImages.length})</h6>
+            <div className="row">
+              {capturedImages.map((img) => (
+                <PreviewImage
+                  key={img.id}
+                  src={img.data}
+                  name={img.name}
+                  size="Camera"
+                  onRemove={() => removeCapturedImage(img.id)}
+                  isCaptured={true}
+                />
+              ))}
             </div>
           </div>
         </div>
       )}
 
       {extractedText && (
-        <div className="card mb-4">
+        <div className="card mb-3">
           <div className="card-body">
-            <div className="d-flex justify-content-between align-items-center mb-3">
-              <h5>Extracted Text</h5>
+            <div className="d-flex justify-content-between align-items-center mb-2">
+              <h6 className="mb-0">📝 Extracted Text</h6>
               <div>
-                <button className="btn btn-outline-secondary btn-sm me-2" onClick={copyToClipboard}>Copy Text</button>
-                <button className="btn btn-outline-primary btn-sm" onClick={downloadText}>Download Text</button>
+                <button className="btn btn-outline-secondary btn-sm me-1" onClick={copyToClipboard}>
+                  Copy
+                </button>
+                <button className="btn btn-outline-primary btn-sm" onClick={downloadText}>
+                  Download
+                </button>
               </div>
             </div>
-            <textarea className="form-control" rows="10" value={extractedText} onChange={(e) => setExtractedText(e.target.value)} style={{ fontSize: '14px', fontFamily: 'monospace' }} />
+            <textarea
+              className="form-control"
+              rows="6"
+              value={extractedText}
+              onChange={(e) => setExtractedText(e.target.value)}
+              style={{
+                fontSize: '14px',
+                fontFamily: 'monospace',
+                resize: 'vertical'
+              }}
+            />
           </div>
         </div>
       )}
 
       {pdfImages.length > 0 && (
-        <div className="card mb-4">
+        <div className="card mb-3">
           <div className="card-body">
-            <div className="d-flex justify-content-between mb-3">
-              <h5>Extracted HD Images ({pdfImages.length})</h5>
-              <button className="btn btn-outline-primary btn-sm" onClick={downloadAllImages}>Download All</button>
+            <div className="d-flex justify-content-between align-items-center mb-2">
+              <h6 className="mb-0">🖼️ Extracted Images ({pdfImages.length})</h6>
+              <button className="btn btn-outline-primary btn-sm" onClick={downloadAllImages}>
+                Download All
+              </button>
             </div>
-            <div className="row g-3">
+            <div className="row g-2">
               {pdfImages.map((img) => (
-                <div key={img.pageNumber} className="col-md-4">
-                  <div className="border rounded p-2 text-center">
-                    <img src={img.data} alt={`Page ${img.pageNumber}`} className="img-fluid mb-2" style={{ maxHeight: "200px" }} />
-                    <div className="small text-muted mb-2">{img.width} x {img.height} px</div>
-                    <button className="btn btn-outline-secondary btn-sm" onClick={() => downloadImage(img.data, img.pageNumber)}>
-                      Download Page {img.pageNumber}
+                <div key={img.pageNumber} className="col-6 col-md-4">
+                  <div className="border rounded p-2 text-center bg-white">
+                    <img
+                      src={img.data}
+                      alt={`Page ${img.pageNumber}`}
+                      className="img-fluid mb-2 rounded"
+                      style={{ maxHeight: '150px' }}
+                    />
+                    <div className="small text-muted mb-2">Page {img.pageNumber}</div>
+                    <button
+                      className="btn btn-outline-secondary btn-sm w-100"
+                      onClick={() => downloadImage(img.data, img.pageNumber)}
+                    >
+                      Download
                     </button>
                   </div>
                 </div>
@@ -642,11 +779,20 @@ export default function FileConverter() {
         </div>
       )}
 
-      {(imageFiles.length || pdfFile || pdfImages.length || extractedText || capturedImages.length) > 0 && (
-        <div className="text-center">
-          <button className="btn btn-outline-secondary" onClick={clearFiles}>Clear All</button>
+      {/* Clear All Button */}
+      {(imageFiles.length > 0 || pdfFile || pdfImages.length > 0 || extractedText || capturedImages.length > 0) && (
+        <div className="text-center mt-3">
+          <button
+            className="btn btn-outline-danger btn-lg"
+            onClick={clearFiles}
+          >
+            🗑️ Clear All
+          </button>
         </div>
       )}
+
+      {/* Mobile Footer Space */}
+      {isMobile && <div style={{ height: '80px' }}></div>}
     </div>
   );
 }
