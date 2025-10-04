@@ -424,12 +424,14 @@ export default function Messages() {
 
   const chatId = currentUid && uid ? [currentUid, uid].sort().join("_") : null;
 
-  // WebRTC Configuration
+  // Enhanced WebRTC Configuration
   const rtcConfig = {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' }
-    ]
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' }
+    ],
+    iceCandidatePoolSize: 10
   };
 
   // Initialize permissions and user info
@@ -805,211 +807,249 @@ export default function Messages() {
 
     try {
       // Check permissions first
-      if (type === 'video') {
-        if (!permissionsManager.isGranted('camera') || !permissionsManager.isGranted('microphone')) {
-          permissionsManager.showPermissionPrompt('camera', async (allowed) => {
-            if (allowed) {
-              try {
-                await permissionsManager.requestCameraAndMicrophone();
-                await proceedWithCall(type);
-              } catch (error) {
-                alert('Camera and microphone access is required for video calls.');
-              }
-            }
-          });
-          return;
-        }
-      } else {
-        if (!permissionsManager.isGranted('microphone')) {
-          permissionsManager.showPermissionPrompt('microphone', async (allowed) => {
-            if (allowed) {
-              try {
-                await permissionsManager.requestMicrophonePermission();
-                await proceedWithCall(type);
-              } catch (error) {
-                alert('Microphone access is required for audio calls.');
-              }
-            }
-          });
-          return;
-        }
-      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: type === 'video',
+        audio: true
+      });
+      
+      setLocalStream(stream);
+      setCallType(type);
+      setCallState('outgoing');
 
-      await proceedWithCall(type);
+      const callId = `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const callData = {
+        callId,
+        callerId: currentUid,
+        callerInfo: currentUserInfo || {
+          username: auth.currentUser?.displayName || 'User',
+          photoURL: auth.currentUser?.photoURL || '/icons/avatar.jpg'
+        },
+        receiverId: uid,
+        type,
+        status: 'calling',
+        timestamp: serverTimestamp(),
+        offer: null,
+        answer: null,
+        iceCandidates: {}
+      };
+
+      const callRef = dbRef(db, `calls/${chatId}`);
+      await set(callRef, callData);
+      setCallData(callData);
+
+      // Create peer connection and generate offer
+      await createPeerConnection('caller', callId);
+      
+      // Generate and send offer
+      const offer = await peerConnectionRef.current.createOffer();
+      await peerConnectionRef.current.setLocalDescription(offer);
+      
+      // Save offer to Firebase
+      await update(callRef, {
+        offer: {
+          type: offer.type,
+          sdp: offer.sdp
+        }
+      });
+
+      console.log('Call initialized with offer');
+
+      // Set up call listener
+      setupCallListener();
+
     } catch (error) {
       console.error('Error initializing call:', error);
       alert('Error starting call. Please check your camera/microphone permissions.');
+      endCall();
     }
   };
 
-  const proceedWithCall = async (type) => {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: type === 'video',
-      audio: true
-    });
-    
-    setLocalStream(stream);
-    setCallType(type);
-    setCallState('outgoing');
-
-    const callId = `call_${Date.now()}_${currentUid}`;
-    const callData = {
-      callId,
-      callerId: currentUid,
-      callerInfo: currentUserInfo || {
-        username: auth.currentUser?.displayName || 'User',
-        photoURL: auth.currentUser?.photoURL || '/icons/avatar.jpg'
-      },
-      receiverId: uid,
-      type,
-      status: 'calling',
-      timestamp: serverTimestamp()
-    };
-
-    const callRef = dbRef(db, `calls/${chatId}`);
-    await set(callRef, callData);
-    setCallData(callData);
-
-    // Listen for call updates
-    setupCallListener(callId);
-  };
-
-  const setupCallListener = (callId) => {
-    const callRef = dbRef(db, `calls/${chatId}`);
-    
-    return onValue(callRef, (snap) => {
-      const callData = snap.val();
-      if (!callData) return;
-
-      // If call was rejected or ended by other party
-      if (callData.status === 'rejected' || callData.status === 'ended') {
-        endCall();
-      }
-      
-      // If call was accepted
-      if (callData.status === 'accepted' && callState === 'outgoing') {
-        setCallState('active');
-        setIsCallActive(true);
-        startCallTimer();
-        createPeerConnection();
-      }
-    });
-  };
-
-  const createPeerConnection = async () => {
+  const createPeerConnection = async (role, callId) => {
     try {
+      // Close existing connection if any
+      if (peerConnectionRef.current) {
+        peerConnectionRef.current.close();
+      }
+
       const pc = new RTCPeerConnection(rtcConfig);
       peerConnectionRef.current = pc;
 
-      // Add local stream tracks
-      localStream.getTracks().forEach(track => {
-        pc.addTrack(track, localStream);
-      });
+      // Add local stream tracks if available
+      if (localStream) {
+        localStream.getTracks().forEach(track => {
+          pc.addTrack(track, localStream);
+          console.log('Added local track:', track.kind);
+        });
+      }
 
       // Handle incoming remote stream
       pc.ontrack = (event) => {
-        console.log('Received remote stream');
+        console.log('Received remote stream tracks:', event.streams[0].getTracks().length);
         setRemoteStream(event.streams[0]);
+        setIsCallActive(true);
       };
 
-      // Create and send offer
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      // In a real app, you'd send this offer to the other peer via signaling
-      // For now, we'll simulate the connection
-      setTimeout(() => {
-        if (pc.signalingState === 'have-local-offer') {
-          simulateRemoteAnswer(pc);
+      // Handle ICE candidates
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          console.log('New ICE candidate:', event.candidate);
+          const candidateRef = push(dbRef(db, `calls/${chatId}/iceCandidates/${role}`));
+          set(candidateRef, {
+            candidate: event.candidate.candidate,
+            sdpMid: event.candidate.sdpMid,
+            sdpMLineIndex: event.candidate.sdpMLineIndex
+          });
         }
-      }, 1000);
+      };
+
+      // Handle connection state changes
+      pc.onconnectionstatechange = () => {
+        console.log('Connection state:', pc.connectionState);
+        switch(pc.connectionState) {
+          case 'connected':
+            setIsCallActive(true);
+            break;
+          case 'disconnected':
+          case 'failed':
+          case 'closed':
+            if (callState !== 'ended') {
+              endCall();
+            }
+            break;
+        }
+      };
+
+      // Handle ICE connection state
+      pc.oniceconnectionstatechange = () => {
+        console.log('ICE connection state:', pc.iceConnectionState);
+        if (pc.iceConnectionState === 'connected') {
+          setIsCallActive(true);
+        }
+      };
+
+      return pc;
 
     } catch (error) {
       console.error('Error creating peer connection:', error);
-    }
-  };
-
-  const simulateRemoteAnswer = async (pc) => {
-    // Simulate remote peer creating answer
-    try {
-      const answer = {
-        type: 'answer',
-        sdp: 'simulated-answer-sdp'
-      };
-      await pc.setRemoteDescription(answer);
-      console.log('Simulated connection established');
-    } catch (error) {
-      console.error('Error simulating answer:', error);
+      throw error;
     }
   };
 
   const answerCall = async (callData) => {
     try {
-      // Check permissions before answering
-      if (callData.type === 'video') {
-        if (!permissionsManager.isGranted('camera') || !permissionsManager.isGranted('microphone')) {
-          permissionsManager.showPermissionPrompt('camera', async (allowed) => {
-            if (allowed) {
-              try {
-                await permissionsManager.requestCameraAndMicrophone();
-                await proceedWithAnswer(callData);
-              } catch (error) {
-                alert('Camera and microphone access is required for video calls.');
-                rejectCall(callData);
-              }
-            } else {
-              rejectCall(callData);
-            }
-          });
-          return;
-        }
-      } else {
-        if (!permissionsManager.isGranted('microphone')) {
-          permissionsManager.showPermissionPrompt('microphone', async (allowed) => {
-            if (allowed) {
-              try {
-                await permissionsManager.requestMicrophonePermission();
-                await proceedWithAnswer(callData);
-              } catch (error) {
-                alert('Microphone access is required for audio calls.');
-                rejectCall(callData);
-              }
-            } else {
-              rejectCall(callData);
-            }
-          });
-          return;
-        }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: callData.type === 'video',
+        audio: true
+      });
+
+      setLocalStream(stream);
+      setCallType(callData.type);
+      setCallState('active');
+      setCallData(callData);
+
+      // Update call status to accepted
+      const callRef = dbRef(db, `calls/${chatId}`);
+      await update(callRef, { 
+        status: 'accepted',
+        answeredAt: serverTimestamp()
+      });
+
+      // Create peer connection as answerer
+      await createPeerConnection('answerer', callData.callId);
+
+      // Set remote offer
+      if (callData.offer) {
+        await peerConnectionRef.current.setRemoteDescription(
+          new RTCSessionDescription(callData.offer)
+        );
+
+        // Create and set local answer
+        const answer = await peerConnectionRef.current.createAnswer();
+        await peerConnectionRef.current.setLocalDescription(answer);
+
+        // Send answer back to caller
+        await update(callRef, {
+          answer: {
+            type: answer.type,
+            sdp: answer.sdp
+          }
+        });
+
+        console.log('Call answered with answer');
       }
 
-      await proceedWithAnswer(callData);
+      startCallTimer();
+      setupCallListener();
+
     } catch (error) {
       console.error('Error answering call:', error);
+      alert('Error answering call. Please try again.');
       rejectCall(callData);
     }
   };
 
-  const proceedWithAnswer = async (callData) => {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: callData.type === 'video',
-      audio: true
-    });
+  const setupCallListener = () => {
+    if (!chatId) return;
 
-    setLocalStream(stream);
-    setCallType(callData.type);
-    setCallState('active');
-    setCallData(callData);
-    setIsCallActive(true);
-
-    // Update call status to accepted
     const callRef = dbRef(db, `calls/${chatId}`);
-    await update(callRef, { 
-      status: 'accepted',
-      answeredAt: serverTimestamp()
-    });
+    
+    return onValue(callRef, async (snap) => {
+      const callData = snap.val();
+      if (!callData) return;
 
-    startCallTimer();
-    createPeerConnection();
+      console.log('Call update:', callData.status, 'Current state:', callState);
+
+      // Handle call rejection or end by other party
+      if ((callData.status === 'rejected' || callData.status === 'ended') && callState !== 'ended') {
+        console.log('Call ended by other party');
+        endCall();
+        return;
+      }
+      
+      // Handle incoming answer when we are the caller
+      if (callState === 'outgoing' && callData.answer && peerConnectionRef.current) {
+        try {
+          await peerConnectionRef.current.setRemoteDescription(
+            new RTCSessionDescription(callData.answer)
+          );
+          setCallState('active');
+          setIsCallActive(true);
+          startCallTimer();
+          console.log('Remote answer set, call connected');
+        } catch (error) {
+          console.error('Error setting remote answer:', error);
+        }
+      }
+
+      // Handle ICE candidates
+      if (callData.iceCandidates) {
+        await handleRemoteICECandidates(callData.iceCandidates);
+      }
+    });
+  };
+
+  const handleRemoteICECandidates = async (iceCandidates) => {
+    if (!peerConnectionRef.current) return;
+
+    const remoteRole = callState === 'outgoing' ? 'answerer' : 'caller';
+    const candidates = iceCandidates[remoteRole];
+    
+    if (candidates) {
+      for (const [candidateId, candidateData] of Object.entries(candidates)) {
+        try {
+          await peerConnectionRef.current.addIceCandidate(
+            new RTCIceCandidate({
+              candidate: candidateData.candidate,
+              sdpMid: candidateData.sdpMid,
+              sdpMLineIndex: candidateData.sdpMLineIndex
+            })
+          );
+          console.log('Added remote ICE candidate');
+        } catch (error) {
+          console.error('Error adding ICE candidate:', error);
+        }
+      }
+    }
   };
 
   const endCall = async () => {
@@ -1018,6 +1058,7 @@ export default function Messages() {
     // Stop call timer
     if (callDurationRef.current) {
       clearInterval(callDurationRef.current);
+      callDurationRef.current = null;
     }
 
     // Close peer connection
@@ -1028,7 +1069,10 @@ export default function Messages() {
 
     // Stop media streams
     if (localStream) {
-      localStream.getTracks().forEach(track => track.stop());
+      localStream.getTracks().forEach(track => {
+        track.stop();
+        console.log('Stopped track:', track.kind);
+      });
       setLocalStream(null);
     }
     setRemoteStream(null);
@@ -1036,17 +1080,22 @@ export default function Messages() {
     // Update call status in Firebase
     if (callData && chatId) {
       const callRef = dbRef(db, `calls/${chatId}`);
-      await update(callRef, { 
-        status: 'ended',
-        endedAt: serverTimestamp(),
-        duration: callDuration,
-        endedBy: currentUid
-      });
+      try {
+        await update(callRef, { 
+          status: 'ended',
+          endedAt: serverTimestamp(),
+          duration: callDuration,
+          endedBy: currentUid
+        });
 
-      // Remove call data after a delay
-      setTimeout(async () => {
-        await remove(dbRef(db, `calls/${chatId}`));
-      }, 2000);
+        // Remove call data after a delay
+        setTimeout(async () => {
+          await remove(dbRef(db, `calls/${chatId}`));
+          await remove(dbRef(db, `calls/${chatId}/iceCandidates`));
+        }, 3000);
+      } catch (error) {
+        console.error('Error updating call end:', error);
+      }
     }
 
     // Reset call states
@@ -1062,15 +1111,20 @@ export default function Messages() {
   const rejectCall = async (callData) => {
     if (callData && chatId) {
       const callRef = dbRef(db, `calls/${chatId}`);
-      await update(callRef, { 
-        status: 'rejected',
-        endedAt: serverTimestamp(),
-        endedBy: currentUid
-      });
+      try {
+        await update(callRef, { 
+          status: 'rejected',
+          endedAt: serverTimestamp(),
+          endedBy: currentUid
+        });
 
-      setTimeout(async () => {
-        await remove(dbRef(db, `calls/${chatId}`));
-      }, 2000);
+        setTimeout(async () => {
+          await remove(dbRef(db, `calls/${chatId}`));
+          await remove(dbRef(db, `calls/${chatId}/iceCandidates`));
+        }, 3000);
+      } catch (error) {
+        console.error('Error rejecting call:', error);
+      }
     }
     setCallState(null);
     setCallData(null);
@@ -1109,20 +1163,15 @@ export default function Messages() {
 
     const callsRef = dbRef(db, `calls/${chatId}`);
     
-    return onValue(callsRef, (snap) => {
+    return onValue(callsRef, async (snap) => {
       const callData = snap.val();
       
       if (callData && callState === null) {
-        // Only handle incoming calls if we're not in a call
+        // Handle incoming calls
         if (callData.receiverId === currentUid && callData.status === 'calling') {
           setCallData(callData);
           setCallState('incoming');
           setCallType(callData.type);
-        }
-        
-        // If call was ended by other party
-        if ((callData.status === 'ended' || callData.status === 'rejected') && callState === 'active') {
-          endCall();
         }
       }
     });
@@ -1281,7 +1330,7 @@ export default function Messages() {
                     setShowMenu(false);
                   }}
                 >
-                  Clear Chat...
+                  Clear Chat
                 </button>
                 <button
                   className="py-2 px-3 dropdown-item"
@@ -1565,6 +1614,42 @@ export default function Messages() {
           .video-pip {
             border: 2px solid white;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+          }
+
+          .call-connecting {
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+            animation: pulse 2s infinite;
+          }
+
+          @keyframes pulse {
+            0% { opacity: 0.8; }
+            50% { opacity: 1; }
+            100% { opacity: 0.8; }
+          }
+
+          .video-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background: #000;
+          }
+
+          .remote-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+          }
+
+          .local-video {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 120px;
+            height: 160px;
+            border: 2px solid white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 10;
           }
 
           @keyframes ring {
