@@ -2,8 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { jsPDF } from "jspdf";
 import * as pdfjsLib from "pdfjs-dist/build/pdf";
 import * as Tesseract from 'tesseract.js';
-import { FaFilePdf, FaFileImage, FaFileWord, FaSearch } from 'react-icons/fa';
-import { MdPhoto, MdPictureAsPdf, MdDescription, MdScanner } from 'react-icons/md';
+
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
 
 export default function FileConverter() {
@@ -38,8 +37,16 @@ export default function FileConverter() {
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
-      videoRef.current.srcObject = stream;
-      setCameraActive(true);
+
+      // Wait for video element to render before assigning stream
+      requestAnimationFrame(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          setCameraActive(true);
+        } else {
+          console.warn("Video element not ready yet.");
+        }
+      });
     } catch (err) {
       alert("Camera access failed: " + err.message);
     }
@@ -574,16 +581,19 @@ export default function FileConverter() {
                   ) : (
                     <div>
                       <div className="text-center mb-3">
-                        <video
-                          ref={videoRef}
-                          autoPlay
-                          playsInline
-                          className="img-fluid rounded shadow"
-                          style={{
-                            maxHeight: isMobile ? '300px' : '400px',
-                            width: '100%'
-                          }}
-                        />
+                        {videoRef && (
+                          <video
+                            ref={videoRef}
+                            autoPlay
+                            playsInline
+                            muted
+                            className="img-fluid rounded shadow"
+                            style={{
+                              maxHeight: isMobile ? '300px' : '400px',
+                              width: '100%'
+                            }}
+                          />
+                        )}
                         <canvas ref={canvasRef} style={{ display: 'none' }} />
                       </div>
                       <div className="row g-2">
