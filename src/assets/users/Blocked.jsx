@@ -1,8 +1,7 @@
-// src/assets/users/Blocked.jsx
+// src/components/Blocked.jsx
 import React from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useUserRelations, useUserActions } from '../../hooks/useUserRelations';
-import UserCard from './UserCard';
 import { auth } from '../utils/firebaseConfig';
 import { toast } from 'react-toastify';
 
@@ -11,36 +10,24 @@ export default function Blocked() {
   const currentUser = auth.currentUser;
   const uid = paramUid || currentUser?.uid;
 
-  const { relations, calculateRelationship, loading } = useUserRelations(uid);
+  const { relations, loading } = useUserRelations(uid);
   const userActions = useUserActions();
 
-  const handleAction = async (action, targetUID, successMessage) => {
+  const handleUnblock = async (targetUID) => {
     try {
-      await action(targetUID);
-      toast.success(successMessage);
+      await userActions.unblockUser(targetUID);
+      toast.success('User unblocked!');
     } catch (error) {
-      console.error('Action failed:', error);
-      toast.error(`❌ ${error.message}`);
+      console.error('Unblock failed:', error);
+      toast.error(`❌ ${error.message || 'Unblock failed'}`);
     }
-  };
-
-  // Create action handlers with correct prop names that UserCard expects
-  const actionHandlers = {
-    onFollow: (targetUID) => handleAction(userActions.followUser, targetUID, 'Follow request sent! 🚀'),
-    onUnfollow: (targetUID) => handleAction(userActions.unfollowUser, targetUID, 'Unfollowed successfully!'),
-    onRemove: (targetUID) => handleAction(userActions.removeFollower, targetUID, 'Follower removed!'),
-    onBlock: (targetUID) => handleAction(userActions.blockUser, targetUID, 'User blocked successfully!'),
-    onUnblock: (targetUID) => handleAction(userActions.unblockUser, targetUID, 'User unblocked successfully!'),
-    onCancelRequest: (targetUID) => handleAction(userActions.cancelFollowRequest, targetUID, 'Request cancelled'),
-    onAccept: (targetUID) => handleAction(userActions.acceptRequest, targetUID, 'Request accepted! 🤝'),
-    onDecline: (targetUID) => handleAction(userActions.declineRequest, targetUID, 'Request declined')
   };
 
   if (loading) {
     return (
       <div className="min-vh-100 d-flex justify-content-center align-items-center">
         <div className="text-center">
-          <div className="spinner-border text-primary mb-3" style={{ width: '3rem', height: '3rem' }}></div>
+          <div className="spinner-border text-primary mb-3"></div>
           <p className="text-muted">Loading blocked users...</p>
         </div>
       </div>
@@ -51,18 +38,17 @@ export default function Blocked() {
     <div className="container-fluid py-4">
       <div className="row justify-content-center">
         <div className="col-12 col-lg-10 col-xl-8">
-
           <div className="d-flex justify-content-between align-items-center p-4 bg-white shadow-sm rounded-3 mb-4">
             <div>
-              <h4 className="mb-1 text-danger fw-bold">Blocked Users</h4>
-              <p className="text-muted mb-0">{relations.blocked.length} users blocked</p>
+              <h4 className="mb-1 text-danger fw-bold">Blocked Users ({relations.blocked?.length || 0})</h4>
+              <p className="text-muted mb-0">Users you have blocked</p>
             </div>
             <Link to="/all-insta-users" className="btn btn-primary btn-sm">
               <i className="bi bi-people me-1"></i>Discover Users
             </Link>
           </div>
 
-          {relations.blocked.length === 0 ? (
+          {!relations.blocked || relations.blocked.length === 0 ? (
             <div className="text-center py-5 bg-white rounded-3 shadow-sm">
               <i className="bi bi-person-slash display-1 text-muted mb-3"></i>
               <h5 className="text-muted">No blocked users</h5>
@@ -71,16 +57,40 @@ export default function Blocked() {
             </div>
           ) : (
             <div className="row g-3">
-              {relations.blocked.map((blockedUser) => (
-                <div key={blockedUser.uid} className="col-12 rounded-1 shadow-sm border my-2 border-light">
-                  <UserCard
-                    user={blockedUser}
-                    // currentUserId={currentUser?.uid}
-                    relations={relations}
-                    calculateRelationship={calculateRelationship}
-                    variant="blocked"
-                    {...actionHandlers}
-                  />
+              {relations.blocked.map((user) => (
+                <div key={user.uid} className="col-12">
+                  <div className="card border-0 shadow-sm mb-3">
+                    <div className="card-body">
+                      <div className="d-flex align-items-center justify-content-between">
+                        <div 
+                          className="d-flex align-items-center flex-grow-1"
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => window.location.href = `/user-profile/${user.uid}`}
+                        >
+                          <img
+                            src={user.photoURL || '/icons/avatar.jpg'}
+                            alt={user.username}
+                            className="rounded-circle me-3"
+                            style={{ width: 50, height: 50, objectFit: 'cover' }}
+                          />
+                          <div>
+                            <h6 className="mb-0 fw-bold">{user.username || 'Unnamed User'}</h6>
+                            {user.displayName && (
+                              <p className="mb-0 text-muted small">{user.displayName}</p>
+                            )}
+                            <span className="badge bg-danger mt-1">Blocked</span>
+                          </div>
+                        </div>
+
+                        <button 
+                          className="btn btn-sm btn-outline-success"
+                          onClick={() => handleUnblock(user.uid)}
+                        >
+                          Unblock
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>

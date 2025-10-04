@@ -10,13 +10,8 @@ const UserCard = memo(
     calculateRelationship,
     onFollow,
     onUnfollow,
-    onRemove,
-    onAccept,
-    onDecline,
-    onBlock,
-    onUnblock,
     onCancelRequest,
-    variant = "default", // 'default', 'requested', 'follower', 'following', 'friends', 'blocked'
+    variant = "default",
   }) => {
     const navigate = useNavigate();
     const [imageError, setImageError] = useState(false);
@@ -30,7 +25,6 @@ const UserCard = memo(
       isFriend,
       hasSentRequest,
       hasReceivedRequest,
-      isBlocked,
     } = relationship;
 
     const handleAction = useCallback(
@@ -54,250 +48,211 @@ const UserCard = memo(
 
     if (!user) return null;
 
-    // Action button configurations
-    const getActionButtons = () => {
+    // Get appropriate button based on relationship
+    const getActionButton = () => {
       if (isOwner || !currentUserId) return null;
 
-      const baseButtons = [
-        !isBlocked
-          ? {
-            key: "block",
-            label: (
-              <>
-                <i className="bi bi-ban" /> Block
-              </>
-            ),
-            action: () => handleAction("block", onBlock, user.uid),
-            variant: "outline-warning",
-            title: "Block user",
-            loading: actionLoading === "block",
-          }
-          : {
-            key: "unblock",
-            label: (
-              <>
-                <i className="bi bi-unlock" /> Unblock
-              </>
-            ),
-            action: () => handleAction("unblock", onUnblock, user.uid),
-            variant: "outline-success",
-            title: "Unblock user",
-            loading: actionLoading === "unblock",
-          },
-      ];
+      // Requested variant - user has sent you a follow request
+      if (variant === "requested") {
+        return (
+          <div className="d-flex gap-2">
+            <button
+              className="btn btn-primary btn-sm px-3 rounded-pill"
+              onClick={(e) => {
+                e.stopPropagation();
+                // This would need an accept function - you might want to add this
+                toast.info("Accept functionality would go here");
+              }}
+              disabled={actionLoading}
+            >
+              {actionLoading === "accept" ? (
+                <span className="spinner-border spinner-border-sm" />
+              ) : (
+                "Accept"
+              )}
+            </button>
+            <button
+              className="btn btn-outline-secondary btn-sm px-3 rounded-pill"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleAction("decline", onCancelRequest, user.uid);
+              }}
+              disabled={actionLoading}
+            >
+              {actionLoading === "decline" ? (
+                <span className="spinner-border spinner-border-sm" />
+              ) : (
+                "Delete"
+              )}
+            </button>
+          </div>
+        );
+      }
 
-      const variantSpecificButtons = {
-        requested: [
-          {
-            key: "accept",
-            label: "Accept",
-            action: () => handleAction("accept", onAccept, user.uid),
-            variant: "success",
-            loading: actionLoading === "accept",
-          },
-          {
-            key: "decline",
-            label: "Decline",
-            action: () => handleAction("decline", onDecline, user.uid),
-            variant: "outline-danger",
-            loading: actionLoading === "decline",
-          },
-        ],
-        follower: [
-          !isFriend && !isFollowing
-            ? {
-              key: "followBack",
-              label: "Follow Back",
-              action: () => handleAction("followBack", onFollow, user.uid),
-              variant: "primary",
-              loading: actionLoading === "followBack",
-            }
-            : null,
-          {
-            key: "remove",
-            label: (
-              <>
-                <i className="bi bi-person-dash" /> Remove
-              </>
-            ),
-            action: () => handleAction("remove", onRemove, user.uid),
-            variant: "outline-danger",
-            title: "Remove follower",
-            loading: actionLoading === "remove",
-          },
-        ].filter(Boolean),
-        following: [
-          {
-            key: "unfollow",
-            label: "Unfollow",
-            action: () => handleAction("unfollow", onUnfollow, user.uid),
-            variant: "outline-danger",
-            loading: actionLoading === "unfollow",
-          },
-        ],
-        friends: [
-          {
-            key: "unfriend",
-            label: "Unfriend",
-            action: () => handleAction("unfriend", onUnfollow, user.uid),
-            variant: "danger",
-            loading: actionLoading === "unfriend",
-          },
-        ],
-        blocked: [
-          {
-            key: "unblock",
-            label: (
-              <>
-                <i className="bi bi-unlock" /> Unblock
-              </>
-            ),
-            action: () => handleAction("unblock", onUnblock, user.uid),
-            variant: "outline-success",
-            title: "Unblock user",
-            loading: actionLoading === "unblock",
-          },
-        ],
-        default: [
-          hasSentRequest
-            ? {
-              key: "cancel",
-              label: "Cancel Request",
-              action: () => handleAction("cancel", onCancelRequest, user.uid),
-              variant: "secondary",
-              loading: actionLoading === "cancel",
-            }
-            : hasReceivedRequest
-              ? {
-                key: "respond",
-                label: "Respond to Request",
-                action: () => { },
-                variant: "outline-primary",
-                loading: false,
-                disabled: true,
-              }
-              : isFriend
-                ? {
-                  key: "unfriend",
-                  label: "Unfriend",
-                  action: () => handleAction("unfriend", onUnfollow, user.uid),
-                  variant: "danger",
-                  loading: actionLoading === "unfriend",
-                }
-                : isFollowing
-                  ? {
-                    key: "unfollow",
-                    label: "Unfollow",
-                    action: () => handleAction("unfollow", onUnfollow, user.uid),
-                    variant: "outline-danger",
-                    loading: actionLoading === "unfollow",
-                  }
-                  : {
-                    key: "follow",
-                    label: "Follow",
-                    action: () => handleAction("follow", onFollow, user.uid),
-                    variant: "primary",
-                    loading: actionLoading === "follow",
-                  },
-        ],
-      };
+      // Following variant - you are following this user
+      if (variant === "following" || isFollowing) {
+        return (
+          <button
+            className="btn btn-outline-secondary btn-sm px-3 rounded-pill"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleAction("unfollow", onUnfollow, user.uid);
+            }}
+            disabled={actionLoading === "unfollow"}
+          >
+            {actionLoading === "unfollow" ? (
+              <span className="spinner-border spinner-border-sm" />
+            ) : (
+              "Following"
+            )}
+          </button>
+        );
+      }
 
-      return [
-        ...baseButtons,
-        ...(variantSpecificButtons[variant] || variantSpecificButtons.default),
-      ];
+      // Friends variant - mutual follow
+      if (variant === "friends" || isFriend) {
+        return (
+          <button
+            className="btn btn-outline-secondary btn-sm px-3 rounded-pill"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleAction("unfriend", onUnfollow, user.uid);
+            }}
+            disabled={actionLoading === "unfriend"}
+          >
+            {actionLoading === "unfriend" ? (
+              <span className="spinner-border spinner-border-sm" />
+            ) : (
+              "Friends"
+            )}
+          </button>
+        );
+      }
+
+      // Has sent request - waiting for approval
+      if (hasSentRequest) {
+        return (
+          <button
+            className="btn btn-outline-secondary btn-sm px-3 rounded-pill"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleAction("cancel", onCancelRequest, user.uid);
+            }}
+            disabled={actionLoading === "cancel"}
+          >
+            {actionLoading === "cancel" ? (
+              <span className="spinner-border spinner-border-sm" />
+            ) : (
+              "Requested"
+            )}
+          </button>
+        );
+      }
+
+      // Default - follow button
+      return (
+        <button
+          className="btn btn-primary btn-sm px-3 rounded-pill"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleAction("follow", onFollow, user.uid);
+          }}
+          disabled={actionLoading === "follow"}
+        >
+          {actionLoading === "follow" ? (
+            <span className="spinner-border spinner-border-sm" />
+          ) : (
+            "Follow"
+          )}
+        </button>
+      );
     };
 
-    const actionButtons = getActionButtons();
+    // Get status text
+    const getStatusText = () => {
+      if (isFriend) return "Friends";
+      if (hasReceivedRequest) return "Requested to follow you";
+      if (hasSentRequest) return "Request sent";
+      if (isFollowing) return "Following";
+      if (isFollower) return "Follows you";
+      return null;
+    };
+
+    const statusText = getStatusText();
 
     return (
-      <div className="my-2 px-3 py-1">
-        <div className="d-flex align-items-center justify-content-between flex-wrap">
-          {/* User Info */}
-          <div
-            className="d-flex align-items-center flex-grow-1"
-            onClick={handleUserClick}
-            style={{ cursor: "pointer" }}
-          >
-            <div className="position-relative">
-              <img
-                src={
-                  imageError
-                    ? "/icons/avatar.jpg"
-                    : user.photoURL || "/icons/avatar.jpg"
-                }
-                alt={user.username}
-                className="rounded-circle me-3"
-                style={{ width: 50, height: 50, objectFit: "cover" }}
-                onError={() => setImageError(true)}
+      <div className="d-flex align-items-center justify-content-between">
+        {/* User Info */}
+        <div
+          className="d-flex align-items-center flex-grow-1"
+          onClick={handleUserClick}
+          style={{ cursor: "pointer" }}
+        >
+          <div className="position-relative">
+            <img
+              src={
+                imageError
+                  ? "/icons/avatar.jpg"
+                  : user.photoURL || "/icons/avatar.jpg"
+              }
+              alt={user.username}
+              className="rounded-circle"
+              style={{ 
+                width: 56, 
+                height: 56, 
+                objectFit: "cover",
+                border: "2px solid #f8f9fa"
+              }}
+              onError={() => setImageError(true)}
+            />
+            {user.isOnline && (
+              <div
+                className="position-absolute bottom-0 end-0 bg-success rounded-circle border border-2 border-white"
+                style={{ width: 14, height: 14 }}
+                title="Online"
               />
-              {user.isOnline && (
-                <div
-                  className="position-absolute bottom-0 end-0 bg-success rounded-circle border border-2 border-white"
-                  style={{ width: 12, height: 12 }}
-                  title="Online"
-                />
-              )}
-            </div>
-
-            <div className="flex-grow-1">
-              <div className="d-flex align-items-center">
-                <h6 className="mb-0 fw-bold">
-                  {user.username || "Unnamed User"}
-                  {user.isVerified && (
-                    <i
-                      className="bi bi-patch-check-fill text-primary ms-1"
-                      title="Verified"
-                    />
-                  )}
-                </h6>
-              </div>
-            </div>
+            )}
           </div>
 
-          {/* Action Buttons */}
-          {actionButtons && (
-            <div className="d-flex flex-wrap gap-1 m-2 mb-0 pb-0 w-100">
-              {actionButtons.map((button) => (
-                <button
-                  key={button.key}
-                  className={`btn btn-${button.variant} btn-sm`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    button.action();
-                  }}
-                  disabled={button.loading || button.disabled}
-                  title={button.title}
-                >
-                  {button.loading ? (
-                    <span className="spinner-border spinner-border-sm" />
-                  ) : (
-                    button.label
-                  )}
-                </button>
-              ))}
+          <div className="ms-3 flex-grow-1">
+            <div className="d-flex align-items-center">
+              <h6 className="mb-0 fw-bold text-dark">
+                {user.username || user.displayName || "Unnamed User"}
+                {user.isVerified && (
+                  <i
+                    className="bi bi-patch-check-fill text-primary ms-1"
+                    title="Verified"
+                  />
+                )}
+              </h6>
             </div>
-          )}
+            
+            {/* Display Name */}
+            {user.displayName && user.displayName !== user.username && (
+              <p className="mb-0 text-muted small">
+                {user.displayName}
+              </p>
+            )}
+            
+            {/* Status */}
+            {statusText && (
+              <p className="mb-0 text-muted small">
+                {statusText}
+              </p>
+            )}
+            
+            {/* Bio (if available) */}
+            {user.bio && (
+              <p className="mb-0 text-muted small mt-1">
+                {user.bio.length > 60 ? `${user.bio.substring(0, 60)}...` : user.bio}
+              </p>
+            )}
+          </div>
         </div>
 
-        {/* Status Badges */}
-        <div className="small">
-          {isFriend && <span className="badge bg-success me-5 mt-3">Friends</span>}
-          {hasReceivedRequest && (
-            <span className="badge bg-warning me-5 mt-3">
-              Requested to follow you
-            </span>
-          )}
-          {hasSentRequest && (
-            <span className="badge bg-secondary me-5 mt-3">Request sent</span>
-          )}
-          {isBlocked && <span className="badge bg-danger me-5 mt-3">Blocked</span>}
-          {isFollowing && !isFriend && (
-            <span className="badge bg-info me-5 mt-3">Following</span>
-          )}
-          {isFollower && !isFriend && (
-            <span className="badge bg-primary me-5 mt-3">Follows you</span>
-          )}
+        {/* Action Button */}
+        <div className="ms-2">
+          {getActionButton()}
         </div>
       </div>
     );

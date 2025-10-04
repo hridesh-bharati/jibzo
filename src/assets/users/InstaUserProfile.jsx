@@ -22,7 +22,7 @@ export default function UserProfile() {
   const { relations: currentUserRelations, calculateRelationship } = useUserRelations(currentUser?.uid);
   const userActions = useUserActions();
 
-  // Fetch profile user data
+  // Fetch profile user data and their relationships
   useEffect(() => {
     if (!uid) return;
     
@@ -32,13 +32,13 @@ export default function UserProfile() {
         const data = snap.val();
         setUserData(data);
         
-        // Extract follower and following counts from profile user's data
-        const followersCount = Object.keys(data.followers || {}).length;
-        const followingCount = Object.keys(data.following || {}).length;
+        // Extract actual follower and following data from profile user
+        const followers = data.followers ? Object.keys(data.followers) : [];
+        const following = data.following ? Object.keys(data.following) : [];
         
         setProfileRelations({
-          followers: Array(followersCount).fill({}), // Just for count display
-          following: Array(followingCount).fill({})  // Just for count display
+          followers: followers,
+          following: following
         });
       }
       setLoading(false);
@@ -210,7 +210,7 @@ export default function UserProfile() {
         )}
       </div>
 
-      {/* Relationship Stats with Counts */}
+      {/* Relationship Stats with Actual Counts */}
       <div className="d-flex gap-2 m-3 flex-wrap">
         <Link
           to={`/followers/${uid}`}
@@ -226,7 +226,7 @@ export default function UserProfile() {
           <i className="bi bi-person-check me-1"></i>
           Following: {profileRelations.following.length}
         </Link>
-        {currentUser?.uid === uid && currentUserRelations.requested.length > 0 && (
+        {currentUser?.uid === uid && currentUserRelations.requested && currentUserRelations.requested.length > 0 && (
           <Link
             to={`/requested/${uid}`}
             className="btn btn-sm btn-outline-warning"
@@ -235,7 +235,7 @@ export default function UserProfile() {
             Requests: {currentUserRelations.requested.length}
           </Link>
         )}
-        {currentUser?.uid === uid && currentUserRelations.blocked.length > 0 && (
+        {currentUser?.uid === uid && currentUserRelations.blocked && currentUserRelations.blocked.length > 0 && (
           <Link
             to={`/blocked/${uid}`}
             className="btn btn-sm btn-outline-danger"

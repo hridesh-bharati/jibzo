@@ -1,11 +1,19 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { db, auth } from "../../assets/utils/firebaseConfig";
-import { ref, onValue, update, remove, push } from "firebase/database";
+import { ref, onValue, update, remove, push, off } from "firebase/database";
 import StatusBubble from "./StatusBubble";
 import { useNavigate } from "react-router-dom";
-import { Button, Form, Modal } from "react-bootstrap";
-import { FaHeart, FaComment, FaTimes, FaPaperPlane, FaEllipsisV } from "react-icons/fa";
-import "./ViewStatuses.css"; // We'll create this CSS file
+import { Button, Modal } from "react-bootstrap";
+import { 
+  FaHeart, 
+  FaComment, 
+  FaTimes, 
+  FaPaperPlane, 
+  FaEllipsisV,
+  FaEye,
+  FaShare
+} from "react-icons/fa";
+import { toast } from "react-toastify";
 
 export default function ViewStatuses() {
   const navigate = useNavigate();
@@ -16,67 +24,194 @@ export default function ViewStatuses() {
   const [commentText, setCommentText] = useState("");
   const [showActivity, setShowActivity] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [hearts, setHearts] = useState([]);
+  const [liveData, setLiveData] = useState({});
+  const [typingUsers, setTypingUsers] = useState({});
+  const [isLoading, setIsLoading] = useState(true);
+  
   const timerRef = useRef(null);
   const videoRef = useRef(null);
+  const commentInputRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
   const touchStartX = useRef(0);
   const touchEndX = useRef(0);
 
   const currentUserId = auth.currentUser?.uid;
 
-  // Fetch users
+  // Real-time Users Listener
   useEffect(() => {
     const usersRef = ref(db, "usersData");
-    return onValue(usersRef, (snap) => setUsers(snap.val() || {}));
+    const unsubscribe = onValue(usersRef, (snap) => {
+      setUsers(snap.val() || {});
+    });
+    return () => unsubscribe();
   }, []);
 
-  // Fetch statuses
+  // Real-time Statuses Listener with Auto-cleanup
   useEffect(() => {
     const statusesRef = ref(db, "statuses");
-    return onValue(statusesRef, (snap) => {
+    setIsLoading(true);
+
+    const unsubscribe = onValue(statusesRef, (snap) => {
       const all = snap.val() || {};
       const now = Date.now();
+      const expiryTime = 24 * 60 * 60 * 1000; // 24 hours
       const filtered = {};
-      Object.entries(all).forEach(([uid, sts]) => {
-        Object.entries(sts).forEach(([id, s]) => {
-          if (now - s.timestamp <= 24 * 60 * 60 * 1000) {
+      const cleanupPromises = [];
+
+      Object.entries(all).forEach(([uid, userStatuses]) => {
+        if (!userStatuses) return;
+        
+        Object.entries(userStatuses).forEach(([statusId, status]) => {
+          if (status && now - status.timestamp <= expiryTime) {
             if (!filtered[uid]) filtered[uid] = {};
-            filtered[uid][id] = s;
+            filtered[uid][statusId] = {
+              ...status,
+              id: statusId,
+              timeLeft: Math.max(0, 24 - Math.floor((now - status.timestamp) / (1000 * 60 * 60)))
+            };
+          } else {
+            // Auto-delete expired statuses
+            cleanupPromises.push(remove(ref(db, `statuses/${uid}/${statusId}`)));
           }
         });
       });
+
       setStatuses(filtered);
+      setIsLoading(false);
+      
+      // Cleanup expired statuses
+      if (cleanupPromises.length > 0) {
+        Promise.all(cleanupPromises).catch(console.error);
+      }
     });
+
+    return () => unsubscribe();
   }, []);
 
-  const markAsViewed = (userId, statusId) => {
-    if (!currentUserId || currentUserId === userId) return;
-    update(ref(db, `statuses/${userId}/${statusId}/viewers/${currentUserId}`), {
-      seenAt: Date.now(),
-      seenBy: users[currentUserId]?.username || "Anonymous"
+  // Real-time data for current viewer
+  useEffect(() => {
+    if (!viewer) return;
+
+    const [currentStatusId] = viewer.stories[viewer.index];
+    const statusRef = ref(db, `statuses/${viewer.userId}/${currentStatusId}`);
+    
+    const unsubscribe = onValue(statusRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        setLiveData(prev => ({
+          ...prev,
+          [currentStatusId]: {
+            ...data,
+            timeLeft: Math.max(0, 24 - Math.floor((Date.now() - data.timestamp) / (1000 * 60 * 60)))
+          }
+        }));
+      }
     });
+
+    return () => unsubscribe();
+  }, [viewer?.userId, viewer?.index]);
+
+  // Real-time typing indicators
+  useEffect(() => {
+    if (!viewer || !currentUserId) return;
+
+    const [currentStatusId] = viewer.stories[viewer.index];
+    const typingRef = ref(db, `statuses/${viewer.userId}/${currentStatusId}/typing`);
+    
+    const unsubscribe = onValue(typingRef, (snapshot) => {
+      const data = snapshot.val() || {};
+      setTypingUsers(data);
+    });
+
+    return () => unsubscribe();
+  }, [viewer?.userId, viewer?.index, currentUserId]);
+
+  const markAsViewed = useCallback((userId, statusId) => {
+    if (!currentUserId || currentUserId === userId) return;
+    
+    const viewerData = {
+      seenAt: Date.now(),
+      seenBy: users[currentUserId]?.username || "Anonymous",
+      userPic: users[currentUserId]?.photoURL || "/icons/avatar.jpg"
+    };
+    
+    update(ref(db, `statuses/${userId}/${statusId}/viewers/${currentUserId}`), viewerData);
+  }, [currentUserId, users]);
+
+  const createHeart = (x, y) => {
+    const heart = {
+      id: Date.now() + Math.random(),
+      x,
+      y,
+      scale: Math.random() * 0.5 + 0.5
+    };
+    setHearts(prev => [...prev, heart]);
+    setTimeout(() => {
+      setHearts(prev => prev.filter(h => h.id !== heart.id));
+    }, 1000);
   };
 
-  const toggleLike = (userId, statusId) => {
+  const toggleLike = useCallback((userId, statusId, e) => {
     if (!currentUserId) return;
-    const likeRef = ref(db, `statuses/${userId}/${statusId}/likes/${currentUserId}`);
-    onValue(
-      likeRef,
-      (snap) => {
-        if (snap.exists()) {
-          remove(likeRef);
-        } else {
-          update(likeRef, {
-            likedAt: Date.now(),
-            likedBy: users[currentUserId]?.username || "Anonymous"
-          });
-        }
-      },
-      { onlyOnce: true }
-    );
-  };
+    
+    if (e) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      createHeart(x, y);
+    }
 
-  const addComment = (userId, statusId) => {
+    const likeRef = ref(db, `statuses/${userId}/${statusId}/likes/${currentUserId}`);
+    
+    // Check if already liked
+    onValue(likeRef, (snapshot) => {
+      if (snapshot.exists()) {
+        // Unlike
+        remove(likeRef);
+        toast.info("Like removed");
+      } else {
+        // Like
+        update(likeRef, {
+          likedAt: Date.now(),
+          likedBy: users[currentUserId]?.username || "Anonymous",
+          userPic: users[currentUserId]?.photoURL || "/icons/avatar.jpg"
+        });
+        toast.success("Liked! ❤️");
+      }
+    }, { onlyOnce: true });
+  }, [currentUserId, users]);
+
+  const handleTyping = useCallback((userId, statusId, isTyping) => {
+    if (!currentUserId) return;
+
+    const typingRef = ref(db, `statuses/${userId}/${statusId}/typing/${currentUserId}`);
+    
+    if (isTyping) {
+      update(typingRef, {
+        username: users[currentUserId]?.username || "Someone",
+        startedAt: Date.now(),
+        userPic: users[currentUserId]?.photoURL || "/icons/avatar.jpg"
+      });
+      
+      // Clear typing indicator after 3 seconds
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      typingTimeoutRef.current = setTimeout(() => {
+        remove(typingRef);
+      }, 3000);
+    } else {
+      remove(typingRef);
+    }
+  }, [currentUserId, users]);
+
+  const addComment = useCallback((userId, statusId) => {
     if (!currentUserId || commentText.trim() === "") return;
+    
+    // Clear typing indicator
+    handleTyping(userId, statusId, false);
+    
     const commentRef = ref(db, `statuses/${userId}/${statusId}/comments`);
     push(commentRef, {
       uid: currentUserId,
@@ -85,38 +220,44 @@ export default function ViewStatuses() {
       commentedBy: users[currentUserId]?.username || "Anonymous",
       userPic: users[currentUserId]?.photoURL || "/icons/avatar.jpg"
     });
+    
     setCommentText("");
-  };
+    toast.success("Comment posted!");
+  }, [currentUserId, commentText, users, handleTyping]);
 
-  const deleteStatus = (userId, statusId) => {
-    // Security check - only allow deletion if current user owns the status
+  const deleteStatus = useCallback((userId, statusId) => {
     if (currentUserId !== userId) {
-      alert("You can only delete your own statuses.");
+      toast.error("You can only delete your own statuses.");
       return;
     }
     remove(ref(db, `statuses/${userId}/${statusId}`));
     setViewer(null);
     setShowDeleteConfirm(false);
-  };
+    toast.success("Status deleted");
+  }, [currentUserId]);
 
-  const openViewer = (userId, stories, index = 0) => {
+  const openViewer = useCallback((userId, stories, index = 0) => {
     const sorted = Object.entries(stories).sort((a, b) => a[1].timestamp - b[1].timestamp);
     setViewer({ userId, stories: sorted, index });
     setProgress(0);
     setShowActivity(false);
     markAsViewed(userId, sorted[index][0]);
-  };
+  }, [markAsViewed]);
 
-  const closeViewer = () => {
+  const closeViewer = useCallback(() => {
     setViewer(null);
     setProgress(0);
     setCommentText("");
     setShowActivity(false);
     setShowDeleteConfirm(false);
+    setLiveData({});
+    setTypingUsers({});
+    
     if (timerRef.current) clearInterval(timerRef.current);
-  };
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+  }, []);
 
-  const nextStory = () => {
+  const nextStory = useCallback(() => {
     if (!viewer) return;
     if (viewer.index < viewer.stories.length - 1) {
       const newIndex = viewer.index + 1;
@@ -125,9 +266,9 @@ export default function ViewStatuses() {
       setShowActivity(false);
       markAsViewed(viewer.userId, viewer.stories[newIndex][0]);
     } else closeViewer();
-  };
+  }, [viewer, closeViewer, markAsViewed]);
 
-  const prevStory = () => {
+  const prevStory = useCallback(() => {
     if (!viewer) return;
     if (viewer.index > 0) {
       const newIndex = viewer.index - 1;
@@ -135,12 +276,13 @@ export default function ViewStatuses() {
       setProgress(0);
       setShowActivity(false);
     }
-  };
+  }, [viewer]);
 
-  // Progress & auto-advance
+  // Real-time progress & auto-advance
   useEffect(() => {
     if (!viewer) return;
     if (timerRef.current) clearInterval(timerRef.current);
+    
     const [statusId, status] = viewer.stories[viewer.index];
     if (!status) return;
 
@@ -154,11 +296,19 @@ export default function ViewStatuses() {
       }, 50);
     } else if (status.type === "video" && videoRef.current) {
       const vid = videoRef.current;
-      const handleTimeUpdate = () => vid.duration && setProgress((vid.currentTime / vid.duration) * 100);
+      const handleTimeUpdate = () => {
+        if (vid.duration) {
+          const pct = (vid.currentTime / vid.duration) * 100;
+          setProgress(pct);
+        }
+      };
       const handleEnded = () => nextStory();
+      
       vid.addEventListener("timeupdate", handleTimeUpdate);
       vid.addEventListener("ended", handleEnded);
+      
       vid.play().catch(console.log);
+      
       return () => {
         vid.removeEventListener("timeupdate", handleTimeUpdate);
         vid.removeEventListener("ended", handleEnded);
@@ -166,16 +316,20 @@ export default function ViewStatuses() {
     }
 
     return () => timerRef.current && clearInterval(timerRef.current);
-  }, [viewer?.index, viewer?.stories]);
+  }, [viewer?.index, viewer?.stories, nextStory]);
 
-  // Escape key to close
+  // Real-time escape key handler
   useEffect(() => {
     const handleEscape = (e) => e.key === "Escape" && closeViewer();
-    if (viewer) document.addEventListener("keydown", handleEscape);
-    else document.removeEventListener("keydown", handleEscape);
-    document.body.style.overflow = viewer ? "hidden" : "auto";
+    if (viewer) {
+      document.addEventListener("keydown", handleEscape);
+      document.body.style.overflow = "hidden";
+    } else {
+      document.removeEventListener("keydown", handleEscape);
+      document.body.style.overflow = "auto";
+    }
     return () => document.removeEventListener("keydown", handleEscape);
-  }, [viewer]);
+  }, [viewer, closeViewer]);
 
   const handleTouchStart = (e) => (touchStartX.current = e.changedTouches[0].screenX);
   const handleTouchEnd = (e) => {
@@ -192,53 +346,124 @@ export default function ViewStatuses() {
     else if (e.clientX > (screenWidth * 2) / 3) nextStory();
   };
 
+  const handleCommentChange = (e) => {
+    setCommentText(e.target.value);
+    if (viewer) {
+      const [statusId] = viewer.stories[viewer.index];
+      handleTyping(viewer.userId, statusId, e.target.value.length > 0);
+    }
+  };
+
+  const shareStatus = useCallback((userId, statusId) => {
+    const statusUrl = `${window.location.origin}/status/${userId}/${statusId}`;
+    navigator.clipboard.writeText(statusUrl).then(() => {
+      toast.success("Status link copied to clipboard!");
+    }).catch(() => {
+      toast.error("Failed to copy link");
+    });
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="status-container">
+        <div className="loading-container">
+          <div className="spinner-border text-primary mb-3"></div>
+          <p>Loading stories...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="status-container">
-      {/* Header */}
+      {/* Real-time Header */}
       <div className="status-header">
         <div className="header-content">
-          <h1 className="app-title">What's Happening?</h1>
-          {auth.currentUser && (
-            <Button className="add-story-btn" onClick={() => navigate("/status/upload")}>
-              <span className="btn-icon"> <i className="bi bi-plus-circle"></i> </span> New Story
-            </Button>
-          )}
+          <div className="title-section">
+            <h1 className="app-title gradient-text">📱 Live Stories</h1>
+            <p className="app-subtitle">
+              🔄 {Object.keys(statuses).length} active stories • Updates in real-time
+            </p>
+          </div>
+          <div className="header-actions">
+            {auth.currentUser && (
+              <Button className="add-story-btn glow-effect" onClick={() => navigate("/status/upload")}>
+                <span className="btn-icon">+</span> New Story
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Status Strip */}
-      <div className="status-strip">
-        {Object.entries(statuses)
-          .sort(([uidA, storiesA], [uidB, storiesB]) => {
-            if (!currentUserId) return 0;
-            if (uidA === currentUserId) return -1;
-            if (uidB === currentUserId) return 1;
-            const aSeen = Object.values(storiesA).every((s) => s.viewers?.[currentUserId]);
-            const bSeen = Object.values(storiesB).every((s) => s.viewers?.[currentUserId]);
-            if (aSeen && !bSeen) return 1;
-            if (!aSeen && bSeen) return -1;
-            return 0;
-          })
-          .map(([uid, stories]) => {
-            const userData = users[uid] || Object.values(stories)[0];
-            const isSeen = Object.values(stories).every((s) => s.viewers?.[currentUserId]);
-            return (
-              <StatusBubble
-                key={uid}
-                user={userData}
-                isSeen={isSeen}
-                onClick={() => openViewer(uid, stories)}
-              />
-            );
-          })}
+      {/* Real-time Status Strip */}
+      <div className="status-strip-container">
+        {Object.keys(statuses).length === 0 ? (
+          <div className="no-stories">
+            <i className="bi bi-camera-video-off display-1 text-muted mb-3"></i>
+            <h4>No Active Stories</h4>
+            <p>Be the first to share a story!</p>
+            {auth.currentUser && (
+              <Button className="btn-primary" onClick={() => navigate("/status/upload")}>
+                Create First Story
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div className="status-strip">
+            {Object.entries(statuses)
+              .sort(([uidA, storiesA], [uidB, storiesB]) => {
+                if (!currentUserId) return 0;
+                if (uidA === currentUserId) return -1;
+                if (uidB === currentUserId) return 1;
+                
+                const aSeen = Object.values(storiesA).every((s) => s.viewers?.[currentUserId]);
+                const bSeen = Object.values(storiesB).every((s) => s.viewers?.[currentUserId]);
+                if (aSeen && !bSeen) return 1;
+                if (!aSeen && bSeen) return -1;
+                
+                return 0;
+              })
+              .map(([uid, stories]) => {
+                const userData = users[uid] || Object.values(stories)[0];
+                const isSeen = Object.values(stories).every((s) => s.viewers?.[currentUserId]);
+                const isOwn = uid === currentUserId;
+                const totalViews = Object.values(stories).reduce((sum, story) => 
+                  sum + Object.keys(story.viewers || {}).length, 0
+                );
+                const totalLikes = Object.values(stories).reduce((sum, story) => 
+                  sum + Object.keys(story.likes || {}).length, 0
+                );
+                
+                return (
+                  <StatusBubble
+                    key={uid}
+                    user={userData}
+                    isSeen={isSeen}
+                    isOwn={isOwn}
+                    storyCount={Object.keys(stories).length}
+                    totalViews={totalViews}
+                    totalLikes={totalLikes}
+                    onClick={() => openViewer(uid, stories)}
+                  />
+                );
+              })}
+          </div>
+        )}
       </div>
 
-      {/* Fullscreen Viewer */}
+      {/* Real-time Fullscreen Viewer */}
       {viewer && (() => {
-        const [statusId, status] = viewer.stories[viewer.index];
-        const likes = status.likes || {};
-        const comments = status.comments || {};
+        const [statusId, originalStatus] = viewer.stories[viewer.index];
+        const liveStatus = liveData[statusId] || originalStatus;
+        const likes = liveStatus.likes || {};
+        const comments = liveStatus.comments || {};
+        const viewers = liveStatus.viewers || {};
         const isOwner = currentUserId === viewer.userId;
+
+        // Get typing users (excluding current user)
+        const typingUserList = Object.values(typingUsers).filter(user => 
+          user.username && user.username !== users[currentUserId]?.username
+        );
 
         return (
           <div
@@ -247,11 +472,10 @@ export default function ViewStatuses() {
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
           >
-            {/* Gradient Background */}
-            <div className="viewer-background"></div>
+            <div className="viewer-background animated-bg"></div>
 
             <div className="story-viewer">
-              {/* Progress Bars */}
+              {/* Real-time Progress Bars */}
               <div className="story-progress-container">
                 {viewer.stories.map((_, i) => (
                   <div key={i} className="progress-track">
@@ -260,7 +484,7 @@ export default function ViewStatuses() {
                       style={{
                         width: i < viewer.index ? "100%" : i === viewer.index ? `${progress}%` : "0%",
                         background: i === viewer.index ?
-                          "linear-gradient(90deg, #ff6b9d, #ff006a)" :
+                          "linear-gradient(90deg, #ff6b9d, #ff006a, #ff6b9d)" :
                           "rgba(255,255,255,0.6)"
                       }}
                     />
@@ -268,32 +492,46 @@ export default function ViewStatuses() {
                 ))}
               </div>
 
-              {/* Viewer Header */}
+              {/* Real-time Viewer Header */}
               <div className="viewer-header">
                 <div className="user-info">
                   <div className="avatar-container">
                     <img
-                      src={status.userPic || users[viewer.userId]?.photoURL || "/icons/avatar.jpg"}
+                      src={liveStatus.userPic || users[viewer.userId]?.photoURL || "/icons/avatar.jpg"}
                       className="user-avatar"
                       alt="user"
                     />
-                    <div className="online-indicator"></div>
+                    <div className="online-indicator pulse"></div>
                   </div>
                   <div className="user-details">
                     <span className="username">
-                      {status.userName || users[viewer.userId]?.username || "User"}
+                      {liveStatus.userName || users[viewer.userId]?.username || "User"}
                     </span>
                     <span className="timestamp">
-                      {new Date(status.timestamp).toLocaleTimeString([], {
+                      {new Date(liveStatus.timestamp).toLocaleTimeString([], {
                         hour: "2-digit",
                         minute: "2-digit"
-                      })}
+                      })} • {liveStatus.timeLeft || 24}h left
                     </span>
+                    <div className="live-stats">
+                      <span className="viewers-count">
+                        <FaEye /> {Object.keys(viewers).length}
+                      </span>
+                      <span className="likes-count">
+                        <FaHeart /> {Object.keys(likes).length}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
                 <div className="viewer-actions">
-               
+                  <button
+                    className={`action-btn like-btn ${likes[currentUserId] ? 'liked' : ''}`}
+                    onClick={(e) => toggleLike(viewer.userId, statusId, e)}
+                  >
+                    <FaHeart className="icon" />
+                    <span className="count">{Object.keys(likes).length}</span>
+                  </button>
 
                   <button
                     className="action-btn comment-btn"
@@ -301,6 +539,13 @@ export default function ViewStatuses() {
                   >
                     <FaComment className="icon" />
                     <span className="count">{Object.keys(comments).length}</span>
+                  </button>
+
+                  <button
+                    className="action-btn share-btn"
+                    onClick={(e) => { e.stopPropagation(); shareStatus(viewer.userId, statusId); }}
+                  >
+                    <FaShare className="icon" />
                   </button>
 
                   {isOwner && (
@@ -321,11 +566,26 @@ export default function ViewStatuses() {
                 </div>
               </div>
 
-              {/* Media Content */}
+              {/* Real-time Heart Animations */}
+              {hearts.map(heart => (
+                <div
+                  key={heart.id}
+                  className="heart-bubble"
+                  style={{
+                    left: heart.x,
+                    top: heart.y,
+                    transform: `scale(${heart.scale})`
+                  }}
+                >
+                  ❤️
+                </div>
+              ))}
+
+              {/* Real-time Media Content */}
               <div className="media-container">
-                {status.type === "image" ? (
+                {liveStatus.type === "image" ? (
                   <img
-                    src={status.mediaURL}
+                    src={liveStatus.mediaURL}
                     alt="story"
                     className="story-media"
                     loading="lazy"
@@ -333,27 +593,43 @@ export default function ViewStatuses() {
                 ) : (
                   <video
                     ref={videoRef}
-                    src={status.mediaURL}
+                    src={liveStatus.mediaURL}
                     className="story-media"
                     playsInline
                     controls={false}
+                    autoPlay
+                    muted
                   />
                 )}
 
                 {/* Navigation Arrows */}
-                {/* <button className="nav-arrow prev-arrow" onClick={(e) => { e.stopPropagation(); prevStory(); }}>
+                <button className="nav-arrow prev-arrow" onClick={(e) => { e.stopPropagation(); prevStory(); }}>
                   ‹
                 </button>
                 <button className="nav-arrow next-arrow" onClick={(e) => { e.stopPropagation(); nextStory(); }}>
                   ›
-                </button> */}
+                </button>
               </div>
 
-              {/* Activity Panel */}
+              {/* Real-time Typing Indicator */}
+              {typingUserList.length > 0 && (
+                <div className="typing-indicator">
+                  <div className="typing-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                  <span className="typing-text">
+                    {typingUserList[0].username} is typing...
+                  </span>
+                </div>
+              )}
+
+              {/* Real-time Activity Panel */}
               {showActivity && (
-                <div className="activity-panel" onClick={(e) => e.stopPropagation()}>
+                <div className="activity-panel slide-up" onClick={(e) => e.stopPropagation()}>
                   <div className="panel-header">
-                    <h4>Activity</h4>
+                    <h4>📊 Live Activity</h4>
                     <button className="close-panel" onClick={() => setShowActivity(false)}>
                       <FaTimes />
                     </button>
@@ -369,24 +645,23 @@ export default function ViewStatuses() {
                         <p className="no-activity">No likes yet</p>
                       ) : (
                         <div className="likes-list">
-                          {Object.entries(likes).map(([uid, likeData]) => {
-                            const user = users[uid] || {};
-                            return (
+                          {Object.entries(likes)
+                            .sort((a, b) => b[1].likedAt - a[1].likedAt)
+                            .map(([uid, likeData]) => (
                               <div key={uid} className="activity-item">
                                 <img
-                                  src={user.photoURL || "/icons/avatar.jpg"}
+                                  src={likeData.userPic || users[uid]?.photoURL || "/icons/avatar.jpg"}
                                   alt="user"
                                   className="activity-avatar"
                                 />
                                 <div className="activity-info">
-                                  <span className="activity-user">{user.username || "User"}</span>
+                                  <span className="activity-user">{likeData.likedBy || "User"}</span>
                                   <span className="activity-time">
                                     {new Date(likeData.likedAt).toLocaleTimeString()}
                                   </span>
                                 </div>
                               </div>
-                            );
-                          })}
+                            ))}
                         </div>
                       )}
                     </div>
@@ -401,28 +676,25 @@ export default function ViewStatuses() {
                       ) : (
                         <div className="comments-list">
                           {Object.entries(comments)
-                            .sort((a, b) => a[1].timestamp - b[1].timestamp)
-                            .map(([commentId, comment]) => {
-                              const user = users[comment.uid] || {};
-                              return (
-                                <div key={commentId} className="comment-item">
-                                  <img
-                                    src={comment.userPic || user.photoURL || "/icons/avatar.jpg"}
-                                    alt="user"
-                                    className="comment-avatar"
-                                  />
-                                  <div className="comment-content">
-                                    <div className="comment-header">
-                                      <span className="comment-user">{comment.commentedBy || user.username || "User"}</span>
-                                      <span className="comment-time">
-                                        {new Date(comment.timestamp).toLocaleTimeString()}
-                                      </span>
-                                    </div>
-                                    <p className="comment-text">{comment.text}</p>
+                            .sort((a, b) => b[1].timestamp - a[1].timestamp)
+                            .map(([commentId, comment]) => (
+                              <div key={commentId} className="comment-item">
+                                <img
+                                  src={comment.userPic || users[comment.uid]?.photoURL || "/icons/avatar.jpg"}
+                                  alt="user"
+                                  className="comment-avatar"
+                                />
+                                <div className="comment-content">
+                                  <div className="comment-header">
+                                    <span className="comment-user">{comment.commentedBy || "User"}</span>
+                                    <span className="comment-time">
+                                      {new Date(comment.timestamp).toLocaleTimeString()}
+                                    </span>
                                   </div>
+                                  <p className="comment-text">{comment.text}</p>
                                 </div>
-                              );
-                            })}
+                              </div>
+                            ))}
                         </div>
                       )}
                     </div>
@@ -430,26 +702,20 @@ export default function ViewStatuses() {
                 </div>
               )}
 
-              {/* Comment Input */}
+              {/* Real-time Comment Input */}
               <div className="comment-input-container" onClick={(e) => e.stopPropagation()}>
-                   <button
-                    className={`action-btn like-btn ${likes[currentUserId] ? 'liked' : ''}`}
-                    onClick={(e) => { e.stopPropagation(); toggleLike(viewer.userId, statusId); }}
-                  >
-                    <FaHeart className="icon" />
-                    <span className="count">{Object.keys(likes).length}</span>
-                  </button>
                 <div className="input-group">
                   <input
+                    ref={commentInputRef}
                     type="text"
-                    placeholder="Type your comment..."
+                    placeholder="💬 Type your comment..."
                     value={commentText}
-                    onChange={(e) => setCommentText(e.target.value)}
+                    onChange={handleCommentChange}
                     className="comment-input"
                     onKeyPress={(e) => e.key === 'Enter' && addComment(viewer.userId, statusId)}
                   />
                   <button
-                    className="send-btn"
+                    className="send-btn glow-effect"
                     onClick={() => addComment(viewer.userId, statusId)}
                     disabled={!commentText.trim()}
                   >
@@ -464,23 +730,28 @@ export default function ViewStatuses() {
               show={showDeleteConfirm}
               onHide={() => setShowDeleteConfirm(false)}
               centered
-              className="delete-modal"
+              className="delete-modal fade-modal"
             >
               <Modal.Header closeButton>
-                <Modal.Title>Delete Story</Modal.Title>
+                <Modal.Title>🗑️ Delete Story</Modal.Title>
               </Modal.Header>
               <Modal.Body>
-                Are you sure you want to delete this story? This action cannot be undone.
+                <div className="text-center">
+                  <i className="bi bi-exclamation-triangle text-warning display-4 mb-3"></i>
+                  <p>Are you sure you want to delete this story? This action cannot be undone.</p>
+                  <small className="text-muted">This will remove the story for all users immediately.</small>
+                </div>
               </Modal.Body>
               <Modal.Footer>
-                <Button variant="secondary" onClick={() => setShowDeleteConfirm(false)}>
+                <Button variant="outline-secondary" onClick={() => setShowDeleteConfirm(false)}>
                   Cancel
                 </Button>
                 <Button
                   variant="danger"
                   onClick={() => deleteStatus(viewer.userId, statusId)}
+                  className="glow-effect"
                 >
-                  Delete
+                  Delete Story
                 </Button>
               </Modal.Footer>
             </Modal>

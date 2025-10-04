@@ -1,58 +1,125 @@
-// src/assets/users/Followers.jsx
-import React from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
-import { useUserRelations, useUserActions } from '../../hooks/useUserRelations';
-import { auth } from '../utils/firebaseConfig';
+// src/components/Followers.jsx
+import React, { useEffect, useState } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { db, auth } from '../utils/firebaseConfig';
+import { ref, onValue, update } from 'firebase/database';
 import { toast } from 'react-toastify';
-import UserCard from './UserCard';
 
 export default function Followers() {
   const { uid: paramUid } = useParams();
   const currentUser = auth.currentUser;
   const uid = paramUid || currentUser?.uid;
-  const navigate = useNavigate();
+  
+  const [followers, setFollowers] = useState([]);
+  const [currentUserFollowing, setCurrentUserFollowing] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const { relations, loading, calculateRelationship } = useUserRelations(uid);
-  const userActions = useUserActions();
+  useEffect(() => {
+    if (!uid) return;
 
-  const handleAction = async (action, targetUID, successMessage) => {
+    const userRef = ref(db, `usersData/${uid}`);
+    const unsubscribe = onValue(userRef, (snapshot) => {
+      const data = snapshot.val();
+      
+      // Get followers (people you've accepted)
+      const followersData = data?.followers ? Object.keys(data.followers) : [];
+      
+      // Get current user's following list to check follow back status
+      if (currentUser?.uid) {
+        const currentUserRef = ref(db, `usersData/${currentUser.uid}`);
+        onValue(currentUserRef, (snapshot) => {
+          const currentUserData = snapshot.val();
+          setCurrentUserFollowing(currentUserData?.following ? Object.keys(currentUserData.following) : []);
+        }, { onlyOnce: true });
+      }
+      
+      // Fetch user details for followers
+      fetchUserDetails(followersData).then(followersDetails => {
+        setFollowers(followersDetails);
+        setLoading(false);
+      });
+    });
+
+    return () => unsubscribe();
+  }, [uid, currentUser]);
+
+  const fetchUserDetails = async (uids) => {
+    const userPromises = uids.map(uid => 
+      new Promise((resolve) => {
+        const userRef = ref(db, `usersData/${uid}`);
+        onValue(userRef, (snapshot) => {
+          const data = snapshot.val();
+          resolve({ uid, ...data });
+        }, { onlyOnce: true });
+      })
+    );
+    return Promise.all(userPromises);
+  };
+
+  // Follow back user (after they accepted your request)
+  const followBackUser = async (targetUID) => {
+    if (!currentUser?.uid) return;
+    
     try {
-      await action(targetUID);
-      toast.success(successMessage);
+      const updates = {};
+      // Add to current user's following and target user's followers
+      updates[`usersData/${currentUser.uid}/following/${targetUID}`] = true;
+      updates[`usersData/${targetUID}/followers/${currentUser.uid}`] = true;
+      
+      // Check if mutual follow to become friends
+      const targetUserRef = ref(db, `usersData/${targetUID}`);
+      onValue(targetUserRef, (snapshot) => {
+        const targetUserData = snapshot.val();
+        const targetUserFollowing = targetUserData?.following || {};
+        
+        if (targetUserFollowing[currentUser.uid]) {
+          // Mutual follow - add to friends (both sides)
+          updates[`usersData/${currentUser.uid}/friends/${targetUID}`] = true;
+          updates[`usersData/${targetUID}/friends/${currentUser.uid}`] = true;
+        }
+        
+        update(ref(db), updates);
+      }, { onlyOnce: true });
+      
+      toast.success('Followed back! ✅');
     } catch (error) {
-      console.error('Action failed:', error);
-      toast.error(`❌ ${error.message}`);
+      console.error('Follow back error:', error);
+      toast.error('Failed to follow back');
     }
   };
 
-  // Create action handlers with correct prop names that UserCard expects
-  const actionHandlers = {
-    onFollow: (targetUID) => handleAction(userActions.followUser, targetUID, 'Follow request sent! 🚀'),
-    onUnfollow: (targetUID) => handleAction(userActions.unfollowUser, targetUID, 'Unfollowed successfully!'),
-    onRemove: (targetUID) => handleAction(userActions.removeFollower, targetUID, 'Follower removed!'),
-    onBlock: (targetUID) => handleAction(userActions.blockUser, targetUID, 'User blocked successfully!'),
-    onUnblock: (targetUID) => handleAction(userActions.unblockUser, targetUID, 'User unblocked successfully!'),
-    onCancelRequest: (targetUID) => handleAction(userActions.cancelFollowRequest, targetUID, 'Request cancelled'),
-    onAccept: (targetUID) => handleAction(userActions.acceptRequest, targetUID, 'Request accepted! 🤝'),
-    onDecline: (targetUID) => handleAction(userActions.declineRequest, targetUID, 'Request declined')
+  // Remove follower
+  const removeFollower = async (targetUID) => {
+    if (!currentUser?.uid) return;
+    
+    try {
+      const updates = {};
+      // Remove from followers/following
+      updates[`usersData/${currentUser.uid}/followers/${targetUID}`] = null;
+      updates[`usersData/${targetUID}/following/${currentUser.uid}`] = null;
+      
+      // Remove from friends if exists
+      updates[`usersData/${currentUser.uid}/friends/${targetUID}`] = null;
+      updates[`usersData/${targetUID}/friends/${currentUser.uid}`] = null;
+      
+      await update(ref(db), updates);
+      toast.info('Follower removed ❌');
+    } catch (error) {
+      console.error('Remove follower error:', error);
+      toast.error('Failed to remove follower');
+    }
   };
 
-  // Filter followers to separate friends and non-friends
-  const friends = relations.followers.filter(user => {
-    const relationship = calculateRelationship(currentUser?.uid, user, relations);
-    return relationship.isFriend;
-  });
-
-  const nonFriendFollowers = relations.followers.filter(user => {
-    const relationship = calculateRelationship(currentUser?.uid, user, relations);
-    return !relationship.isFriend;
-  });
+  // Check if current user is following this follower
+  const isFollowingUser = (targetUID) => {
+    return currentUserFollowing.includes(targetUID);
+  };
 
   if (loading) {
     return (
       <div className="min-vh-100 d-flex justify-content-center align-items-center">
         <div className="text-center">
-          <div className="spinner-border text-primary mb-3" style={{ width: '3rem', height: '3rem' }}></div>
+          <div className="spinner-border text-primary mb-3"></div>
           <p className="text-muted">Loading followers...</p>
         </div>
       </div>
@@ -64,21 +131,23 @@ export default function Followers() {
       <div className="row justify-content-center">
         <div className="col-12 col-lg-10 col-xl-8">
 
-          {/* <div className="d-flex justify-content-between align-items-center p-4 bg-white shadow-sm rounded-3 mb-4">
+          {/* Followers Section */}
+          <div className="d-flex justify-content-between align-items-center p-4 bg-white shadow-sm rounded-3 mb-4">
             <div>
-              <h4 className="mb-1 text-primary fw-bold">Followers</h4>
-              <p className="text-muted mb-0">
-                {relations.followers.length} people following you • 
-                {friends.length} friends • 
-                {nonFriendFollowers.length} followers
-              </p>
+              <h4 className="mb-1 text-primary fw-bold">Followers ({followers.length})</h4>
+              {/* <p className="text-muted mb-0">
+                {currentUser?.uid === uid 
+                  ? 'People following you - Follow back to become friends' 
+                  : 'People following this user'
+                }
+              </p> */}
             </div>
             <Link to="/all-insta-users" className="btn btn-primary btn-sm">
               <i className="bi bi-people me-1"></i>Discover More
             </Link>
-          </div> */}
+          </div>
 
-          {relations.followers.length === 0 ? (
+          {followers.length === 0 ? (
             <div className="text-center py-5 bg-white rounded-3 shadow-sm">
               <i className="bi bi-people display-1 text-muted mb-3"></i>
               <h5 className="text-muted">No followers yet</h5>
@@ -87,54 +156,84 @@ export default function Followers() {
             </div>
           ) : (
             <div className="row g-3">
-              {/* Friends Section */}
-              {friends.length > 0 && (
-                <div className="col-12">
-                  <div className="mb-3">
-                    <h6 className="text-success fw-bold">
-                      <i className="bi bi-people-fill me-2"></i>
-                      Followers ({friends.length})
-                    </h6>
-                  </div>
-                  {friends.map((user) => (
-                    <div key={user.uid} className="col-12  rounded-1 shadow-sm border my-2 border-secondary-subtle">
-                      <UserCard
-                        user={user}
-                        currentUserId={currentUser?.uid}
-                        relations={relations}
-                        calculateRelationship={calculateRelationship}
-                        variant="follower"
-                        {...actionHandlers}
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
+              {followers.map((user) => {
+                const isFollowing = isFollowingUser(user.uid);
+                const isCurrentUserProfile = currentUser?.uid === uid;
+                
+                return (
+                  <div key={user.uid} className="col-12">
+                    <div className="card border-0 shadow-sm mb-3">
+                      <div className="card-body">
+                        <div className="d-flex align-items-center justify-content-between">
+                          <div 
+                            className="d-flex align-items-center flex-grow-1"
+                            style={{ cursor: 'pointer' }}
+                            onClick={() => window.location.href = `/user-profile/${user.uid}`}
+                          >
+                            <img
+                              src={user.photoURL || '/icons/avatar.jpg'}
+                              alt={user.username}
+                              className="rounded-circle me-3"
+                              style={{ width: 50, height: 50, objectFit: 'cover' }}
+                            />
+                            <div>
+                              <h6 className="mb-0 fw-bold">{user.username || 'Unnamed User'}</h6>
+                              {user.displayName && (
+                                <p className="mb-0 text-muted small">{user.displayName}</p>
+                              )}
+                            </div>
+                          </div>
 
-              {/* Non-Friend Followers Section */}
-              {nonFriendFollowers.length > 0 && (
-                <div className="col-12">
-                  <div className="mb-3 mt-4">
-                    <h6 className="text-primary fw-bold">
-                      <i className="bi bi-person-plus me-2"></i>
-                      Followers ({nonFriendFollowers.length})
-                    </h6>
-                    <p className="text-muted small">People following you - follow back to become friends</p>
-                  </div>
-                  {nonFriendFollowers.map((user) => (
-                    <div key={user.uid} className="col-12">
-                      <UserCard
-                        user={user}
-                        currentUserId={currentUser?.uid}
-                        relations={relations}
-                        calculateRelationship={calculateRelationship}
-                        variant="follower"
-                        {...actionHandlers}
-                      />
+                          <div className="d-flex gap-2 align-items-center small">
+                            {isCurrentUserProfile ? (
+                              // Current user viewing their own followers
+                              isFollowing ? (
+                                // Already following back - show Friends + Remove
+                                <>
+                                  <span className="badge bg-success me-4">Friends</span>
+                                  <button 
+                                    className="btn btn-sm btn-outline-danger"
+                                    onClick={() => removeFollower(user.uid)}
+                                    title="Remove follower"
+                                  >
+                                    Remove
+                                  </button>
+                                </>
+                              ) : (
+                                // Not following back - show Follow Back + Remove
+                                <>
+                                  <button 
+                                    className="btn btn-sm btn-primary"
+                                    onClick={() => followBackUser(user.uid)}
+                                  >
+                                    Follow Back
+                                  </button>
+                                  <button 
+                                    className="btn btn-sm btn-outline-danger"
+                                    onClick={() => removeFollower(user.uid)}
+                                    title="Remove follower"
+                                  >
+                                    Remove
+                                  </button>
+                                </>
+                              )
+                            ) : (
+                              // Other user viewing someone's followers
+                              isFollowing ? (
+                                <span className="badge bg-success">Friends</span>
+                              ) : currentUser?.uid === user.uid ? (
+                                <span className="badge bg-secondary">You</span>
+                              ) : (
+                                <span className="badge bg-info">Following you</span>
+                              )
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
