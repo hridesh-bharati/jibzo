@@ -1,3 +1,4 @@
+// src\assets\messages\Messages.jsx
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { db, auth } from "../../assets/utils/firebaseConfig";
@@ -15,364 +16,6 @@ import { onAuthStateChanged } from "firebase/auth";
 import Picker from "emoji-picker-react";
 import axios from "axios";
 import "bootstrap/dist/css/bootstrap.min.css";
-
-// Permissions Manager
-class PermissionsManager {
-  constructor() {
-    this.permissions = {
-      camera: 'prompt',
-      microphone: 'prompt', 
-      notifications: 'prompt',
-    };
-    this.listeners = new Map();
-  }
-
-  async init() {
-    await this.checkAllPermissions();
-  }
-
-  async checkAllPermissions() {
-    await Promise.allSettled([
-      this.checkCameraPermission(),
-      this.checkMicrophonePermission(),
-      this.checkNotificationPermission()
-    ]);
-    return this.permissions;
-  }
-
-  async checkCameraPermission() {
-    try {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        return this.permissions.camera = 'unsupported';
-      }
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const hasCamera = devices.some(device => device.kind === 'videoinput');
-      this.permissions.camera = hasCamera ? 'prompt' : 'unsupported';
-      return this.permissions.camera;
-    } catch (error) {
-      return this.permissions.camera = 'error';
-    }
-  }
-
-  async checkMicrophonePermission() {
-    try {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        return this.permissions.microphone = 'unsupported';
-      }
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const hasMic = devices.some(device => device.kind === 'audioinput');
-      this.permissions.microphone = hasMic ? 'prompt' : 'unsupported';
-      return this.permissions.microphone;
-    } catch (error) {
-      return this.permissions.microphone = 'error';
-    }
-  }
-
-  async checkNotificationPermission() {
-    if (!('Notification' in window)) {
-      return this.permissions.notifications = 'unsupported';
-    }
-    this.permissions.notifications = Notification.permission;
-    return this.permissions.notifications;
-  }
-
-  async requestCameraAndMicrophone() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: true, 
-        audio: true 
-      });
-      this.permissions.camera = 'granted';
-      this.permissions.microphone = 'granted';
-      return stream;
-    } catch (error) {
-      const status = error.name === 'NotAllowedError' ? 'denied' : 'error';
-      this.permissions.camera = status;
-      this.permissions.microphone = status;
-      throw error;
-    }
-  }
-
-  async requestMicrophonePermission() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach(track => track.stop());
-      this.permissions.microphone = 'granted';
-      return 'granted';
-    } catch (error) {
-      const status = error.name === 'NotAllowedError' ? 'denied' : 'error';
-      this.permissions.microphone = status;
-      throw error;
-    }
-  }
-
-  isGranted(permissionType) {
-    return this.permissions[permissionType] === 'granted';
-  }
-
-  showPermissionPrompt(permissionType, callback) {
-    const descriptions = {
-      camera: { title: 'Camera Access', description: 'Required for video calls and photos', icon: '📷' },
-      microphone: { title: 'Microphone Access', description: 'Required for audio calls and voice messages', icon: '🎤' },
-    };
-
-    const desc = descriptions[permissionType];
-    if (!desc) return;
-
-    const userChoice = confirm(
-      `${desc.icon} ${desc.title}\n\n${desc.description}\n\nClick OK to allow, Cancel to skip.`
-    );
-    callback(userChoice);
-  }
-}
-
-const permissionsManager = new PermissionsManager();
-
-// Call Components
-const CallModal = ({ 
-  callType, 
-  isIncoming, 
-  callerInfo, 
-  onAccept, 
-  onReject, 
-  onEndCall,
-  callStatus 
-}) => {
-  return (
-    <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 9999 }}>
-      <div className="modal-dialog modal-dialog-centered">
-        <div className="modal-content">
-          <div className="modal-header bg-primary text-white">
-            <h5 className="modal-title">
-              {callType === 'video' ? '📹' : '📞'} 
-              {isIncoming ? 'Incoming Call' : 'Outgoing Call'}
-            </h5>
-          </div>
-          <div className="modal-body text-center">
-            <img
-              src={callerInfo?.photoURL || "/icons/avatar.jpg"}
-              alt="Caller"
-              className="rounded-circle mb-3"
-              style={{ width: 100, height: 100, objectFit: "cover" }}
-            />
-            <h4>{callerInfo?.username || "User"}</h4>
-            <p className="text-muted">{callStatus}</p>
-            
-            {callType === 'video' ? (
-              <p>Video Call {isIncoming ? 'from' : 'to'} {callerInfo?.username}</p>
-            ) : (
-              <p>Audio Call {isIncoming ? 'from' : 'to'} {callerInfo?.username}</p>
-            )}
-          </div>
-          <div className="modal-footer justify-content-center">
-            {isIncoming ? (
-              <>
-                <button 
-                  className="btn btn-danger btn-lg rounded-circle mx-2 ringing"
-                  onClick={onReject}
-                  style={{ width: '60px', height: '60px' }}
-                >
-                  ❌
-                </button>
-                <button 
-                  className="btn btn-success btn-lg rounded-circle mx-2 ringing"
-                  onClick={onAccept}
-                  style={{ width: '60px', height: '60px' }}
-                >
-                  {callType === 'video' ? '📹' : '📞'}
-                </button>
-              </>
-            ) : (
-              <button 
-                className="btn btn-danger btn-lg rounded-circle"
-                onClick={onEndCall}
-                style={{ width: '60px', height: '60px' }}
-              >
-                ❌
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const CallScreen = ({ 
-  callType, 
-  localStream, 
-  remoteStream, 
-  onEndCall, 
-  isMuted, 
-  onToggleMute,
-  isVideoOff,
-  onToggleVideo,
-  callDuration,
-  partnerInfo,
-  isCallActive,
-  currentUserInfo
-}) => {
-  const localVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
-
-  useEffect(() => {
-    if (localVideoRef.current && localStream) {
-      localVideoRef.current.srcObject = localStream;
-    }
-    if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
-    }
-  }, [localStream, remoteStream]);
-
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  return (
-    <div className="position-fixed top-0 start-0 w-100 h-100 bg-dark" style={{ zIndex: 9998 }}>
-      {/* Main Video Layout */}
-      <div className="w-100 h-100 position-relative">
-        
-        {/* Remote Video (Full Screen) */}
-        {callType === 'video' && remoteStream && isCallActive && (
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            className="w-100 h-100"
-            style={{ objectFit: 'cover' }}
-          />
-        )}
-        
-        {/* Local Video (Picture-in-picture) */}
-        {callType === 'video' && localStream && (
-          <div className="position-absolute top-0 end-0 m-3 video-pip" style={{ width: '120px', height: '160px' }}>
-            <video
-              ref={localVideoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-100 h-100 rounded shadow"
-              style={{ objectFit: 'cover' }}
-            />
-            {isVideoOff && (
-              <div className="position-absolute top-0 start-0 w-100 h-100 bg-dark bg-opacity-75 d-flex justify-content-center align-items-center rounded">
-                <span className="text-white small">📹 Off</span>
-              </div>
-            )}
-            {/* Local user name */}
-            <div className="position-absolute bottom-0 start-0 w-100 bg-dark bg-opacity-50 text-white text-center py-1 rounded-bottom">
-              <small>You</small>
-            </div>
-          </div>
-        )}
-
-        {/* Show partner info when no remote video */}
-        {callType === 'video' && (!remoteStream || !isCallActive) && (
-          <div className="d-flex flex-column justify-content-center align-items-center h-100 text-white">
-            <img
-              src={partnerInfo?.photoURL || "/icons/avatar.jpg"}
-              alt="Partner"
-              className="rounded-circle mb-3"
-              style={{ width: 120, height: 120, objectFit: "cover" }}
-            />
-            <h3>{partnerInfo?.username || "User"}</h3>
-            <p className="fs-5">{formatTime(callDuration)}</p>
-            <p className="text-muted">{isCallActive ? 'Connecting...' : 'Call ended'}</p>
-          </div>
-        )}
-        
-        {/* Audio Call UI */}
-        {callType === 'audio' && (
-          <div className="d-flex flex-column justify-content-center align-items-center h-100 text-white">
-            <div className="row w-100 justify-content-center">
-              {/* Current User (You) */}
-              <div className="col-6 text-center">
-                <div className="bg-primary rounded-circle d-inline-flex justify-content-center align-items-center mb-2"
-                  style={{ width: 100, height: 100 }}>
-                  <img
-                    src={currentUserInfo?.photoURL || "/icons/avatar.jpg"}
-                    alt="You"
-                    className="rounded-circle"
-                    style={{ width: 90, height: 90, objectFit: "cover" }}
-                  />
-                </div>
-                <h5>You</h5>
-              </div>
-              
-              {/* Partner */}
-              <div className="col-6 text-center">
-                <div className="bg-success rounded-circle d-inline-flex justify-content-center align-items-center mb-2"
-                  style={{ width: 100, height: 100 }}>
-                  <img
-                    src={partnerInfo?.photoURL || "/icons/avatar.jpg"}
-                    alt="Partner"
-                    className="rounded-circle"
-                    style={{ width: 90, height: 90, objectFit: "cover" }}
-                  />
-                </div>
-                <h5>{partnerInfo?.username || "User"}</h5>
-              </div>
-            </div>
-            
-            <p className="fs-5 mt-4">{formatTime(callDuration)}</p>
-            <p className="text-muted">Audio Call • {isCallActive ? 'Connected' : 'Ended'}</p>
-          </div>
-        )}
-
-        {/* Remote User Name (for video calls) */}
-        {callType === 'video' && remoteStream && isCallActive && (
-          <div className="position-absolute top-0 start-0 m-3 bg-dark bg-opacity-50 text-white px-3 py-2 rounded">
-            <strong>{partnerInfo?.username || "User"}</strong>
-          </div>
-        )}
-
-        {/* Call Timer */}
-        <div className="position-absolute top-0 start-50 translate-middle-x mt-3">
-          <div className="bg-dark bg-opacity-75 text-white px-4 py-2 rounded-pill">
-            <span className="fs-5">{formatTime(callDuration)}</span>
-          </div>
-        </div>
-
-        {/* Call Controls */}
-        <div className="position-absolute bottom-0 start-50 translate-middle-x mb-4">
-          <div className="d-flex gap-3">
-            <button
-              className={`btn btn-lg rounded-circle ${isMuted ? 'btn-danger' : 'btn-light'}`}
-              onClick={onToggleMute}
-              style={{ width: '60px', height: '60px' }}
-              title={isMuted ? 'Unmute' : 'Mute'}
-            >
-              {isMuted ? '🎤❌' : '🎤'}
-            </button>
-            
-            {callType === 'video' && (
-              <button
-                className={`btn btn-lg rounded-circle ${isVideoOff ? 'btn-danger' : 'btn-light'}`}
-                onClick={onToggleVideo}
-                style={{ width: '60px', height: '60px' }}
-                title={isVideoOff ? 'Turn on camera' : 'Turn off camera'}
-              >
-                {isVideoOff ? '📹❌' : '📹'}
-              </button>
-            )}
-            
-            <button
-              className="btn btn-danger btn-lg rounded-circle"
-              onClick={onEndCall}
-              style={{ width: '60px', height: '60px' }}
-              title="End Call"
-            >
-              📞
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 export default function Messages() {
   const { uid } = useParams();
@@ -399,65 +42,23 @@ export default function Messages() {
   const [uploadProgress, setUploadProgress] = useState(0);
 
   const [partnerStatus, setPartnerStatus] = useState(null);
-  const [currentUserInfo, setCurrentUserInfo] = useState(null);
-
-  // Enhanced Call States
-  const [callState, setCallState] = useState(null);
-  const [callType, setCallType] = useState(null);
-  const [callData, setCallData] = useState(null);
-  const [localStream, setLocalStream] = useState(null);
-  const [remoteStream, setRemoteStream] = useState(null);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isVideoOff, setIsVideoOff] = useState(false);
-  const [callDuration, setCallDuration] = useState(0);
-  const [isCallActive, setIsCallActive] = useState(false);
 
   const messagesEndRef = useRef(null);
   const longPressTimerRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const inputRef = useRef(null);
-  const peerConnectionRef = useRef(null);
-  const callDurationRef = useRef(null);
 
   const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_NAME;
   const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
-  const chatId = currentUid && uid ? [currentUid, uid].sort().join("_") : null;
-
-  // Enhanced WebRTC Configuration
-  const rtcConfig = {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' }
-    ],
-    iceCandidatePoolSize: 10
-  };
-
-  // Initialize permissions and user info
-  useEffect(() => {
-    permissionsManager.init();
-    
-    // Get current user info
-    const user = auth.currentUser;
-    if (user) {
-      setCurrentUserInfo({
-        username: user.displayName || 'You',
-        photoURL: user.photoURL || '/icons/avatar.jpg'
-      });
-    }
-  }, []);
+  const chatId =
+    currentUid && uid ? [currentUid, uid].sort().join("_") : null;
 
   // ---------- Auth ----------
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setCurrentUid(user.uid);
-        setCurrentUserInfo({
-          username: user.displayName || 'You',
-          photoURL: user.photoURL || '/icons/avatar.jpg'
-        });
-      } else navigate("/login");
+      if (user) setCurrentUid(user.uid);
+      else navigate("/login");
     });
     return () => unsubscribe();
   }, [navigate]);
@@ -473,6 +74,7 @@ export default function Messages() {
 
   // ---------- Auto focus input on mount ----------
   useEffect(() => {
+    // Focus input when component mounts
     if (inputRef.current) {
       setTimeout(() => {
         inputRef.current?.focus();
@@ -605,17 +207,19 @@ export default function Messages() {
     }, 1500);
   };
 
-  // ---------- Send Message ----------
+  // ---------- Send Message (FIXED: Immediate input clear) ----------
   const sendMessage = async (opts = {}) => {
     if (!currentUid || !chatId) return;
     const text = opts.text ?? input.trim();
     if (!text && !opts.imageURL) return;
 
+    // ✅ IMMEDIATELY clear input and states
     setInput("");
     setReplyTo(null);
     setPreviewImage(null);
     setEditingMsgId(null);
 
+    // Clear typing when sending
     setIsTyping(false);
     setTyping(false);
 
@@ -640,8 +244,10 @@ export default function Messages() {
       } else {
         const pushed = await push(dbRef(db, `chats/${chatId}/messages`), msgPayload);
 
+        // ✅ FIXED: Floating notification for new messages
         const recipientUid = uid;
         if (recipientUid && !recipientUid.startsWith("guest_")) {
+          // Floating notification trigger
           const floatingEvent = new CustomEvent('showFloatingNotification', {
             detail: {
               title: "New Message",
@@ -652,6 +258,7 @@ export default function Messages() {
           });
           window.dispatchEvent(floatingEvent);
 
+          // Existing notification save
           const notifRef = push(dbRef(db, `notifications/${recipientUid}`));
           const notifObj = {
             type: "message",
@@ -665,6 +272,7 @@ export default function Messages() {
         }
       }
 
+      // Refocus input after sending
       setTimeout(() => {
         inputRef.current?.focus();
       }, 100);
@@ -772,8 +380,10 @@ export default function Messages() {
     if (typeof ts === 'number') {
       date = new Date(ts);
     } else if (ts.toDate) {
+      // Firebase timestamp
       date = ts.toDate();
     } else if (ts.seconds) {
+      // Firebase timestamp with seconds
       date = new Date(ts.seconds * 1000);
     } else {
       date = new Date(ts);
@@ -788,403 +398,22 @@ export default function Messages() {
 
   const addEmoji = (emoji) => {
     setInput((prev) => prev + emoji.emoji);
+    // Focus input after adding emoji
     setTimeout(() => {
       inputRef.current?.focus();
     }, 100);
   };
 
+  // ---------- Handle emoji picker visibility (FIXED for mobile) ----------
   const toggleEmojiPicker = () => {
     setShowEmojiPicker(prev => !prev);
+    // On mobile, we want to focus input but not show emoji picker that blocks keyboard
     if (window.innerWidth <= 768) {
+      // On mobile, don't show emoji picker that blocks the keyboard
       setShowEmojiPicker(false);
       inputRef.current?.focus();
     }
   };
-
-  // ---------- Enhanced Call Management ----------
-  const initializeCall = async (type) => {
-    if (!chatId || !currentUid || !uid) return;
-
-    try {
-      // Check permissions first
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: type === 'video',
-        audio: true
-      });
-      
-      setLocalStream(stream);
-      setCallType(type);
-      setCallState('outgoing');
-
-      const callId = `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const callData = {
-        callId,
-        callerId: currentUid,
-        callerInfo: currentUserInfo || {
-          username: auth.currentUser?.displayName || 'User',
-          photoURL: auth.currentUser?.photoURL || '/icons/avatar.jpg'
-        },
-        receiverId: uid,
-        type,
-        status: 'calling',
-        timestamp: serverTimestamp(),
-        offer: null,
-        answer: null,
-        iceCandidates: {}
-      };
-
-      const callRef = dbRef(db, `calls/${chatId}`);
-      await set(callRef, callData);
-      setCallData(callData);
-
-      // Create peer connection and generate offer
-      await createPeerConnection('caller', callId);
-      
-      // Generate and send offer
-      const offer = await peerConnectionRef.current.createOffer();
-      await peerConnectionRef.current.setLocalDescription(offer);
-      
-      // Save offer to Firebase
-      await update(callRef, {
-        offer: {
-          type: offer.type,
-          sdp: offer.sdp
-        }
-      });
-
-      console.log('Call initialized with offer');
-
-      // Set up call listener
-      setupCallListener();
-
-    } catch (error) {
-      console.error('Error initializing call:', error);
-      alert('Error starting call. Please check your camera/microphone permissions.');
-      endCall();
-    }
-  };
-
-  const createPeerConnection = async (role, callId) => {
-    try {
-      // Close existing connection if any
-      if (peerConnectionRef.current) {
-        peerConnectionRef.current.close();
-      }
-
-      const pc = new RTCPeerConnection(rtcConfig);
-      peerConnectionRef.current = pc;
-
-      // Add local stream tracks if available
-      if (localStream) {
-        localStream.getTracks().forEach(track => {
-          pc.addTrack(track, localStream);
-          console.log('Added local track:', track.kind);
-        });
-      }
-
-      // Handle incoming remote stream
-      pc.ontrack = (event) => {
-        console.log('Received remote stream tracks:', event.streams[0].getTracks().length);
-        setRemoteStream(event.streams[0]);
-        setIsCallActive(true);
-      };
-
-      // Handle ICE candidates
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          console.log('New ICE candidate:', event.candidate);
-          const candidateRef = push(dbRef(db, `calls/${chatId}/iceCandidates/${role}`));
-          set(candidateRef, {
-            candidate: event.candidate.candidate,
-            sdpMid: event.candidate.sdpMid,
-            sdpMLineIndex: event.candidate.sdpMLineIndex
-          });
-        }
-      };
-
-      // Handle connection state changes
-      pc.onconnectionstatechange = () => {
-        console.log('Connection state:', pc.connectionState);
-        switch(pc.connectionState) {
-          case 'connected':
-            setIsCallActive(true);
-            break;
-          case 'disconnected':
-          case 'failed':
-          case 'closed':
-            if (callState !== 'ended') {
-              endCall();
-            }
-            break;
-        }
-      };
-
-      // Handle ICE connection state
-      pc.oniceconnectionstatechange = () => {
-        console.log('ICE connection state:', pc.iceConnectionState);
-        if (pc.iceConnectionState === 'connected') {
-          setIsCallActive(true);
-        }
-      };
-
-      return pc;
-
-    } catch (error) {
-      console.error('Error creating peer connection:', error);
-      throw error;
-    }
-  };
-
-  const answerCall = async (callData) => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: callData.type === 'video',
-        audio: true
-      });
-
-      setLocalStream(stream);
-      setCallType(callData.type);
-      setCallState('active');
-      setCallData(callData);
-
-      // Update call status to accepted
-      const callRef = dbRef(db, `calls/${chatId}`);
-      await update(callRef, { 
-        status: 'accepted',
-        answeredAt: serverTimestamp()
-      });
-
-      // Create peer connection as answerer
-      await createPeerConnection('answerer', callData.callId);
-
-      // Set remote offer
-      if (callData.offer) {
-        await peerConnectionRef.current.setRemoteDescription(
-          new RTCSessionDescription(callData.offer)
-        );
-
-        // Create and set local answer
-        const answer = await peerConnectionRef.current.createAnswer();
-        await peerConnectionRef.current.setLocalDescription(answer);
-
-        // Send answer back to caller
-        await update(callRef, {
-          answer: {
-            type: answer.type,
-            sdp: answer.sdp
-          }
-        });
-
-        console.log('Call answered with answer');
-      }
-
-      startCallTimer();
-      setupCallListener();
-
-    } catch (error) {
-      console.error('Error answering call:', error);
-      alert('Error answering call. Please try again.');
-      rejectCall(callData);
-    }
-  };
-
-  const setupCallListener = () => {
-    if (!chatId) return;
-
-    const callRef = dbRef(db, `calls/${chatId}`);
-    
-    return onValue(callRef, async (snap) => {
-      const callData = snap.val();
-      if (!callData) return;
-
-      console.log('Call update:', callData.status, 'Current state:', callState);
-
-      // Handle call rejection or end by other party
-      if ((callData.status === 'rejected' || callData.status === 'ended') && callState !== 'ended') {
-        console.log('Call ended by other party');
-        endCall();
-        return;
-      }
-      
-      // Handle incoming answer when we are the caller
-      if (callState === 'outgoing' && callData.answer && peerConnectionRef.current) {
-        try {
-          await peerConnectionRef.current.setRemoteDescription(
-            new RTCSessionDescription(callData.answer)
-          );
-          setCallState('active');
-          setIsCallActive(true);
-          startCallTimer();
-          console.log('Remote answer set, call connected');
-        } catch (error) {
-          console.error('Error setting remote answer:', error);
-        }
-      }
-
-      // Handle ICE candidates
-      if (callData.iceCandidates) {
-        await handleRemoteICECandidates(callData.iceCandidates);
-      }
-    });
-  };
-
-  const handleRemoteICECandidates = async (iceCandidates) => {
-    if (!peerConnectionRef.current) return;
-
-    const remoteRole = callState === 'outgoing' ? 'answerer' : 'caller';
-    const candidates = iceCandidates[remoteRole];
-    
-    if (candidates) {
-      for (const [candidateId, candidateData] of Object.entries(candidates)) {
-        try {
-          await peerConnectionRef.current.addIceCandidate(
-            new RTCIceCandidate({
-              candidate: candidateData.candidate,
-              sdpMid: candidateData.sdpMid,
-              sdpMLineIndex: candidateData.sdpMLineIndex
-            })
-          );
-          console.log('Added remote ICE candidate');
-        } catch (error) {
-          console.error('Error adding ICE candidate:', error);
-        }
-      }
-    }
-  };
-
-  const endCall = async () => {
-    console.log('Ending call...');
-    
-    // Stop call timer
-    if (callDurationRef.current) {
-      clearInterval(callDurationRef.current);
-      callDurationRef.current = null;
-    }
-
-    // Close peer connection
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.close();
-      peerConnectionRef.current = null;
-    }
-
-    // Stop media streams
-    if (localStream) {
-      localStream.getTracks().forEach(track => {
-        track.stop();
-        console.log('Stopped track:', track.kind);
-      });
-      setLocalStream(null);
-    }
-    setRemoteStream(null);
-
-    // Update call status in Firebase
-    if (callData && chatId) {
-      const callRef = dbRef(db, `calls/${chatId}`);
-      try {
-        await update(callRef, { 
-          status: 'ended',
-          endedAt: serverTimestamp(),
-          duration: callDuration,
-          endedBy: currentUid
-        });
-
-        // Remove call data after a delay
-        setTimeout(async () => {
-          await remove(dbRef(db, `calls/${chatId}`));
-          await remove(dbRef(db, `calls/${chatId}/iceCandidates`));
-        }, 3000);
-      } catch (error) {
-        console.error('Error updating call end:', error);
-      }
-    }
-
-    // Reset call states
-    setCallState(null);
-    setCallType(null);
-    setCallData(null);
-    setCallDuration(0);
-    setIsCallActive(false);
-    setIsMuted(false);
-    setIsVideoOff(false);
-  };
-
-  const rejectCall = async (callData) => {
-    if (callData && chatId) {
-      const callRef = dbRef(db, `calls/${chatId}`);
-      try {
-        await update(callRef, { 
-          status: 'rejected',
-          endedAt: serverTimestamp(),
-          endedBy: currentUid
-        });
-
-        setTimeout(async () => {
-          await remove(dbRef(db, `calls/${chatId}`));
-          await remove(dbRef(db, `calls/${chatId}/iceCandidates`));
-        }, 3000);
-      } catch (error) {
-        console.error('Error rejecting call:', error);
-      }
-    }
-    setCallState(null);
-    setCallData(null);
-  };
-
-  const startCallTimer = () => {
-    setCallDuration(0);
-    callDurationRef.current = setInterval(() => {
-      setCallDuration(prev => prev + 1);
-    }, 1000);
-  };
-
-  const toggleMute = () => {
-    if (localStream) {
-      const audioTracks = localStream.getAudioTracks();
-      audioTracks.forEach(track => {
-        track.enabled = !track.enabled;
-      });
-      setIsMuted(!isMuted);
-    }
-  };
-
-  const toggleVideo = () => {
-    if (localStream && callType === 'video') {
-      const videoTracks = localStream.getVideoTracks();
-      videoTracks.forEach(track => {
-        track.enabled = !track.enabled;
-      });
-      setIsVideoOff(!isVideoOff);
-    }
-  };
-
-  // ---------- Listen for incoming calls ----------
-  useEffect(() => {
-    if (!chatId || !currentUid) return;
-
-    const callsRef = dbRef(db, `calls/${chatId}`);
-    
-    return onValue(callsRef, async (snap) => {
-      const callData = snap.val();
-      
-      if (callData && callState === null) {
-        // Handle incoming calls
-        if (callData.receiverId === currentUid && callData.status === 'calling') {
-          setCallData(callData);
-          setCallState('incoming');
-          setCallType(callData.type);
-        }
-      }
-    });
-  }, [chatId, currentUid, callState]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (callState === 'active' || callState === 'outgoing') {
-        endCall();
-      }
-    };
-  }, []);
 
   // ---------- Reply Logic ----------
   const renderReplyPreview = (msg) => {
@@ -1268,7 +497,7 @@ export default function Messages() {
           className="d-flex align-items-center text-white text-decoration-none"
         >
           <img
-            src={chatUser?.photoURL || "/icons/avatar.jpg"}
+            src={chatUser?.photoURL || "icons/avatar.jpg"}
             alt="DP"
             className="rounded-circle me-2"
             style={{ width: 44, height: 44, objectFit: "cover" }}
@@ -1291,59 +520,39 @@ export default function Messages() {
           </div>
         </Link>
 
-        <div className="d-flex align-items-center gap-2">
-          {/* Call Buttons */}
+        {/* Three-dot menu */}
+        <div className="position-relative">
           <button
-            className="btn btn-sm btn-light rounded-circle"
-            onClick={() => initializeCall('audio')}
-            title="Audio Call"
-            disabled={callState !== null}
+            className="btn btn-sm btn-transparent text-white"
+            onClick={() => setShowMenu((prev) => !prev)}
           >
-            📞
+            <i className="bi bi-three-dots-vertical fs-5"></i>
           </button>
-          <button
-            className="btn btn-sm btn-light rounded-circle"
-            onClick={() => initializeCall('video')}
-            title="Video Call"
-            disabled={callState !== null}
-          >
-            📹
-          </button>
-
-          {/* Three-dot menu */}
-          <div className="position-relative">
-            <button
-              className="btn btn-sm btn-transparent text-white"
-              onClick={() => setShowMenu((prev) => !prev)}
+          {showMenu && (
+            <div
+              className="position-absolute bg-white text-dark shadow rounded"
+              style={{ right: 0, top: 40, zIndex: 9 }}
             >
-              <i className="bi bi-three-dots-vertical fs-5"></i>
-            </button>
-            {showMenu && (
-              <div
-                className="position-absolute bg-white text-dark shadow rounded"
-                style={{ right: 0, top: 40, zIndex: 9 }}
+              <button
+                className="py-2 px-3 dropdown-item"
+                onClick={() => {
+                  messages.forEach((m) => removeForMe(m.id));
+                  setShowMenu(false);
+                }}
               >
-                <button
-                  className="py-2 px-3 dropdown-item"
-                  onClick={() => {
-                    messages.forEach((m) => removeForMe(m.id));
-                    setShowMenu(false);
-                  }}
-                >
-                  Clear Chat
-                </button>
-                <button
-                  className="py-2 px-3 dropdown-item"
-                  onClick={() => {
-                    setPrivacyHide((prev) => !prev);
-                    setShowMenu(false);
-                  }}
-                >
-                  {privacyHide ? "Show Online / Last Seen" : "Hide Online / Last Seen"}
-                </button>
-              </div>
-            )}
-          </div>
+                Clear Chat
+              </button>
+              <button
+                className="py-2 px-3 dropdown-item"
+                onClick={() => {
+                  setPrivacyHide((prev) => !prev);
+                  setShowMenu(false);
+                }}
+              >
+                {privacyHide ? "Show Online / Last Seen" : "Hide Online / Last Seen"}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1446,7 +655,7 @@ export default function Messages() {
         </div>
       )}
 
-      {/* Input Area */}
+      {/* Input Area - FIXED for mobile keyboard */}
       <div className="p-2 mb-5 pb-3" style={{ background: "#ccf" }}>
         {previewImage && (
           <div
@@ -1484,6 +693,7 @@ export default function Messages() {
         )}
 
         <div className="d-flex align-items-center gap-2">
+          {/* Emoji Button - Fixed for mobile */}
           <button
             className="btn btn-light"
             onClick={toggleEmojiPicker}
@@ -1492,6 +702,7 @@ export default function Messages() {
             😀
           </button>
 
+          {/* Input Field - FIXED: Proper mobile keyboard */}
           <input
             ref={inputRef}
             type="text"
@@ -1505,6 +716,7 @@ export default function Messages() {
                 sendMessage();
               }
             }}
+            // Mobile optimizations
             inputMode="text"
             autoComplete="off"
             autoCorrect="on"
@@ -1530,6 +742,7 @@ export default function Messages() {
           </button>
         </div>
 
+        {/* Emoji Picker - FIXED: Only show on desktop, not on mobile */}
         {showEmojiPicker && window.innerWidth > 768 && (
           <div
             className="position-absolute"
@@ -1539,45 +752,6 @@ export default function Messages() {
           </div>
         )}
       </div>
-
-      {/* Call Modals */}
-      {callState === 'incoming' && (
-        <CallModal
-          callType={callType}
-          isIncoming={true}
-          callerInfo={callData?.callerInfo || chatUser}
-          onAccept={() => answerCall(callData)}
-          onReject={() => rejectCall(callData)}
-          callStatus="Incoming Call"
-        />
-      )}
-
-      {callState === 'outgoing' && (
-        <CallModal
-          callType={callType}
-          isIncoming={false}
-          callerInfo={chatUser}
-          onEndCall={endCall}
-          callStatus="Calling..."
-        />
-      )}
-
-      {(callState === 'active' || callState === 'ended') && (
-        <CallScreen
-          callType={callType}
-          localStream={localStream}
-          remoteStream={remoteStream}
-          onEndCall={endCall}
-          isMuted={isMuted}
-          onToggleMute={toggleMute}
-          isVideoOff={isVideoOff}
-          onToggleVideo={toggleVideo}
-          callDuration={callDuration}
-          partnerInfo={chatUser}
-          currentUserInfo={currentUserInfo}
-          isCallActive={isCallActive}
-        />
-      )}
 
       {/* CSS for typing dots */}
       <style>
@@ -1606,60 +780,8 @@ export default function Messages() {
               height: 100vh !important;
             }
             input.form-control {
-              font-size: 16px;
+              font-size: 16px; /* Prevents zoom on iOS */
             }
-          }
-
-          /* Call specific styles */
-          .video-pip {
-            border: 2px solid white;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-          }
-
-          .call-connecting {
-            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
-            animation: pulse 2s infinite;
-          }
-
-          @keyframes pulse {
-            0% { opacity: 0.8; }
-            50% { opacity: 1; }
-            100% { opacity: 0.8; }
-          }
-
-          .video-container {
-            position: relative;
-            width: 100%;
-            height: 100%;
-            background: #000;
-          }
-
-          .remote-video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-          }
-
-          .local-video {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            width: 120px;
-            height: 160px;
-            border: 2px solid white;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            z-index: 10;
-          }
-
-          @keyframes ring {
-            0%, 100% { transform: rotate(0deg); }
-            25% { transform: rotate(5deg); }
-            75% { transform: rotate(-5deg); }
-          }
-
-          .ringing {
-            animation: ring 0.5s ease-in-out infinite;
           }
         `}
       </style>
