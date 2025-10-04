@@ -16,6 +16,8 @@ export default function FileConverter() {
   const [cameraActive, setCameraActive] = useState(false);
   const [capturedImages, setCapturedImages] = useState([]);
   const [activeTab, setActiveTab] = useState("upload");
+  const [cameraError, setCameraError] = useState("");
+
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const canvasRef = useRef(null);
@@ -23,9 +25,26 @@ export default function FileConverter() {
   // Mobile device detection
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
+  // Cleanup camera on unmount
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
   // Camera functions
   const startCamera = async () => {
     try {
+      setCameraError("");
+
+      // Check if browser supports mediaDevices
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setCameraError("Camera not supported in this browser");
+        return;
+      }
+
       const constraints = {
         video: {
           width: { ideal: isMobile ? 1280 : 1920 },
@@ -38,32 +57,52 @@ export default function FileConverter() {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
 
-      // Wait for video element to render before assigning stream
-      requestAnimationFrame(() => {
+      // Wait a bit for video element to be ready
+      setTimeout(() => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           setCameraActive(true);
         } else {
-          console.warn("Video element not ready yet.");
+          stream.getTracks().forEach(track => track.stop());
+          setCameraError("Camera element not ready");
         }
-      });
+      }, 100);
+
     } catch (err) {
-      alert("Camera access failed: " + err.message);
+      console.error("Camera error:", err);
+      setCameraError("Camera access failed: " + err.message);
     }
   };
 
   const stopCamera = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
-      setCameraActive(false);
+      streamRef.current = null;
     }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    setCameraActive(false);
+    setCameraError("");
   };
 
   const captureImage = () => {
+    if (!videoRef.current || !canvasRef.current) {
+      setCameraError("Camera not ready");
+      return;
+    }
+
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    const context = canvas.getContext('2d');
 
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      setCameraError("Camera stream not loaded");
+      return;
+    }
+
+    const context = canvas.getContext('2d');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -101,6 +140,20 @@ export default function FileConverter() {
       u8arr[n] = bstr.charCodeAt(n);
     }
     return new File([u8arr], filename, { type: mime });
+  };
+
+  // Handle tab switching
+  const handleTabSwitch = (tab) => {
+    if (tab === "camera" && cameraActive) {
+      // Reinitialize camera if already active
+      setTimeout(() => {
+        if (videoRef.current && streamRef.current) {
+          videoRef.current.srcObject = streamRef.current;
+        }
+      }, 100);
+    }
+    setActiveTab(tab);
+    setCameraError("");
   };
 
   // Mobile-optimized Preview Component
@@ -423,6 +476,7 @@ export default function FileConverter() {
     setExtractedText("");
     setCapturedImages([]);
     stopCamera();
+    setCameraError("");
   };
 
   const removeImage = (index) => {
@@ -469,67 +523,92 @@ export default function FileConverter() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  // Mobile-optimized conversion type buttons
-  const ConversionTypeButton = ({ type, label, icon }) => (
+  // Modern Circular Icon Button
+  const ConversionTypeButton = ({ type, label, icon, color }) => (
     <button
-      className={`btn ${conversionType === type ? 'btn-primary' : 'btn-outline-primary'} d-flex flex-column align-items-center py-3`}
+      className={`conversion-btn ${conversionType === type ? "active" : ""}`}
       onClick={() => {
         setConversionType(type);
         clearFiles();
         setActiveTab("upload");
       }}
-      style={{
-        minHeight: '80px',
-        fontSize: isMobile ? '12px' : '14px'
-      }}
     >
-      <span style={{ fontSize: '20px', marginBottom: '5px' }}>{icon}</span>
-      <span>{label}</span>
+      <div className="conversion-icon" style={{ backgroundColor: color }}>
+        <span className="icon">{icon}</span>
+      </div>
+      <span className="label">{label}</span>
     </button>
   );
+
 
   return (
     <div className="container-fluid px-2 py-3" style={{
       minHeight: '100vh',
       backgroundColor: '#f8f9fa'
     }}>
-      {/* Header */}
-      <div className="text-center mb-3">
-        <h1 className="h4 text-danger fw-bold mb-2">📱 File Converter</h1>
-        <p className="text-muted small">Convert files on the go</p>
+     
+
+      {/* Conversion Type Selector */}
+      <div className="conversion-grid">
+        <ConversionTypeButton type="jpg-to-pdf" label="Images to PDF" icon="🖼️" color="#4dabf7" />
+        <ConversionTypeButton type="pdf-to-jpg" label="PDF to Images" icon="📄" color="#f06595" />
+        <ConversionTypeButton type="pdf-to-word" label="PDF to Word" icon="🟦" color="#63e6be" />
+        <ConversionTypeButton type="text-scanner" label="Text Scanner" icon="🔍" color="#fcc419" />
+        <style>{`
+        
+        .conversion-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.conversion-btn {
+  border: none;
+  background: white;
+  border-radius: 12px;
+  padding: 15px 10px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.conversion-btn:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+}
+
+.conversion-btn.active {
+  outline: 2px solid #007bff;
+  background: #e7f1ff;
+}
+
+.conversion-icon {
+  width: 55px;
+  height: 55px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 26px;
+  margin-bottom: 8px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
+}
+
+.conversion-btn .label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+}
+
+        `}</style>
       </div>
 
-      {/* Conversion Type Selector - Simple Center */}
-      <div className="row g-1 mb-3 justify-content-center">
-        <div className="col-auto">
-          <ConversionTypeButton
-            type="jpg-to-pdf"
-            label="Images to PDF"
-            icon="🖼️"
-          />
-        </div>
-        <div className="col-auto">
-          <ConversionTypeButton
-            type="pdf-to-jpg"
-            label="PDF to Images"
-            icon="📄"
-          />
-        </div>
-        <div className="col-auto">
-          <ConversionTypeButton
-            type="pdf-to-word"
-            label="PDF to Word"
-            icon="📝"
-          />
-        </div>
-        <div className="col-auto">
-          <ConversionTypeButton
-            type="text-scanner"
-            label="Text Scanner"
-            icon="🔍"
-          />
-        </div>
-      </div>
+
 
       {/* Input Methods Tabs */}
       {(conversionType === "jpg-to-pdf" || conversionType === "text-scanner") && (
@@ -538,13 +617,13 @@ export default function FileConverter() {
             <div className="d-flex border-bottom">
               <button
                 className={`btn flex-fill ${activeTab === "upload" ? "btn-primary" : "btn-light"} rounded-0`}
-                onClick={() => setActiveTab("upload")}
+                onClick={() => handleTabSwitch("upload")}
               >
                 📁 Upload
               </button>
               <button
                 className={`btn flex-fill ${activeTab === "camera" ? "btn-primary" : "btn-light"} rounded-0`}
-                onClick={() => setActiveTab("camera")}
+                onClick={() => handleTabSwitch("camera")}
               >
                 📷 Camera
               </button>
@@ -572,30 +651,43 @@ export default function FileConverter() {
               {activeTab === "camera" && (
                 <div>
                   {!cameraActive ? (
-                    <button
-                      className="btn btn-success w-100 btn-lg mb-3"
-                      onClick={startCamera}
-                    >
-                      📷 Start Camera
-                    </button>
+                    <div>
+                      <button
+                        className="btn btn-success w-100 btn-lg mb-3"
+                        onClick={startCamera}
+                      >
+                        📷 Start Camera
+                      </button>
+                      {cameraError && (
+                        <div className="alert alert-warning text-center small">
+                          {cameraError}
+                        </div>
+                      )}
+                    </div>
                   ) : (
                     <div>
                       <div className="text-center mb-3">
-                        {videoRef && (
-                          <video
-                            ref={videoRef}
-                            autoPlay
-                            playsInline
-                            muted
-                            className="img-fluid rounded shadow"
-                            style={{
-                              maxHeight: isMobile ? '300px' : '400px',
-                              width: '100%'
-                            }}
-                          />
-                        )}
+                        <video
+                          ref={videoRef}
+                          autoPlay
+                          playsInline
+                          muted
+                          className="img-fluid rounded shadow"
+                          style={{
+                            maxHeight: isMobile ? '300px' : '400px',
+                            width: '100%',
+                            backgroundColor: '#000'
+                          }}
+                        />
                         <canvas ref={canvasRef} style={{ display: 'none' }} />
                       </div>
+
+                      {cameraError && (
+                        <div className="alert alert-warning text-center small mb-2">
+                          {cameraError}
+                        </div>
+                      )}
+
                       <div className="row g-2">
                         <div className="col-4">
                           <button
@@ -641,6 +733,20 @@ export default function FileConverter() {
               accept="application/pdf"
               className="form-control form-control-lg"
               onChange={(e) => setPdfFile(e.target.files[0])}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Word to PDF input */}
+      {conversionType === "word-to-pdf" && (
+        <div className="card mb-3">
+          <div className="card-body">
+            <input
+              type="file"
+              accept=".doc,.docx"
+              className="form-control form-control-lg"
+              onChange={handleWordToPdf}
             />
           </div>
         </div>
