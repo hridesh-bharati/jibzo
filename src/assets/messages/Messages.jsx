@@ -1,7 +1,6 @@
-// src\assets\messages\Messages.jsx
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { db, auth } from "../../assets/utils/firebaseConfig";
+import { db, auth, getFCMToken, onMessageListener } from "../../assets/utils/firebaseConfig";
 import {
   ref as dbRef,
   onValue,
@@ -50,9 +49,112 @@ export default function Messages() {
 
   const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_NAME;
   const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
   const chatId =
     currentUid && uid ? [currentUid, uid].sort().join("_") : null;
+
+  // ---------- FCM Functions ----------
+  const saveFCMToken = async (userId) => {
+    try {
+      const token = await getFCMToken();
+      
+      if (token) {
+        await axios.post(`${API_BASE_URL}/save-token`, {
+          userId: userId,
+          fcmToken: token
+        });
+        console.log('FCM token saved successfully');
+      }
+    } catch (error) {
+      console.error('Error saving FCM token:', error);
+    }
+  };
+
+  const sendPushNotification = async (recipientId, messageText) => {
+    try {
+      await axios.post(`${API_BASE_URL}/send-notification`, {
+        recipientId: recipientId,
+        senderId: currentUid,
+        message: messageText,
+        chatId: chatId,
+        senderName: auth.currentUser?.displayName || 'Someone',
+        imageUrl: chatUser?.photoURL || null
+      });
+    } catch (error) {
+      console.error('Error sending notification:', error);
+    }
+  };
+
+  const initializeFCM = async () => {
+    try {
+      if (currentUid && !currentUid.startsWith('guest_')) {
+        await saveFCMToken(currentUid);
+        
+        // Foreground messages handle karo
+        onMessageListener()
+          .then((payload) => {
+            console.log('Foreground message received:', payload);
+            showCustomNotification(payload);
+          })
+          .catch((error) => {
+            console.error('Message listener error:', error);
+          });
+
+        // Notification permission request karo
+        if ('Notification' in window && Notification.permission === 'default') {
+          Notification.requestPermission().then(permission => {
+            console.log('Notification permission:', permission);
+          });
+        }
+      }
+    } catch (error) {
+      console.error('FCM initialization error:', error);
+    }
+  };
+
+  const showCustomNotification = (payload) => {
+    const { notification, data } = payload;
+    
+    // Browser notification
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(notification.title, {
+        body: notification.body,
+        icon: notification.image || '/logo.png',
+        tag: data.chatId
+      });
+    }
+    
+    // Your existing floating notification
+    const floatingEvent = new CustomEvent('showFloatingNotification', {
+      detail: {
+        title: notification.title,
+        body: notification.body,
+        image: notification.image || '/logo.png',
+        url: `/messages/${data.senderId}`
+      }
+    });
+    window.dispatchEvent(floatingEvent);
+  };
+
+  // Test notification function
+  const testNotification = async () => {
+    try {
+      const response = await axios.post(`${API_BASE_URL}/send-notification`, {
+        recipientId: uid,
+        senderId: currentUid,
+        message: "🔔 Test Notification!",
+        chatId: chatId,
+        senderName: "Test Bot",
+        imageUrl: null
+      });
+      console.log('Test notification sent:', response.data);
+      alert('Test notification sent! Check other tab/browser');
+    } catch (error) {
+      console.error('Test notification failed:', error);
+      alert('Test failed: ' + error.message);
+    }
+  };
 
   // ---------- Auth ----------
   useEffect(() => {
@@ -72,9 +174,15 @@ export default function Messages() {
     setCurrentUid(auth.currentUser?.uid || guestId);
   }, []);
 
+  // ---------- FCM Initialization ----------
+  useEffect(() => {
+    if (currentUid) {
+      initializeFCM();
+    }
+  }, [currentUid]);
+
   // ---------- Auto focus input on mount ----------
   useEffect(() => {
-    // Focus input when component mounts
     if (inputRef.current) {
       setTimeout(() => {
         inputRef.current?.focus();
@@ -247,6 +355,9 @@ export default function Messages() {
         // ✅ FIXED: Floating notification for new messages
         const recipientUid = uid;
         if (recipientUid && !recipientUid.startsWith("guest_")) {
+          // ✅ PUSH NOTIFICATION SEND KARO
+          await sendPushNotification(recipientUid, text || "Sent an image");
+
           // Floating notification trigger
           const floatingEvent = new CustomEvent('showFloatingNotification', {
             detail: {
@@ -520,39 +631,50 @@ export default function Messages() {
           </div>
         </Link>
 
-        {/* Three-dot menu */}
-        <div className="position-relative">
-          <button
-            className="btn btn-sm btn-transparent text-white"
-            onClick={() => setShowMenu((prev) => !prev)}
+        <div className="d-flex align-items-center">
+          {/* Test Notification Button */}
+          <button 
+            className="btn btn-sm btn-warning me-2"
+            onClick={testNotification}
+            title="Test Notification"
           >
-            <i className="bi bi-three-dots-vertical fs-5"></i>
+            🔔 Test
           </button>
-          {showMenu && (
-            <div
-              className="position-absolute bg-white text-dark shadow rounded"
-              style={{ right: 0, top: 40, zIndex: 9 }}
+
+          {/* Three-dot menu */}
+          <div className="position-relative">
+            <button
+              className="btn btn-sm btn-transparent text-white"
+              onClick={() => setShowMenu((prev) => !prev)}
             >
-              <button
-                className="py-2 px-3 dropdown-item"
-                onClick={() => {
-                  messages.forEach((m) => removeForMe(m.id));
-                  setShowMenu(false);
-                }}
+              <i className="bi bi-three-dots-vertical fs-5"></i>
+            </button>
+            {showMenu && (
+              <div
+                className="position-absolute bg-white text-dark shadow rounded"
+                style={{ right: 0, top: 40, zIndex: 9 }}
               >
-                Clear Chat
-              </button>
-              <button
-                className="py-2 px-3 dropdown-item"
-                onClick={() => {
-                  setPrivacyHide((prev) => !prev);
-                  setShowMenu(false);
-                }}
-              >
-                {privacyHide ? "Show Online / Last Seen" : "Hide Online / Last Seen"}
-              </button>
-            </div>
-          )}
+                <button
+                  className="py-2 px-3 dropdown-item"
+                  onClick={() => {
+                    messages.forEach((m) => removeForMe(m.id));
+                    setShowMenu(false);
+                  }}
+                >
+                  Clear Chat
+                </button>
+                <button
+                  className="py-2 px-3 dropdown-item"
+                  onClick={() => {
+                    setPrivacyHide((prev) => !prev);
+                    setShowMenu(false);
+                  }}
+                >
+                  {privacyHide ? "Show Online / Last Seen" : "Hide Online / Last Seen"}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

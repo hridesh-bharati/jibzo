@@ -13,8 +13,26 @@
       "destination": "/assets/$1"
     },
     {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
       "source": "/(.*)",
       "destination": "/"
     }
-  ]
+  ],
+  "functions": {
+    "api/send-notification.js": {
+      "runtime": "nodejs18.x"
+    },
+    "api/save-token.js": {
+      "runtime": "nodejs18.x"
+    },
+    "api/health.js": {
+      "runtime": "nodejs18.x"
+    },
+    "api/tokens.js": {
+      "runtime": "nodejs18.x"
+    }
+  }
 }

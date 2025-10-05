@@ -9,7 +9,8 @@
     "dev:all": "concurrently \"vite --host 0.0.0.0 --port 5173\" \"node server.js\"",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "start": "node server.js"
   },
   "dependencies": {
     "@amcharts/amcharts5": "^5.13.6",
@@ -82,7 +83,8 @@
     "swiper": "^11.2.10",
     "tesseract.js": "^6.0.1",
     "util": "^0.12.5",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "body-parser": "^1.20.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",

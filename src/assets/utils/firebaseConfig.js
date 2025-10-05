@@ -3,7 +3,7 @@ import { getDatabase, ref, set, get } from "firebase/database";
 import { getStorage } from "firebase/storage";
 import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-import { getMessaging } from "firebase/messaging";
+import { getMessaging, getToken, onMessage } from "firebase/messaging";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -22,8 +22,9 @@ const storage = getStorage(app);
 const auth = getAuth(app);
 const firestore = getFirestore(app);
 
-// Messaging - Fixed export
+// Messaging functions
 let messaging = null;
+
 const getFirebaseMessaging = async () => {
   if (!messaging && "Notification" in window) {
     try {
@@ -33,6 +34,43 @@ const getFirebaseMessaging = async () => {
     }
   }
   return messaging;
+};
+
+// FCM Token get करने का function
+const getFCMToken = async () => {
+  try {
+    const messagingInstance = await getFirebaseMessaging();
+    if (!messagingInstance) return null;
+
+    const currentToken = await getToken(messagingInstance, { 
+      vapidKey: import.meta.env.VITE_FCM_VAPID_KEY 
+    });
+    
+    if (currentToken) {
+      console.log('FCM Token:', currentToken);
+      return currentToken;
+    } else {
+      console.log('No registration token available.');
+      return null;
+    }
+  } catch (error) {
+    console.error('Error getting FCM token:', error);
+    return null;
+  }
+};
+
+// Foreground messages handle करें
+const onMessageListener = () => {
+  return new Promise((resolve) => {
+    getFirebaseMessaging().then(messagingInstance => {
+      if (messagingInstance) {
+        onMessage(messagingInstance, (payload) => {
+          console.log('Message received in foreground:', payload);
+          resolve(payload);
+        });
+      }
+    });
+  });
 };
 
 // Auth persistence
@@ -49,5 +87,7 @@ export {
   ref, 
   set, 
   get,
-  getFirebaseMessaging  // Fixed export
+  getFirebaseMessaging,
+  getFCMToken,
+  onMessageListener
 };
