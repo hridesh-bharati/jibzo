@@ -50,6 +50,6 @@ export default defineConfig({
       }
     }
   },
-  base: "./", // ✅ Yeh change karein
-  publicDir: "public" // ✅ Explicitly set karein
+  base: "./", 
+  publicDir: "public" 
 });

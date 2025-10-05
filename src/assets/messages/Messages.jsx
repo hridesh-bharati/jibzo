@@ -53,7 +53,8 @@ export default function Messages() {
 
   const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_NAME;
   const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ||
+    (window.location.hostname === 'localhost' ? 'http://localhost:3001' : 'https://jibzo.vercel.app');
 
   const chatId = currentUid && uid ? [currentUid, uid].sort().join("_") : null;
 
@@ -63,7 +64,7 @@ export default function Messages() {
       const mobile = window.innerWidth <= 768;
       setIsMobile(mobile);
     };
-    
+
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
@@ -73,7 +74,7 @@ export default function Messages() {
   const saveFCMToken = async (userId) => {
     try {
       console.log('📱 Getting FCM token for user:', userId);
-      
+
       let token;
       try {
         // Service worker registration for mobile support
@@ -99,11 +100,11 @@ export default function Messages() {
         console.log('🔄 Using fallback FCM token method');
         token = await getFCMToken();
       }
-      
+
       if (token) {
         setFcmToken(token);
         console.log('🔑 FCM token obtained');
-        
+
         const response = await axios.post(`${API_BASE_URL}/save-token`, {
           userId: userId,
           fcmToken: token
@@ -113,7 +114,7 @@ export default function Messages() {
             'Content-Type': 'application/json'
           }
         });
-        
+
         console.log('✅ FCM token saved successfully');
         return true;
       } else {
@@ -149,7 +150,7 @@ export default function Messages() {
           'Content-Type': 'application/json'
         }
       });
-      
+
       console.log('📨 Push notification sent successfully');
       return response.data;
     } catch (error) {
@@ -177,7 +178,7 @@ export default function Messages() {
       if (Notification.permission === 'granted') {
         setNotificationPermission('granted');
         console.log('✅ Notification permission already granted');
-        
+
         // Get token after permission is granted
         if (currentUid && !currentUid.startsWith('guest_')) {
           await saveFCMToken(currentUid);
@@ -196,13 +197,13 @@ export default function Messages() {
       const permission = await Notification.requestPermission();
       setNotificationPermission(permission);
       console.log('📋 Notification permission:', permission);
-      
+
       if (permission === 'granted') {
         // Get token after permission is granted
         if (currentUid && !currentUid.startsWith('guest_')) {
           await saveFCMToken(currentUid);
         }
-        
+
         // Show success message only on desktop
         if (!isMobile) {
           alert('✅ Notifications enabled successfully! You will now receive message alerts.');
@@ -212,7 +213,7 @@ export default function Messages() {
           alert('❌ Notifications blocked. Please enable them in your browser settings to receive message alerts.');
         }
       }
-      
+
       return permission;
     } catch (error) {
       console.error('❌ Error requesting notification permission:', error);
@@ -225,7 +226,7 @@ export default function Messages() {
     try {
       if (currentUid && !currentUid.startsWith('guest_')) {
         console.log('🚀 Initializing FCM for user:', currentUid);
-        
+
         // Setup foreground message listener
         setupForegroundMessages();
 
@@ -272,7 +273,7 @@ export default function Messages() {
   const showCustomNotification = (payload) => {
     try {
       const { notification, data } = payload;
-      
+
       // Browser notification
       if ('Notification' in window && Notification.permission === 'granted') {
         const notificationOptions = {
@@ -286,17 +287,17 @@ export default function Messages() {
           silent: false,
           data: data
         };
-        
+
         const notif = new Notification(
-          notification?.title || data?.senderName || 'New Message', 
+          notification?.title || data?.senderName || 'New Message',
           notificationOptions
         );
-        
+
         // Auto close after 5 seconds
         setTimeout(() => {
           notif.close();
         }, 5000);
-        
+
         // Handle notification click
         notif.onclick = () => {
           window.focus();
@@ -313,7 +314,7 @@ export default function Messages() {
           notif.close();
         };
       }
-      
+
       // Your existing floating notification
       const floatingEvent = new CustomEvent('showFloatingNotification', {
         detail: {
@@ -343,18 +344,18 @@ export default function Messages() {
       }
 
       console.log('🧪 Testing notification...');
-      
+
       const result = await sendPushNotification(
-        uid, 
+        uid,
         "🔔 Test Notification! This is a test message to check push notifications."
       );
-      
+
       console.log('✅ Test notification result:', result);
       alert('✅ Test notification sent successfully! Check your other devices or browser tabs.');
-      
+
     } catch (error) {
       console.error('❌ Test notification failed:', error);
-      
+
       let errorMessage = 'Test failed: ';
       if (error.code === 'NETWORK_ERROR' || !error.response) {
         errorMessage += 'Network error - Check if server is running and CORS configured';
@@ -365,7 +366,7 @@ export default function Messages() {
       } else {
         errorMessage += error.message;
       }
-      
+
       alert(errorMessage);
     }
   };
@@ -860,7 +861,7 @@ export default function Messages() {
         <div className="d-flex align-items-center">
           {/* Notification Status */}
           {notificationPermission === 'default' && (
-            <button 
+            <button
               className="btn btn-sm btn-warning me-2"
               onClick={requestNotificationPermission}
               title="Enable Notifications"
@@ -870,7 +871,7 @@ export default function Messages() {
           )}
 
           {notificationPermission === 'denied' && (
-            <button 
+            <button
               className="btn btn-sm btn-danger me-2"
               onClick={() => alert('Please enable notifications in your browser settings')}
               title="Notifications Blocked"
@@ -886,7 +887,7 @@ export default function Messages() {
           )}
 
           {/* Test Notification Button */}
-          <button 
+          <button
             className="btn btn-sm btn-info me-2"
             onClick={testNotification}
             title="Test Notification"
