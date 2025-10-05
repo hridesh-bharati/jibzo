@@ -15,23 +15,23 @@
   ],
   "routes": [
     {
-      "source": "/manifest.json",
+      "src": "/manifest.json",
       "destination": "/manifest.json"
     },
     {
-      "source": "/favicon.ico", 
+      "src": "/favicon.ico",
       "destination": "/favicon.ico"
     },
     {
-      "source": "/assets/(.*)",
+      "src": "/assets/(.*)",
       "destination": "/assets/$1"
     },
     {
-      "source": "/api/(.*)",
+      "src": "/api/(.*)",
       "dest": "/api/$1"
     },
     {
-      "source": "/(.*)",
+      "src": "/(.*)",
       "dest": "/index.html"
     }
   ]
