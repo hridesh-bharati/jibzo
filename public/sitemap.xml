@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset 
+  xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+  xmlns:xhtml="http://www.w3.org/1999/xhtml">
+
+  <!-- 🔹 Main Pages -->
+  <url>
+    <loc>https://jibzo.vercel.app/</loc>
+    <priority>1.00</priority>
+    <changefreq>daily</changefreq>
+  </url>
+
+  <url>
+    <loc>https://jibzo.vercel.app/home</loc>
+    <priority>1.00</priority>
+    <changefreq>daily</changefreq>
+  </url>
+
+  <url>
+    <loc>https://jibzo.vercel.app/login</loc>
+    <priority>0.7</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+
+  <url>
+    <loc>https://jibzo.vercel.app/register</loc>
+    <priority>0.7</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+
+  <!-- 🔹 User Profile & Discovery -->
+  <url>
+    <loc>https://jibzo.vercel.app/admin-profile</loc>
+    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+  </url>
+
+  <url>
+    <loc>https://jibzo.vercel.app/all-insta-users</loc>
+    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+  </url>
+
+  <url>
+    <loc>https://jibzo.vercel.app/friends</loc>
+    <priority>0.8</priority>
+    <changefreq>weekly</changefreq>
+  </url>
+
+  <url>
+    <loc>https://jibzo.vercel.app/followers</loc>
+    <priority>0.8</priority>
+    <changefreq>weekly</changefreq>
+  </url>
+
+  <url>
+    <loc>https://jibzo.vercel.app/following</loc>
+    <priority>0.8</priority>
+    <changefreq>weekly</changefreq>
+  </url>
+
+  <url>
+    <loc>https://jibzo.vercel.app/requested</loc>
+    <priority>0.6</priority>
+    <changefreq>weekly</changefreq>
+  </url>
+
+  <url>
+    <loc>https://jibzo.vercel.app/blocked</loc>
+    <priority>0.6</priority>
+    <changefreq>weekly</changefreq>
+  </url>
+
+  <!-- 🔹 Content & Posts -->
+  <url>
+    <loc>https://jibzo.vercel.app/user/new/post</loc>
+    <priority>0.9</priority>
+    <changefreq>daily</changefreq>
+  </url>
+
+  <url>
+    <loc>https://jibzo.vercel.app/user/get-all-post/post</loc>
+    <priority>0.9</priority>
+    <changefreq>daily</changefreq>
+  </url>
+
+  <!-- 🔹 Messaging & Status -->
+  <url>
+    <loc>https://jibzo.vercel.app/messages</loc>
+    <priority>0.9</priority>
+    <changefreq>daily</changefreq>
+  </url>
+
+  <url>
+    <loc>https://jibzo.vercel.app/status</loc>
+    <priority>0.8</priority>
+    <changefreq>daily</changefreq>
+  </url>
+
+  <url>
+    <loc>https://jibzo.vercel.app/status/upload</loc>
+    <priority>0.7</priority>
+    <changefreq>weekly</changefreq>
+  </url>
+
+  <!-- 🔹 Gadgets & Tools -->
+  <url>
+    <loc>https://jibzo.vercel.app/gadgets-and-tools</loc>
+    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+  </url>
+
+  <url>
+    <loc>https://jibzo.vercel.app/gadgets-and-tools/file-converter</loc>
+    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+  </url>
+
+  <url>
+    <loc>https://jibzo.vercel.app/gadgets-and-tools/image-compression</loc>
+    <priority>0.8</priority>
+    <changefreq>weekly</changefreq>
+  </url>
+
+  <url>
+    <loc>https://jibzo.vercel.app/gadgets-and-tools/image-resizer</loc>
+    <priority>0.8</priority>
+    <changefreq>weekly</changefreq>
+  </url>
+
+  <url>
+    <loc>https://jibzo.vercel.app/gadgets-and-tools/face-sticker</loc>
+    <priority>0.8</priority>
+    <changefreq>weekly</changefreq>
+  </url>
+
+  <url>
+    <loc>https://jibzo.vercel.app/gadgets-and-tools/age-calculator</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+
+  <!-- 🔹 Misc Pages -->
+  <url>
+    <loc>https://jibzo.vercel.app/support</loc>
+    <priority>0.5</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+
+  <url>
+    <loc>https://jibzo.vercel.app/delete-account</loc>
+    <priority>0.3</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+
+</urlset>
