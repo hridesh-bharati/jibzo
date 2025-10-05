@@ -27,14 +27,6 @@
       "dest": "/icons/$1"
     },
     {
-      "src": "/images/(.*)",
-      "dest": "/images/$1"
-    },
-    {
-      "src": "/screenshots/(.*)",
-      "dest": "/screenshots/$1"
-    },
-    {
       "src": "/manifest.json",
       "dest": "/manifest.json"
     },
@@ -43,14 +35,8 @@
       "dest": "/favicon.ico"
     },
     {
-      "src": "/robots.txt",
-      "dest": "/robots.txt"
-    },
-    {
       "src": "/(.*)",
       "dest": "/index.html"
     }
-  ],
-  "cleanUrls": true,
-  "trailingSlash": false
+  ]
 }
