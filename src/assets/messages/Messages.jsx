@@ -41,6 +41,7 @@ export default function Messages() {
   const [uploadProgress, setUploadProgress] = useState(0);
 
   const [partnerStatus, setPartnerStatus] = useState(null);
+  const [notificationPermission, setNotificationPermission] = useState('default');
 
   const messagesEndRef = useRef(null);
   const longPressTimerRef = useRef(null);
@@ -57,14 +58,18 @@ export default function Messages() {
   // ---------- FCM Functions ----------
   const saveFCMToken = async (userId) => {
     try {
+      console.log('Getting FCM token for user:', userId);
       const token = await getFCMToken();
       
       if (token) {
+        console.log('FCM token obtained:', token);
         await axios.post(`${API_BASE_URL}/save-token`, {
           userId: userId,
           fcmToken: token
         });
         console.log('FCM token saved successfully');
+      } else {
+        console.log('No FCM token available');
       }
     } catch (error) {
       console.error('Error saving FCM token:', error);
@@ -73,6 +78,11 @@ export default function Messages() {
 
   const sendPushNotification = async (recipientId, messageText) => {
     try {
+      if (!recipientId || recipientId.startsWith('guest_')) {
+        console.log('Skipping notification for guest user');
+        return;
+      }
+
       await axios.post(`${API_BASE_URL}/send-notification`, {
         recipientId: recipientId,
         senderId: currentUid,
@@ -81,32 +91,72 @@ export default function Messages() {
         senderName: auth.currentUser?.displayName || 'Someone',
         imageUrl: chatUser?.photoURL || null
       });
+      console.log('Push notification sent successfully');
     } catch (error) {
       console.error('Error sending notification:', error);
+    }
+  };
+
+  const requestNotificationPermission = async () => {
+    try {
+      if (!('Notification' in window)) {
+        console.log('This browser does not support notifications');
+        return 'unsupported';
+      }
+
+      if (Notification.permission === 'granted') {
+        setNotificationPermission('granted');
+        return 'granted';
+      }
+
+      if (Notification.permission === 'denied') {
+        setNotificationPermission('denied');
+        console.log('Notification permission denied previously');
+        return 'denied';
+      }
+
+      // Permission is 'default' - request permission
+      const permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+      console.log('Notification permission:', permission);
+      
+      if (permission === 'granted') {
+        // Get token after permission is granted
+        if (currentUid && !currentUid.startsWith('guest_')) {
+          await saveFCMToken(currentUid);
+        }
+      }
+      
+      return permission;
+    } catch (error) {
+      console.error('Error requesting notification permission:', error);
+      return 'error';
     }
   };
 
   const initializeFCM = async () => {
     try {
       if (currentUid && !currentUid.startsWith('guest_')) {
-        await saveFCMToken(currentUid);
+        console.log('Initializing FCM for user:', currentUid);
         
-        // Foreground messages handle karo
-        onMessageListener()
-          .then((payload) => {
-            console.log('Foreground message received:', payload);
-            showCustomNotification(payload);
-          })
-          .catch((error) => {
-            console.error('Message listener error:', error);
-          });
-
-        // Notification permission request karo
-        if ('Notification' in window && Notification.permission === 'default') {
-          Notification.requestPermission().then(permission => {
-            console.log('Notification permission:', permission);
-          });
+        // First request notification permission
+        await requestNotificationPermission();
+        
+        // Setup foreground message listener
+        try {
+          onMessageListener()
+            .then((payload) => {
+              console.log('Foreground message received:', payload);
+              showCustomNotification(payload);
+            })
+            .catch((error) => {
+              console.log('No foreground messages yet:', error);
+            });
+        } catch (error) {
+          console.error('Error setting up message listener:', error);
         }
+      } else {
+        console.log('Skipping FCM for guest user');
       }
     } catch (error) {
       console.error('FCM initialization error:', error);
@@ -116,13 +166,35 @@ export default function Messages() {
   const showCustomNotification = (payload) => {
     const { notification, data } = payload;
     
-    // Browser notification
+    // Browser notification - Instagram jaise top notification
     if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification(notification.title, {
+      const notificationOptions = {
         body: notification.body,
         icon: notification.image || '/logo.png',
-        tag: data.chatId
-      });
+        badge: '/logo.png',
+        image: notification.image || '/logo.png',
+        vibrate: [200, 100, 200, 100, 200],
+        tag: data?.chatId || 'message',
+        requireInteraction: false,
+        silent: false,
+        data: data // Extra data for click handling
+      };
+      
+      const notif = new Notification(notification.title, notificationOptions);
+      
+      // Auto close after 5 seconds
+      setTimeout(() => {
+        notif.close();
+      }, 5000);
+      
+      // Handle notification click
+      notif.onclick = () => {
+        window.focus();
+        if (data?.senderId) {
+          navigate(`/messages/${data.senderId}`);
+        }
+        notif.close();
+      };
     }
     
     // Your existing floating notification
@@ -131,7 +203,7 @@ export default function Messages() {
         title: notification.title,
         body: notification.body,
         image: notification.image || '/logo.png',
-        url: `/messages/${data.senderId}`
+        url: `/messages/${data?.senderId || currentUid}`
       }
     });
     window.dispatchEvent(floatingEvent);
@@ -140,27 +212,35 @@ export default function Messages() {
   // Test notification function
   const testNotification = async () => {
     try {
+      if (!uid) {
+        alert('No user selected for test');
+        return;
+      }
+
       const response = await axios.post(`${API_BASE_URL}/send-notification`, {
         recipientId: uid,
         senderId: currentUid,
-        message: "🔔 Test Notification!",
+        message: "🔔 Test Notification! This is a test message to check push notifications.",
         chatId: chatId,
-        senderName: "Test Bot",
-        imageUrl: null
+        senderName: auth.currentUser?.displayName || "Test User",
+        imageUrl: auth.currentUser?.photoURL || null
       });
       console.log('Test notification sent:', response.data);
-      alert('Test notification sent! Check other tab/browser');
+      alert('Test notification sent! Check other tab/browser or wait for background sync.');
     } catch (error) {
       console.error('Test notification failed:', error);
-      alert('Test failed: ' + error.message);
+      alert('Test failed: ' + (error.response?.data?.message || error.message));
     }
   };
 
   // ---------- Auth ----------
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) setCurrentUid(user.uid);
-      else navigate("/login");
+      if (user) {
+        setCurrentUid(user.uid);
+      } else {
+        navigate("/login");
+      }
     });
     return () => unsubscribe();
   }, [navigate]);
@@ -171,7 +251,9 @@ export default function Messages() {
       guestId = "guest_" + Math.random().toString(36).substring(2, 10);
       localStorage.setItem("guestUid", guestId);
     }
-    setCurrentUid(auth.currentUser?.uid || guestId);
+    if (!auth.currentUser) {
+      setCurrentUid(guestId);
+    }
   }, []);
 
   // ---------- FCM Initialization ----------
@@ -180,6 +262,13 @@ export default function Messages() {
       initializeFCM();
     }
   }, [currentUid]);
+
+  // ---------- Check initial notification permission ----------
+  useEffect(() => {
+    if ('Notification' in window) {
+      setNotificationPermission(Notification.permission);
+    }
+  }, []);
 
   // ---------- Auto focus input on mount ----------
   useEffect(() => {
@@ -362,8 +451,8 @@ export default function Messages() {
           const floatingEvent = new CustomEvent('showFloatingNotification', {
             detail: {
               title: "New Message",
-              body: `${chatUser?.username || "Someone"}: ${text || "Sent an image"}`,
-              image: chatUser?.photoURL || '/logo.png',
+              body: `${auth.currentUser?.displayName || "Someone"}: ${text || "Sent an image"}`,
+              image: auth.currentUser?.photoURL || '/logo.png',
               url: `/messages/${currentUid}`
             }
           });
@@ -632,13 +721,25 @@ export default function Messages() {
         </Link>
 
         <div className="d-flex align-items-center">
+          {/* Notification Permission Status */}
+          {notificationPermission !== 'granted' && (
+            <button 
+              className="btn btn-sm btn-warning me-2"
+              onClick={requestNotificationPermission}
+              title="Enable Notifications"
+            >
+              🔔 Enable
+            </button>
+          )}
+
           {/* Test Notification Button */}
           <button 
-            className="btn btn-sm btn-warning me-2"
+            className="btn btn-sm btn-info me-2"
             onClick={testNotification}
             title="Test Notification"
+            disabled={!uid}
           >
-            🔔 Test
+            Test 🔔
           </button>
 
           {/* Three-dot menu */}
@@ -671,6 +772,15 @@ export default function Messages() {
                   }}
                 >
                   {privacyHide ? "Show Online / Last Seen" : "Hide Online / Last Seen"}
+                </button>
+                <button
+                  className="py-2 px-3 dropdown-item"
+                  onClick={() => {
+                    requestNotificationPermission();
+                    setShowMenu(false);
+                  }}
+                >
+                  {notificationPermission === 'granted' ? 'Notifications Enabled' : 'Enable Notifications'}
                 </button>
               </div>
             )}

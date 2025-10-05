@@ -25,34 +25,37 @@ const firestore = getFirestore(app);
 // Messaging functions
 let messaging = null;
 
-const getFirebaseMessaging = async () => {
+const initializeMessaging = async () => {
   if (!messaging && "Notification" in window) {
     try {
       messaging = getMessaging(app);
+      
+      // Request permission and get token
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        console.log('Notification permission granted.');
+        
+        const token = await getToken(messaging, {
+          vapidKey: import.meta.env.VITE_FCM_VAPID_KEY
+        });
+        
+        if (token) {
+          console.log('FCM token:', token);
+          return token;
+        }
+      }
     } catch (error) {
-      console.error('Messaging initialization error:', error);
+      console.error('Error initializing messaging:', error);
     }
   }
-  return messaging;
+  return null;
 };
 
 // FCM Token get करने का function
 const getFCMToken = async () => {
   try {
-    const messagingInstance = await getFirebaseMessaging();
-    if (!messagingInstance) return null;
-
-    const currentToken = await getToken(messagingInstance, { 
-      vapidKey: import.meta.env.VITE_FCM_VAPID_KEY 
-    });
-    
-    if (currentToken) {
-      console.log('FCM Token:', currentToken);
-      return currentToken;
-    } else {
-      console.log('No registration token available.');
-      return null;
-    }
+    const token = await initializeMessaging();
+    return token;
   } catch (error) {
     console.error('Error getting FCM token:', error);
     return null;
@@ -62,14 +65,12 @@ const getFCMToken = async () => {
 // Foreground messages handle करें
 const onMessageListener = () => {
   return new Promise((resolve) => {
-    getFirebaseMessaging().then(messagingInstance => {
-      if (messagingInstance) {
-        onMessage(messagingInstance, (payload) => {
-          console.log('Message received in foreground:', payload);
-          resolve(payload);
-        });
-      }
-    });
+    if (messaging) {
+      onMessage(messaging, (payload) => {
+        console.log('Message received in foreground:', payload);
+        resolve(payload);
+      });
+    }
   });
 };
 
@@ -87,7 +88,6 @@ export {
   ref, 
   set, 
   get,
-  getFirebaseMessaging,
   getFCMToken,
   onMessageListener
 };

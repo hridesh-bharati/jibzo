@@ -1,16 +1,14 @@
 import admin from 'firebase-admin';
 
-// Firebase Admin Initialize with single service account
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
-    databaseURL: serviceAccount.database_url || 'https://portfolio-dfe5c-default-rtdb.firebaseio.com'
+    databaseURL: 'https://portfolio-dfe5c-default-rtdb.firebaseio.com'
   });
 }
 
-// In-memory store for tokens
 const userTokens = new Map();
 
 export default async function handler(req, res) {
@@ -30,7 +28,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { recipientId, senderId, message, chatId, senderName, imageUrl } = req.body;
+    const { recipientId, senderId, message, chatId, senderName } = req.body;
 
     if (!recipientId || !message) {
       return res.status(400).json({ 
@@ -48,39 +46,57 @@ export default async function handler(req, res) {
       });
     }
 
-    const notification = {
-      title: senderName || 'New Message',
-      body: message.length > 100 ? message.substring(0, 100) + '...' : message,
-      imageUrl: imageUrl || null
-    };
-
+    // Instagram jaise notification payload
     const messagePayload = {
       notification: {
-        title: notification.title,
-        body: notification.body,
-        ...(notification.imageUrl && { image: notification.imageUrl })
+        title: `💬 ${senderName || 'Someone'}`,
+        body: message.length > 50 ? message.substring(0, 50) + '...' : message,
+        icon: '/logo.png',
+        image: '/logo.png',
+        click_action: 'https://your-app.vercel.app'
       },
       data: {
         type: 'new_message',
         senderId: senderId || '',
         chatId: chatId || '',
         recipientId: recipientId,
-        click_action: 'FLUTTER_NOTIFICATION_CLICK',
-        route: '/messages'
+        url: `/messages/${senderId}`,
+        timestamp: new Date().toISOString()
       },
       token: recipientToken,
+      webpush: {
+        headers: {
+          Urgency: 'high'
+        },
+        notification: {
+          requireInteraction: true,
+          badge: '/logo.png',
+          icon: '/logo.png',
+          actions: [
+            {
+              action: 'open',
+              title: 'Open Chat'
+            }
+          ]
+        },
+        fcm_options: {
+          link: `https://your-app.vercel.app/messages/${senderId}`
+        }
+      },
       android: {
         priority: 'high',
         notification: {
           sound: 'default',
-          channelId: 'messages_channel'
+          channel_id: 'messages_channel',
+          click_action: 'OPEN_CHAT'
         }
       },
       apns: {
         payload: {
           aps: {
             sound: 'default',
-            badge: 1
+            badge: 1,
+            'mutable-content': 1
           }
         }
       }
@@ -88,7 +104,7 @@ export default async function handler(req, res) {
 
     const response = await admin.messaging().send(messagePayload);
     
-    console.log('Notification sent successfully');
+    console.log('✅ Notification sent successfully to:', recipientId);
     
     return res.status(200).json({ 
       success: true, 
@@ -96,10 +112,11 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
-    console.error('Error sending notification:', error);
+    console.error('❌ Error sending notification:', error);
     
     if (error.code === 'messaging/registration-token-not-registered') {
       userTokens.delete(recipientId);
+      console.log(`🗑️ Removed invalid token for user: ${recipientId}`);
     }
     
     return res.status(500).json({ 

@@ -21,10 +21,16 @@ messaging.onBackgroundMessage((payload) => {
     const notificationOptions = {
         body: payload.notification.body,
         icon: payload.notification.image || '/logo.png',
-        data: payload.data,
         badge: '/logo.png',
         vibrate: [200, 100, 200],
-        tag: payload.data?.chatId || 'message'
+        tag: payload.data?.chatId || 'message',
+        requireInteraction: true,
+        actions: [
+            {
+                action: 'open',
+                title: 'Open Chat'
+            }
+        ]
     };
 
     self.registration.showNotification(notificationTitle, notificationOptions);
@@ -35,7 +41,7 @@ self.addEventListener('notificationclick', (event) => {
     event.notification.close();
 
     const senderId = event.notification.data?.senderId;
-    const urlToOpen = senderId ? `/messages/${senderId}` : '/messages';
+    const urlToOpen = senderId ? `/messages/${senderId}` : '/';
 
     event.waitUntil(
         clients.matchAll({ type: 'window' }).then((windowClients) => {
