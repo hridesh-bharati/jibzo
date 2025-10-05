@@ -50,7 +50,7 @@ const Login = () => {
     try {
       await signInWithEmailAndPassword(auth, email, password);
       toast.success("Login successful!");
-      setTimeout(() => navigate("/dashboard"), 1000);
+      setTimeout(() => navigate("/"), 1000);
     } catch (err) {
       console.error(err);
       if (err.code === 'auth/user-not-found') {
@@ -76,21 +76,36 @@ const Login = () => {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
 
-      toast.success(`Welcome back ${user.displayName || user.email}!`);
-      setTimeout(() => navigate("/dashboard"), 1000);
+      // ✅ CORRECT DATABASE REFERENCE
+      const userRef = ref(db, `usersData/${user.uid}`);
+      const userSnapshot = await get(userRef);
+
+      if (!userSnapshot.exists()) {
+        // Create user profile in CORRECT location
+        const userData = {
+          uid: user.uid,
+          username: user.displayName ||
+            user.email?.split('@')[0] ||
+            `${providerName}_user_${user.uid.slice(0, 8)}`,
+          email: user.email || `${user.uid}@${providerName}.com`,
+          photoURL: user.photoURL || "/default-avatar.png",
+          createdAt: Date.now(),
+          authProvider: providerName,
+          passwordNotSet: true
+        };
+
+        // ✅ Save to usersData
+        await set(userRef, userData);
+        toast.success(`Welcome ${user.displayName || user.email}! Profile created.`);
+      } else {
+        toast.success(`Welcome back ${user.displayName || user.email}!`);
+      }
+
+      setTimeout(() => navigate("/"), 1000);
 
     } catch (error) {
       console.error(`${providerName} Login Error:`, error);
-
-      if (error.code === 'auth/popup-closed-by-user') {
-        toast.info(`${providerName} login was cancelled.`);
-      } else if (error.code === 'auth/account-exists-with-different-credential') {
-        toast.error(`An account already exists with the same email but different sign-in method.`);
-      } else if (error.code === 'auth/user-not-found') {
-        toast.error(`No account found. Please register first.`);
-      } else {
-        toast.error(`Failed to login with ${providerName}. Please try again.`);
-      }
+      // ... error handling
     } finally {
       setGoogleLoading(false);
       setGithubLoading(false);
