@@ -89,13 +89,15 @@ export default function Messages() {
         // Try to get FCM token directly
         if (messaging) {
           token = await getToken(messaging, {
-            vapidKey: import.meta.env.VITE_VAPID_KEY || 'BIt5p8R9L4y9zQYVcT7XqKjZkLmNpOaRsTuVwXyZzAbCdEfGhIjKlMnOpQrStUvWxYzAbCdEfGhIjKlMnOpQrStUvWx'
+            vapidKey: import.meta.env.VITE_FCM_VAPID_KEY || 'BIt5p8R9L4y9zQYVcT7XqKjZkLmNpOaRsTuVwXyZzAbCdEfGhIjKlMnOpQrStUvWxYzAbCdEfGhIjKlMnOpQrStUvWx'
           });
           console.log('✅ FCM Token obtained:', token ? 'Yes' : 'No');
+        } else {
+          token = await getFCMToken(); // Fallback to your existing function
         }
       } catch (fcmError) {
         console.log('🔄 Using fallback FCM token method');
-        token = await getFCMToken(); // Fallback to your existing function
+        token = await getFCMToken();
       }
       
       if (token) {

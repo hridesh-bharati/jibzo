@@ -22,54 +22,66 @@ const storage = getStorage(app);
 const auth = getAuth(app);
 const firestore = getFirestore(app);
 
-// Messaging functions
-let messaging = null;
-
-const initializeMessaging = async () => {
-  if (!messaging && "Notification" in window) {
-    try {
-      messaging = getMessaging(app);
-      
-      // Request permission and get token
-      const permission = await Notification.requestPermission();
-      if (permission === 'granted') {
-        console.log('Notification permission granted.');
-        
-        const token = await getToken(messaging, {
-          vapidKey: import.meta.env.VITE_FCM_VAPID_KEY
-        });
-        
-        if (token) {
-          console.log('FCM token:', token);
-          return token;
-        }
-      }
-    } catch (error) {
-      console.error('Error initializing messaging:', error);
-    }
-  }
-  return null;
-};
+// Initialize messaging
+const messaging = getMessaging(app);
 
 // FCM Token get करने का function
 const getFCMToken = async () => {
   try {
-    const token = await initializeMessaging();
-    return token;
+    if (!messaging) {
+      console.log('Messaging not available');
+      return null;
+    }
+
+    // Check notification permission
+    if (!("Notification" in window)) {
+      console.log("This browser does not support notifications");
+      return null;
+    }
+
+    if (Notification.permission === "default") {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        console.log("Notification permission denied");
+        return null;
+      }
+    } else if (Notification.permission !== "granted") {
+      console.log("Notification permission not granted");
+      return null;
+    }
+
+    const token = await getToken(messaging, {
+      vapidKey: import.meta.env.VITE_FCM_VAPID_KEY || "BIt5p8R9L4y9zQYVcT7XqKjZkLmNpOaRsTuVwXyZzAbCdEfGhIjKlMnOpQrStUvWxYzAbCdEfGhIjKlMnOpQrStUvWx"
+    });
+
+    if (token) {
+      console.log("FCM token obtained successfully");
+      return token;
+    } else {
+      console.log("No registration token available");
+      return null;
+    }
   } catch (error) {
-    console.error('Error getting FCM token:', error);
+    console.error("Error getting FCM token:", error);
     return null;
   }
 };
 
 // Foreground messages handle करें
 const onMessageListener = () => {
-  return new Promise((resolve) => {
-    if (messaging) {
+  return new Promise((resolve, reject) => {
+    if (!messaging) {
+      reject(new Error("Messaging not available"));
+      return;
+    }
+
+    try {
       onMessage(messaging, (payload) => {
-        console.log('Message received in foreground:', payload);
+        console.log("Message received in foreground:", payload);
         resolve(payload);
       });
+    } catch (error) {
+      reject(error);
     }
   });
 };
@@ -85,6 +97,7 @@ export {
   storage, 
   auth, 
   firestore, 
+  messaging, // ✅ Now exporting messaging
   ref, 
   set, 
   get,
