@@ -109,7 +109,7 @@ export default function UserProfile() {
             backgroundImage: `url(${userData.wallpaper || "https://via.placeholder.com/900x200"})`,
             backgroundSize: "cover",
             backgroundPosition: "center",
-            height: "170px",
+            height: "200px",
             borderBottom: "3px solid #26c6da"
           }}
         >

@@ -546,16 +546,15 @@ export default function FileConverter() {
       minHeight: '100vh',
       backgroundColor: '#f8f9fa'
     }}>
-     
+
 
       {/* Conversion Type Selector */}
       <div className="conversion-grid">
         <ConversionTypeButton type="jpg-to-pdf" label="Images to PDF" icon="🖼️" color="#4dabf7" />
         <ConversionTypeButton type="pdf-to-jpg" label="PDF to Images" icon="📄" color="#f06595" />
-        <ConversionTypeButton type="pdf-to-word" label="PDF to Word" icon="🟦" color="#63e6be" />
+        <ConversionTypeButton type="pdf-to-word" label="PDF to Word" icon={<i className="bi bi-file-earmark-word-fill text-primary"></i>} color="#63e6be" />
         <ConversionTypeButton type="text-scanner" label="Text Scanner" icon="🔍" color="#fcc419" />
         <style>{`
-        
         .conversion-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
@@ -563,7 +562,6 @@ export default function FileConverter() {
   margin-bottom: 20px;
   text-align: center;
 }
-
 .conversion-btn {
   border: none;
   background: white;

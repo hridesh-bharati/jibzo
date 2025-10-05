@@ -522,7 +522,7 @@ function OptionsBottomSheet({ show, post, onClose, onDelete, onCopyLink, canDele
 }
 
 /* -----------------------
-   Comments Offcanvas (YouTube Style)
+   Comments Offcanvas (YouTube Style) - UPDATED: Real-time comments
 ----------------------- */
 function CommentsOffcanvas({
   postId,
@@ -538,6 +538,7 @@ function CommentsOffcanvas({
 }) {
   const [post, setPost] = useState(null);
   const [comments, setComments] = useState([]);
+  const [isAddingComment, setIsAddingComment] = useState(false);
 
   useEffect(() => {
     if (!postId || !show) return;
@@ -548,6 +549,8 @@ function CommentsOffcanvas({
       if (postData) {
         setPost(postData);
         const commentsData = postData.comments ? Object.entries(postData.comments) : [];
+        // Sort comments by timestamp (newest first)
+        commentsData.sort(([, a], [, b]) => (b.timestamp || 0) - (a.timestamp || 0));
         setComments(commentsData);
       }
     });
@@ -558,9 +561,17 @@ function CommentsOffcanvas({
   if (!postId || !show) return null;
 
   const handleAddComment = async () => {
-    if (!commentText.trim()) return;
-    await addComment(postId, commentText);
-    setCommentText("");
+    if (!commentText.trim() || isAddingComment) return;
+
+    setIsAddingComment(true);
+    try {
+      await addComment(postId, commentText);
+      setCommentText("");
+    } catch (error) {
+      console.error('Error adding comment:', error);
+    } finally {
+      setIsAddingComment(false);
+    }
   };
 
   const handleDeleteComment = async (cid, commentUserId) => {
@@ -644,13 +655,21 @@ function CommentsOffcanvas({
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleAddComment()}
+              disabled={isAddingComment}
             />
             <button
               className="btn btn-primary"
-              disabled={!commentText.trim()}
+              disabled={!commentText.trim() || isAddingComment}
               onClick={handleAddComment}
             >
-              <i className="bi bi-send me-1"></i>Post
+              {isAddingComment ? (
+                <div className="spinner-border spinner-border-sm me-1" role="status">
+                  <span className="visually-hidden">Loading...</span>
+                </div>
+              ) : (
+                <i className="bi bi-send me-1"></i>
+              )}
+              Post
             </button>
           </div>
         </div>
@@ -660,7 +679,7 @@ function CommentsOffcanvas({
 }
 
 /* -----------------------
-   ReelsPlayer (TikTok style) - UPDATED: Better fullscreen handling
+   ReelsPlayer (TikTok style) - UPDATED: Real-time interactions
 ----------------------- */
 function ReelsPlayer({
   posts,
@@ -677,6 +696,7 @@ function ReelsPlayer({
   const [currentPostId, setCurrentPostId] = useState(null);
   const [commentText, setCommentText] = useState("");
   const [playingStates, setPlayingStates] = useState({});
+  const [isAddingComment, setIsAddingComment] = useState(false);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -746,21 +766,30 @@ function ReelsPlayer({
   };
 
   const handleAddComment = async (postId, text) => {
-    if (!text.trim()) return;
-    const userId = currentUser?.uid || guestId;
-    const userName =
-      currentUser?.displayName ||
-      currentUser?.email?.split("@")[0] ||
-      "Guest";
-    const userPic = currentUser?.photoURL || "";
+    if (!text.trim() || isAddingComment) return;
 
-    await push(ref(db, `galleryImages/${postId}/comments`), {
-      userId,
-      userName,
-      userPic,
-      text: text.trim(),
-      timestamp: Date.now(),
-    });
+    setIsAddingComment(true);
+    try {
+      const userId = currentUser?.uid || guestId;
+      const userName =
+        currentUser?.displayName ||
+        currentUser?.email?.split("@")[0] ||
+        "Guest";
+      const userPic = currentUser?.photoURL || "";
+
+      await push(ref(db, `galleryImages/${postId}/comments`), {
+        userId,
+        userName,
+        userPic,
+        text: text.trim(),
+        timestamp: Date.now(),
+      });
+      setCommentText("");
+    } catch (error) {
+      console.error('Error adding comment:', error);
+    } finally {
+      setIsAddingComment(false);
+    }
   };
 
   return (
@@ -777,7 +806,7 @@ function ReelsPlayer({
         {posts.map((post) => {
           const uid = currentUser?.uid || guestId;
           const liked = post.likes?.[uid];
-          const likeCount = post.likes ? Object.keys(post.likes).length : 0;
+          const likeCount = post.likes ? Object.keys(post.likes).filter(key => post.likes[key]).length : 0;
           const commentCount = post.comments ? Object.keys(post.comments).length : 0;
           const isPlaying = playingStates[post.id] || false;
 
@@ -968,16 +997,24 @@ function ReelsPlayer({
                   placeholder="Add a comment..."
                   value={commentText}
                   onChange={(e) => setCommentText(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleAddComment(post.id, commentText).then(() => setCommentText(""))}
+                  onKeyDown={(e) => e.key === "Enter" && handleAddComment(post.id, commentText)}
+                  disabled={isAddingComment}
                   style={{ borderRadius: "20px", padding: "5px 10px" }}
                 />
                 <button
                   className="btn btn-sm btn-primary px-4"
-                  disabled={!commentText.trim()}
-                  onClick={() => handleAddComment(post.id, commentText).then(() => setCommentText(""))}
+                  disabled={!commentText.trim() || isAddingComment}
+                  onClick={() => handleAddComment(post.id, commentText)}
                   style={{ borderRadius: "20px" }}
                 >
-                  <i className="bi bi-send me-1"></i>Post
+                  {isAddingComment ? (
+                    <div className="spinner-border spinner-border-sm me-1" role="status">
+                      <span className="visually-hidden">Loading...</span>
+                    </div>
+                  ) : (
+                    <i className="bi bi-send me-1"></i>
+                  )}
+                  Post
                 </button>
               </div>
             </div>
@@ -1031,10 +1068,23 @@ function PdfPreview({ url, name }) {
 }
 
 /* -----------------------
-   Main GetPost component - FIXED: All issues resolved
+   Fisher-Yates shuffle algorithm for random post order
+----------------------- */
+function shuffleArray(array) {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
+/* -----------------------
+   Main GetPost component - FIXED: Real-time like/comment without delay
 ----------------------- */
 export default function GetPost({ showFilter = true, uid }) {
   const [posts, setPosts] = useState([]);
+  const [shuffledPosts, setShuffledPosts] = useState([]);
   const [filter, setFilter] = useState("all");
   const [optionsPost, setOptionsPost] = useState(null);
   const [showOptions, setShowOptions] = useState(false);
@@ -1046,6 +1096,8 @@ export default function GetPost({ showFilter = true, uid }) {
   const [showComments, setShowComments] = useState(false);
   const [commentsPostId, setCommentsPostId] = useState(null);
   const [commentsText, setCommentsText] = useState({});
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [isLiking, setIsLiking] = useState({}); // Track like states per post
   const navigate = useNavigate();
 
   const videoRefs = useRef({});
@@ -1064,17 +1116,36 @@ export default function GetPost({ showFilter = true, uid }) {
     return () => unsub();
   }, []);
 
+  // Real-time Firebase listener for posts
   useEffect(() => {
     const postsRef = ref(db, "galleryImages");
     return onValue(postsRef, (snap) => {
       const data = snap.val();
-      if (!data) return setPosts([]);
+      if (!data) {
+        setPosts([]);
+        setShuffledPosts([]);
+        return;
+      }
 
       let arr = Object.entries(data).map(([id, v]) => ({ id, ...v }));
-      arr = arr.sort((a, b) => b.timestamp - a.timestamp);
+
       setPosts(arr);
+
+      // Only shuffle on initial load or when new posts are added
+      if (isInitialLoad || arr.length !== shuffledPosts.length) {
+        const shuffled = shuffleArray(arr);
+        setShuffledPosts(shuffled);
+        setIsInitialLoad(false);
+      } else {
+        // Update existing shuffled posts with new data while maintaining order
+        setShuffledPosts(prevShuffled => {
+          const postMap = new Map(arr.map(post => [post.id, post]));
+          return prevShuffled.map(post => postMap.get(post.id) || post);
+        });
+      }
     });
-  }, []);
+  }, [isInitialLoad, shuffledPosts.length]);
+
   const goToProfile = (uid) => {
     navigate(`/user-profile/${uid}`);
   };
@@ -1082,52 +1153,127 @@ export default function GetPost({ showFilter = true, uid }) {
   const isAdmin = () =>
     (currentUser?.email || "").toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
-  const toggleLike = async (id) => {
+  // Optimized toggleLike with immediate UI update
+  const toggleLike = async (postId) => {
     const userId = currentUser?.uid || guestId;
-    const post = posts.find((p) => p.id === id);
-    const already = post?.likes?.[userId];
 
-    const postOwnerId = post.userId;
+    // Prevent multiple rapid likes
+    if (isLiking[postId]) return;
 
-    if (already) {
-      await remove(ref(db, `galleryImages/${id}/likes/${userId}`));
-      await remove(ref(db, `notifications/${postOwnerId}/${userId}_${id}`));
-    } else {
-      await set(ref(db, `galleryImages/${id}/likes/${userId}`), true);
+    setIsLiking(prev => ({ ...prev, [postId]: true }));
 
-      if (userId !== postOwnerId) {
-        await set(ref(db, `notifications/${postOwnerId}/${userId}_${id}`), {
-          likerId: userId,
-          postId: id,
-          postCaption: post.caption || "your post",
-          timestamp: Date.now(),
-          seen: false
-        });
+    try {
+      // Immediate UI update
+      setShuffledPosts(prevShuffled =>
+        prevShuffled.map(post => {
+          if (post.id === postId) {
+            const currentlyLiked = post.likes?.[userId];
+            const updatedLikes = currentlyLiked
+              ? { ...post.likes, [userId]: undefined }
+              : { ...post.likes, [userId]: true };
+
+            return {
+              ...post,
+              likes: updatedLikes
+            };
+          }
+          return post;
+        })
+      );
+
+      // Firebase update
+      const post = posts.find((p) => p.id === postId);
+      const already = post?.likes?.[userId];
+      const postOwnerId = post.userId;
+
+      if (already) {
+        await remove(ref(db, `galleryImages/${postId}/likes/${userId}`));
+        await remove(ref(db, `notifications/${postOwnerId}/${userId}_${postId}`));
+      } else {
+        await set(ref(db, `galleryImages/${postId}/likes/${userId}`), true);
+
+        if (userId !== postOwnerId) {
+          await set(ref(db, `notifications/${postOwnerId}/${userId}_${postId}`), {
+            likerId: userId,
+            postId: postId,
+            postCaption: post.caption || "your post",
+            timestamp: Date.now(),
+            seen: false
+          });
+        }
       }
+    } catch (error) {
+      console.error('Error toggling like:', error);
+      // Revert UI update on error
+      setShuffledPosts(prevShuffled =>
+        prevShuffled.map(post => {
+          if (post.id === postId) {
+            const postFromOriginal = posts.find(p => p.id === postId);
+            return postFromOriginal ? { ...postFromOriginal } : post;
+          }
+          return post;
+        })
+      );
+    } finally {
+      setIsLiking(prev => ({ ...prev, [postId]: false }));
     }
   };
 
+  // Optimized addComment with immediate UI update
   const addComment = async (postId, text) => {
     if (!text.trim()) return;
+
     const userId = currentUser?.uid || guestId;
-    const userName =
-      currentUser?.displayName ||
-      currentUser?.email?.split("@")[0] ||
-      "Guest";
+    const userName = currentUser?.displayName || currentUser?.email?.split("@")[0] || "Guest";
     const userPic = currentUser?.photoURL || "";
 
-    await push(ref(db, `galleryImages/${postId}/comments`), {
+    const newComment = {
       userId,
       userName,
       userPic,
       text: text.trim(),
       timestamp: Date.now(),
-    });
+    };
 
-    setCommentsText(prev => ({
-      ...prev,
-      [postId]: ""
-    }));
+    try {
+      // Immediate UI update for comment count
+      setShuffledPosts(prevShuffled =>
+        prevShuffled.map(post => {
+          if (post.id === postId) {
+            const currentComments = post.comments || {};
+            const newCommentId = `temp_${Date.now()}`;
+            return {
+              ...post,
+              comments: {
+                ...currentComments,
+                [newCommentId]: newComment
+              }
+            };
+          }
+          return post;
+        })
+      );
+
+      // Firebase update
+      await push(ref(db, `galleryImages/${postId}/comments`), newComment);
+
+      setCommentsText(prev => ({
+        ...prev,
+        [postId]: ""
+      }));
+    } catch (error) {
+      console.error('Error adding comment:', error);
+      // Revert UI update on error
+      setShuffledPosts(prevShuffled =>
+        prevShuffled.map(post => {
+          if (post.id === postId) {
+            const postFromOriginal = posts.find(p => p.id === postId);
+            return postFromOriginal ? { ...postFromOriginal } : post;
+          }
+          return post;
+        })
+      );
+    }
   };
 
   const deleteComment = async (postId, cid, commentUserId) => {
@@ -1242,14 +1388,20 @@ export default function GetPost({ showFilter = true, uid }) {
         if (el) observer.unobserve(el);
       });
     };
-  }, [posts, filter, playingVideos]);
+  }, [shuffledPosts, filter, playingVideos]);
 
-  const visiblePosts =
-    uid
-      ? posts.filter((p) => p.userId === uid && (filter === "all" || p.type === filter))
+  // Filter posts based on current filter using shuffledPosts
+  const getVisiblePosts = useCallback(() => {
+    let filteredPosts = uid
+      ? shuffledPosts.filter((p) => p.userId === uid && (filter === "all" || p.type === filter))
       : filter === "all"
-        ? posts
-        : posts.filter((p) => p.type === filter);
+        ? shuffledPosts
+        : shuffledPosts.filter((p) => p.type === filter);
+
+    return filteredPosts;
+  }, [shuffledPosts, filter, uid]);
+
+  const visiblePosts = getVisiblePosts();
 
   const renderPreview = useCallback(
     (post) => {
@@ -1348,14 +1500,15 @@ export default function GetPost({ showFilter = true, uid }) {
               const uid = currentUser?.uid || guestId;
               const liked = post.likes?.[uid];
               const likeCount = post.likes
-                ? Object.keys(post.likes).length
+                ? Object.keys(post.likes).filter(key => post.likes[key]).length
                 : 0;
               const commentCount = post.comments ? Object.keys(post.comments).length : 0;
               const postCommentText = commentsText[post.id] || "";
+              const isPostLiking = isLiking[post.id] || false;
 
               return (
-                <div key={post.id} className="card border-light py-3 mb-4 shadow-sm">
-                  <div className="card-header custom-white d-flex align-items-center border-0 p-3">
+                <div key={post.id} className="card border-light py-1 mb-3 shadow-sm">
+                  <div className="card-header custom-white d-flex align-items-center border-0 px-3 py-1">
                     <img
                       src={post.userPic || "icons/avatar.jpg"}
                       alt="profile"
@@ -1367,15 +1520,15 @@ export default function GetPost({ showFilter = true, uid }) {
                     />
                     <div className="d-flex flex-column">
                       <strong className="username-link">{post.user || "Guest"}</strong>
-                      <small className="text-muted">
+                      <small className="text-muted text-start">
                         {post.timestamp ? new Date(post.timestamp).toLocaleDateString() : ""}
                       </small>
                     </div>
                     <button
-                      className="btn btn-sm border ms-auto"
+                      className="btn btn-sm border ms-auto border-light"
                       onClick={() => openOptions(post)}
                       style={{
-                        border: '1px solid #dee2e6',
+                        border: '1px solid #f3f4f6ff',
                         borderRadius: '8px',
                         padding: '4px 8px',
                         transition: 'all 0.2s ease'
@@ -1387,7 +1540,7 @@ export default function GetPost({ showFilter = true, uid }) {
                     </button>
                   </div>
 
-                  <div className="p-3 pb-0">
+                  <div className="p-0 ps-4">
                     <p style={{ margin: 0, wordBreak: "break-word" }}>
                       <strong>{post.user}</strong>{" "}
                       {linkify(post.caption).map((part, index) =>
@@ -1398,14 +1551,15 @@ export default function GetPost({ showFilter = true, uid }) {
                     </p>
                   </div>
 
-                  <div className="p-3">{renderPreview(post)}</div>
+                  <div className="p-3 pb-0">{renderPreview(post)}</div>
                   <div className="card-body p-3 pt-0">
-                    <div className="d-flex align-items-center justify-content-between mb-2">
+                    <div className="d-flex align-items-center justify-content-between mb-0">
                       <div className="d-flex align-items-center justify-content-between w-100">
                         <div className="d-flex align-items-center">
                           <Heart
                             liked={liked}
                             onToggle={() => toggleLike(post.id)}
+                            disabled={isPostLiking}
                           />
                           <small className="text-muted ms-1">
                             {likeCount}
@@ -1441,7 +1595,7 @@ export default function GetPost({ showFilter = true, uid }) {
 
                     {commentCount > 0 && (
                       <div
-                        className="text-muted mb-2"
+                        className="text-muted mb-2 ps-2"
                         style={{ cursor: "pointer" }}
                         onClick={() => openComments(post)}
                       >
@@ -1473,6 +1627,8 @@ export default function GetPost({ showFilter = true, uid }) {
               );
             })
           )}
+          <div style={{ marginBottom: "90px" }}></div>
+
         </div>
       )}
 

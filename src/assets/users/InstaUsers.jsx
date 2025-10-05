@@ -15,191 +15,164 @@ const InstaUser = () => {
   const [friends, setFriends] = useState([]);
   const [following, setFollowing] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterType, setFilterType] = useState('all');
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   // Auth state
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-    });
+    const unsubscribe = onAuthStateChanged(auth, (user) => setCurrentUser(user));
     return () => unsubscribe();
   }, []);
 
-  // Users data and current user data
+  // Users + relationship data
   useEffect(() => {
     if (!currentUser?.uid) return;
 
-    // Get current user's relationships
     const userRef = ref(db, `usersData/${currentUser.uid}`);
-    const userUnsubscribe = onValue(userRef, (snapshot) => {
-      const data = snapshot.val();
+    const unsubUser = onValue(userRef, (snap) => {
+      const data = snap.val();
       setSentRequests(data?.followRequests?.sent ? Object.keys(data.followRequests.sent) : []);
       setFriends(data?.friends ? Object.keys(data.friends) : []);
       setFollowing(data?.following ? Object.keys(data.following) : []);
     });
 
-    // Get all users
     const usersRef = ref(db, 'usersData');
-    const usersUnsubscribe = onValue(
+    const unsubAll = onValue(
       usersRef,
-      (snapshot) => {
-        const data = snapshot.val() || {};
-        const usersArray = Object.entries(data).map(([uid, userData]) => ({
+      (snap) => {
+        const data = snap.val() || {};
+        const arr = Object.entries(data).map(([uid, u]) => ({
           uid,
-          ...userData,
-          createdAt: userData.createdAt || userData.timestamp || Date.now(),
+          ...u,
+          createdAt: u.createdAt || u.timestamp || Date.now(),
         }));
-        setUsers(usersArray);
+        setUsers(arr);
         setLoading(false);
       },
-      (error) => {
-        console.error('Error fetching users:', error);
+      (err) => {
+        console.error(err);
         toast.error('Failed to load users');
         setLoading(false);
       }
     );
 
     return () => {
-      userUnsubscribe();
-      usersUnsubscribe();
+      unsubUser();
+      unsubAll();
     };
   }, [currentUser]);
 
-  // Step 1: Always send follow request first (no direct follow)
+  // --- Actions ---
   const sendFollowRequest = async (targetUID) => {
     if (!currentUser?.uid) return;
-    
     try {
-      const updates = {};
-      // Always send request first
-      updates[`usersData/${targetUID}/followRequests/received/${currentUser.uid}`] = {
-        timestamp: Date.now(),
-        status: 'pending'
+      const updates = {
+        [`usersData/${targetUID}/followRequests/received/${currentUser.uid}`]: {
+          timestamp: Date.now(),
+          status: 'pending',
+        },
+        [`usersData/${currentUser.uid}/followRequests/sent/${targetUID}`]: {
+          timestamp: Date.now(),
+          status: 'pending',
+        },
       };
-      updates[`usersData/${currentUser.uid}/followRequests/sent/${targetUID}`] = {
-        timestamp: Date.now(),
-        status: 'pending'
-      };
-      
       await update(ref(db), updates);
-      toast.success('Follow request sent! 📩');
-    } catch (error) {
-      console.error('Follow request error:', error);
+      // toast.success('Follow request sent! 📩');
+    } catch (e) {
+      console.error(e);
       toast.error('Failed to send request');
     }
   };
 
-  // Cancel follow request
   const cancelFollowRequest = async (targetUID) => {
-    if (!currentUser?.uid) return;
-    
     try {
-      const updates = {};
-      updates[`usersData/${targetUID}/followRequests/received/${currentUser.uid}`] = null;
-      updates[`usersData/${currentUser.uid}/followRequests/sent/${targetUID}`] = null;
+      const updates = {
+        [`usersData/${targetUID}/followRequests/received/${currentUser.uid}`]: null,
+        [`usersData/${currentUser.uid}/followRequests/sent/${targetUID}`]: null,
+      };
       await update(ref(db), updates);
-      toast.info('Request cancelled ❌');
-    } catch (error) {
-      console.error('Cancel request error:', error);
+      // toast.info('Request cancelled ❌');
+    } catch (e) {
+      console.error(e);
       toast.error('Failed to cancel request');
     }
   };
 
-  // Unfollow user (after they accepted)
   const unfollowUser = async (targetUID) => {
-    if (!currentUser?.uid) return;
-    
     try {
-      const updates = {};
-      // Remove from followers/following
-      updates[`usersData/${targetUID}/followers/${currentUser.uid}`] = null;
-      updates[`usersData/${currentUser.uid}/following/${targetUID}`] = null;
-      
-      // Remove from friends if mutual
-      updates[`usersData/${currentUser.uid}/friends/${targetUID}`] = null;
-      updates[`usersData/${targetUID}/friends/${currentUser.uid}`] = null;
-      
+      const updates = {
+        [`usersData/${targetUID}/followers/${currentUser.uid}`]: null,
+        [`usersData/${currentUser.uid}/following/${targetUID}`]: null,
+        [`usersData/${currentUser.uid}/friends/${targetUID}`]: null,
+        [`usersData/${targetUID}/friends/${currentUser.uid}`]: null,
+      };
       await update(ref(db), updates);
-      toast.info('Unfollowed ❌');
-    } catch (error) {
-      console.error('Unfollow error:', error);
+      // toast.info('Unfollowed ❌');
+    } catch (e) {
+      console.error(e);
       toast.error('Failed to unfollow');
     }
   };
 
-  // Unfriend user (remove mutual follow)
   const unfriendUser = async (targetUID) => {
-    if (!currentUser?.uid) return;
-    
     try {
-      const updates = {};
-      // Remove all connections
-      updates[`usersData/${currentUser.uid}/friends/${targetUID}`] = null;
-      updates[`usersData/${targetUID}/friends/${currentUser.uid}`] = null;
-      updates[`usersData/${currentUser.uid}/followers/${targetUID}`] = null;
-      updates[`usersData/${targetUID}/followers/${currentUser.uid}`] = null;
-      updates[`usersData/${currentUser.uid}/following/${targetUID}`] = null;
-      updates[`usersData/${targetUID}/following/${currentUser.uid}`] = null;
-      
+      const updates = {
+        [`usersData/${currentUser.uid}/friends/${targetUID}`]: null,
+        [`usersData/${targetUID}/friends/${currentUser.uid}`]: null,
+        [`usersData/${currentUser.uid}/followers/${targetUID}`]: null,
+        [`usersData/${targetUID}/followers/${currentUser.uid}`]: null,
+        [`usersData/${currentUser.uid}/following/${targetUID}`]: null,
+        [`usersData/${targetUID}/following/${currentUser.uid}`]: null,
+      };
       await update(ref(db), updates);
-      toast.info('Unfriended ❌');
-    } catch (error) {
-      console.error('Unfriend error:', error);
+      // toast.info('Unfriended ❌');
+    } catch (e) {
+      console.error(e);
       toast.error('Failed to unfriend');
     }
   };
 
-  // Admin delete user
   const handleDeleteUser = async (targetUID, username = 'User') => {
-    if (!isAdmin) {
-      toast.error('❌ Only admin can delete users!');
-      return;
-    }
-    if (targetUID === currentUser?.uid) {
-      toast.error('❌ Cannot delete yourself!');
-      return;
-    }
+    if (currentUser?.email !== ADMIN_EMAIL) return toast.error('❌ Only admin can delete users!');
+    if (targetUID === currentUser?.uid) return toast.error('❌ Cannot delete yourself!');
     if (!window.confirm(`Delete ${username}? This cannot be undone!`)) return;
 
     try {
       await remove(ref(db, `usersData/${targetUID}`));
       toast.success('✅ User deleted');
-    } catch (error) {
-      console.error('Delete user error:', error);
+    } catch (e) {
+      console.error(e);
       toast.error('❌ Failed to delete user');
     }
   };
 
-  const isAdmin = currentUser?.email === ADMIN_EMAIL;
-
-  // Search filter
+  // --- Filtering Logic ---
   const filteredUsers = users.filter((user) => {
     if (user.uid === currentUser?.uid) return false;
-    if (!searchTerm) return true;
 
-    const searchLower = searchTerm.toLowerCase();
-    return (
-      user.username?.toLowerCase().includes(searchLower) ||
-      user.displayName?.toLowerCase().includes(searchLower) ||
-      user.email?.toLowerCase().includes(searchLower)
-    );
+    const matchesSearch =
+      !searchTerm ||
+      user.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.displayName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.email?.toLowerCase().includes(searchTerm.toLowerCase());
+
+    if (!matchesSearch) return false;
+
+    if (filterType === 'following') return following.includes(user.uid);
+    if (filterType === 'requested') return sentRequests.includes(user.uid);
+    if (filterType === 'followers') return user.followers && user.followers[currentUser.uid];
+    return true;
   });
 
-  // Get button state and text for user
   const getButtonState = (user) => {
-    if (friends.includes(user.uid)) {
-      return { type: 'friends', text: 'Friends' };
-    } else if (following.includes(user.uid)) {
-      return { type: 'following', text: 'Following' };
-    } else if (sentRequests.includes(user.uid)) {
-      return { type: 'requested', text: 'Requested' };
-    } else {
-      return { type: 'follow', text: 'Follow' };
-    }
+    if (friends.includes(user.uid)) return { type: 'friends', text: 'Friends' };
+    if (following.includes(user.uid)) return { type: 'following', text: 'Following' };
+    if (sentRequests.includes(user.uid)) return { type: 'requested', text: 'Requested' };
+    return { type: 'follow', text: 'Follow' };
   };
 
-  if (loading) {
+  if (loading)
     return (
       <div className="d-flex justify-content-center align-items-center min-vh-100">
         <div className="text-center">
@@ -208,104 +181,143 @@ const InstaUser = () => {
         </div>
       </div>
     );
-  }
 
+  // --- UI ---
   return (
-    <div className="container mx-0 p-0 my-3" style={{ maxWidth: 600 }}>
-      <h3 className="m-3 d-flex">
-        All <div className="text-danger mx-2">Jibzo</div> Users
-      </h3>
+    <div className="container p-0 mb-3" style={{ maxWidth: 600, background: "rgba(238, 252, 255, 1)" }}
+    >
 
-      {/* Search */}
-      <input
-        type="text"
-        className="form-control my-3"
-        placeholder="Search users..."
-        value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
-      />
+      {/* Sticky Header */}
+      <div
+        className="d-flex flex-column flex-md-row align-items-center justify-content-between m-2 p-2 rounded-4 shadow-sm"
+        style={{
+          top: '0',
+          zIndex: 10,
+          background: 'linear-gradient(135deg, #00bfffc4 0%, #9900ff8b 100%)',
+          color: 'white',
+        }}
+      >
+
+        <h1 className="d-flex align-items-start text-start m-0 p-0">
+          All <span className="text-warning mx-2 fw-bolder m-0 p-0">Jibzo</span> Users
+        </h1>
+        <p className="text-center mt-0 pt-0">
+          Discover People
+        </p>
+        {/* Search */}
+        <input
+          type="text"
+          className="form-control mb-2"
+          placeholder="🔍 Search users..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+
+        {/* Filter Tabs */}
+        <div>
+          <button
+            className={`btn btn-sm threeD-btn blueBtn flex-fill m-1 text-white`}
+            onClick={() => setFilterType('following')}
+          >
+            Following
+          </button>
+          <button
+            className={`btn btn-sm threeD-btn redBtn flex-fill m-1`}
+            onClick={() => setFilterType('followers')}
+          >
+            Followers
+          </button>
+          <button
+            className={`btn btn-sm threeD-btn yellowBtn flex-fill text-white m-1`}
+            onClick={() => setFilterType('requested')}
+          >
+            Requested
+          </button>
+          <button
+            className={`btn btn-sm threeD-btn blueBtn flex-fill m-1`}
+            onClick={() => setFilterType('all')}
+          >
+            All
+          </button>
+        </div>
+      </div>
 
       {/* Users List */}
       <ul className="list-group mb-5">
         {filteredUsers.map((user) => {
-          const buttonState = getButtonState(user);
-          
+          const btn = getButtonState(user);
           return (
             <li
               key={user.uid}
-              className="list-group-item d-flex align-items-center justify-content-between m-0 px-1"
+              className="list-group-item d-flex align-items-center justify-content-between rounded-2 shadow-sm bg-white"
+              style={{
+                margin: "2px 6px",
+                padding: "10px"
+              }}
+
             >
-              {/* User Info */}
-              <div 
-                style={{ cursor: 'pointer' }} 
+              <div className="bg-light d-flex align-items-center p-2 flex-grow-1"
+                style={{
+                  borderLeft: '4px solid #0dcaf0',
+                  borderRadius: '10px',
+                }}
                 onClick={() => navigate(`/user-profile/${user.uid}`)}
-                className="d-flex align-items-center flex-grow-1"
+
               >
-                <img
-                  src={user.photoURL || '/icons/avatar.jpg'}
-                  alt="avatar"
-                  className="rounded-circle me-3"
-                  style={{ width: 50, height: 50, objectFit: 'cover' }}
-                />
-                <div>
-                  <span className="fw-bold">{user.username || 'Unnamed User'}</span>
-                  {user.displayName && user.displayName !== user.username && (
-                    <div className="text-muted small">{user.displayName}</div>
+                {/* User Info */}
+                <div className="d-flex align-items-center flex-grow-1" >
+                  <img
+                    src={user.photoURL || '/icons/avatar.jpg'}
+                    alt="avatar"
+                    className="rounded-circle border border-3 border-white ms-1 me-3"
+                    style={{ width: 50, height: 50, objectFit: 'cover' }}
+                  />
+                  <div>
+                    <span className="fw-bold">{user.username || 'Unnamed User'}</span>
+                    {user.displayName && user.displayName !== user.username && (
+                      <div className="text-muted small">{user.displayName}</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Buttons */}
+                <div className="d-flex gap-2  align-items-center">
+                  {btn.type === 'friends' ? (
+                    <button className="btn btn-sm px-4 btn-success" onClick={() => unfriendUser(user.uid)}>
+                      {btn.text}
+                    </button>
+                  ) : btn.type === 'following' ? (
+                    <button className="btn btn-sm px-4 btn-outline-secondary" onClick={() => unfollowUser(user.uid)}>
+                      {btn.text}
+                    </button>
+                  ) : btn.type === 'requested' ? (
+                    <button className="btn btn-sm px-2 rounded-3 btn-outline-warning" onClick={() => cancelFollowRequest(user.uid)}>
+                      {btn.text}
+                    </button>
+                  ) : (
+                    <button className="btn btn-sm px-4 btn-primary" onClick={() => sendFollowRequest(user.uid)}>
+                      {btn.text}
+                    </button>
+                  )}
+
+                  {currentUser?.email === ADMIN_EMAIL && (
+                    <button
+                      className="btn btn-sm btn-danger m-0 px-1"
+                      onClick={() => handleDeleteUser(user.uid, user.username || user.displayName)}
+                    >
+                      <small>
+                        <i className="bi bi-trash3"></i>
+                      </small>
+                    </button>
                   )}
                 </div>
-              </div>
 
-              {/* Action Buttons */}
-              <div className="d-flex gap-2 align-items-center">
-                {buttonState.type === 'friends' ? (
-                  <button 
-                    className="btn btn-sm btn-success" 
-                    onClick={() => unfriendUser(user.uid)}
-                  >
-                    {buttonState.text}
-                  </button>
-                ) : buttonState.type === 'following' ? (
-                  <button 
-                    className="btn btn-sm btn-outline-secondary" 
-                    onClick={() => unfollowUser(user.uid)}
-                  >
-                    {buttonState.text}
-                  </button>
-                ) : buttonState.type === 'requested' ? (
-                  <button 
-                    className="btn btn-sm btn-outline-warning" 
-                    onClick={() => cancelFollowRequest(user.uid)}
-                  >
-                    {buttonState.text}
-                  </button>
-                ) : (
-                  <button 
-                    className="btn btn-sm btn-primary" 
-                    onClick={() => sendFollowRequest(user.uid)}
-                  >
-                    {buttonState.text}
-                  </button>
-                )}
-
-                {/* Admin Delete Button */}
-                {isAdmin && (
-                  <button 
-                    className="btn btn-sm btn-danger m-0 px-1" 
-                    onClick={() => handleDeleteUser(user.uid, user.username || user.displayName)}
-                  >
-                    <small>
-                      <i className="bi bi-trash3"></i>
-                    </small>
-                  </button>
-                )}
               </div>
             </li>
           );
         })}
 
-        {filteredUsers.length === 0 && (
-          <p className="text-center text-muted py-3">No users found</p>
-        )}
+        {filteredUsers.length === 0 && <p className="text-center text-muted py-3">No users found</p>}
       </ul>
     </div>
   );

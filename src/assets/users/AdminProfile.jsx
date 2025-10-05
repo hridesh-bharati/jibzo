@@ -590,7 +590,7 @@ const ProfileHeader = ({ profileData, currentUser, authProvider, isOwner, upload
             style={{ width: '100px', height: '100px', objectFit: 'cover' }}
           />
           <div className="ms-3 mb-2 d-none d-md-block">
-            <h4 className="text-white fw-bold mb-1 text-shadow">{profileData.username}</h4>
+            <h4 className="text-muted fw-bold mb-1 text-shadow">{profileData.username}</h4>
             <p className="text-white-80 mb-0 text-shadow">{profileData.bio || "No bio yet"}</p>
           </div>
         </div>
@@ -612,7 +612,7 @@ const ProfileHeader = ({ profileData, currentUser, authProvider, isOwner, upload
       )}
     </div>
 
-    <div className="card-body d-block d-md-none">
+    <div className="card-body d-block">
       <div className="d-flex justify-content-between">
         <h4 className="fw-bold mb-1">{profileData.username}</h4>
         {isOwner && (
