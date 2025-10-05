@@ -1,11 +1,25 @@
 {
-  "rewrites": [
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/**/*.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    }
+  ],
+  "routes": [
     {
       "source": "/manifest.json",
       "destination": "/manifest.json"
     },
     {
-      "source": "/favicon.ico",
+      "source": "/favicon.ico", 
       "destination": "/favicon.ico"
     },
     {
@@ -14,25 +28,11 @@
     },
     {
       "source": "/api/(.*)",
-      "destination": "/api/$1"
+      "dest": "/api/$1"
     },
     {
       "source": "/(.*)",
-      "destination": "/"
+      "dest": "/index.html"
     }
-  ],
-  "functions": {
-    "api/send-notification.js": {
-      "runtime": "nodejs18.x"
-    },
-    "api/save-token.js": {
-      "runtime": "nodejs18.x"
-    },
-    "api/health.js": {
-      "runtime": "nodejs18.x"
-    },
-    "api/tokens.js": {
-      "runtime": "nodejs18.x"
-    }
-  }
+  ]
 }
