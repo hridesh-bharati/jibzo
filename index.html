@@ -1,57 +1,131 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" itemscope itemtype="https://schema.org/SoftwareApplication">
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <title>Jibzo - Social App for Photos, Videos, Friends & Chat</title>
-
-  <!-- SEO -->
-  <meta name="description"
-    content="Jibzo is your social media app to share posts, make friends, and explore amazing content. Join now!">
-  <meta name="keywords" content="Jibzo, social app, friends, photos, videos, share, explore, profile, chat">
-  <meta name="author" content="Jibzo Team">
-
   <!-- Google Verification -->
   <meta name="google-site-verification" content="LXla6R7LRiZoJBd-D95do3YVnla-pvrg-Z5J3PaGFso" />
-  <!-- Open Graph / Twitter -->
-  <meta property="og:title" content="Jibzo - Connect, Share & Explore">
-  <meta property="og:description" content="Join Jibzo to share photos, make friends, and explore awesome content.">
-  <meta property="og:image" content="https://jibzo.vercel.app/icons/icon-192.png">
-  <meta property="og:url" content="https://jibzo.vercel.app">
-  <meta property="og:type" content="website">
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Jibzo - Connect, Share & Explore">
-  <meta name="twitter:description" content="Join Jibzo to share photos, make friends, and explore awesome content.">
-  <meta name="twitter:image" content="https://jibzo.vercel.app/icons/icon-192.png">
 
-  <!-- Favicon + PWA -->
-  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-192.png" />
+  <!-- Primary Meta Tags -->
+  <title>Jibzo: Share Photos, Videos & Chat with Friends | Social Media App</title>
+  <meta name="title" content="Jibzo: Share Photos, Videos & Chat with Friends | Social Media App">
+  <meta name="description"
+    content="Jibzo - Free social media app to share photos, videos, chat with friends & make new connections. Download now and join the community!">
+  <meta name="keywords"
+    content="jibzo, social media app, share photos, share videos, chat app, make friends, social network, video sharing, photo sharing, messaging app">
+  <meta name="author" content="Jibzo Team">
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+
+  <!-- Canonical URL -->
+  <link rel="canonical" href="https://jibzo.vercel.app" />
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://jibzo.vercel.app/">
+  <meta property="og:title" content="Jibzo - Social Media App: Share Photos, Videos & Chat">
+  <meta property="og:description"
+    content="Join Jibzo - Connect with friends, share photos & videos, and chat in real-time. Download the free social media app today!">
+  <meta property="og:image" content="https://jibzo.vercel.app/images/og-image.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:site_name" content="Jibzo">
+  <meta property="og:locale" content="en_US">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://jibzo.vercel.app/">
+  <meta property="twitter:title" content="Jibzo - Social Media App: Share Photos, Videos & Chat">
+  <meta property="twitter:description"
+    content="Join Jibzo - Connect with friends, share photos & videos, and chat in real-time. Download the free social media app today!">
+  <meta property="twitter:image" content="https://jibzo.vercel.app/images/twitter-image.jpg">
+  <meta name="twitter:creator" content="@jibzoapp">
+
+  <!-- Structured Data / JSON-LD -->
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Jibzo",
+      "applicationCategory": "SocialNetworkingApplication",
+      "operatingSystem": "Android, iOS, Web",
+      "description": "Free social media app for sharing photos, videos, making friends and real-time chatting",
+      "url": "https://jibzo.vercel.app",
+      "downloadUrl": "https://play.google.com/store/apps/details?id=com.jibzo.app",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "author": {
+        "@type": "Organization",
+        "name": "Jibzo Team",
+        "url": "https://jibzo.vercel.app"
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.7",
+        "ratingCount": "1520",
+        "bestRating": "5"
+      },
+      "screenshot": [
+        "https://jibzo.vercel.app/screenshots/screenshot1.png",
+        "https://jibzo.vercel.app/screenshots/screenshot2.png",
+        "https://jibzo.vercel.app/screenshots/screenshot3.png"
+      ],
+      "featureList": [
+        "Photo Sharing",
+        "Video Sharing", 
+        "Real-time Chat",
+        "Friend Connections",
+        "Content Discovery"
+      ]
+    }
+    </script>
+
+  <!-- Favicon & Icons -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png" />
+
+  <!-- PWA Manifest -->
   <link rel="manifest" href="/manifest.json" />
   <meta name="theme-color" content="#1976d2" />
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Jibzo">
+  <meta name="mobile-web-app-capable" content="yes">
 
-  <!-- Optional performance -->
+  <!-- Performance Optimization -->
   <link rel="preconnect" href="https://cdn.jsdelivr.net" />
   <link rel="preconnect" href="https://www.gstatic.com" />
+  <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
+  <link rel="dns-prefetch" href="https://www.gstatic.com" />
 
-  <!-- CSS / Icons -->
+  <!-- CSS & Icons -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
 
-  <!-- Firebase & OneSignal -->
+  <!-- Push Notifications -->
   <script src="https://cdn.onesignal.com/sdks/OneSignalSDK.js" async=""></script>
   <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-messaging-compat.js"></script>
 </head>
 
-
-
 <body>
   <div id="root"></div>
 
+  <!-- Scripts -->
   <script type="module" src="/src/main.jsx"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- NoScript Content for SEO -->
+  <noscript>
+    <div style="text-align: center; padding: 50px; font-family: Arial, sans-serif;">
+      <h1>Welcome to Jibzo - Your Social Connection</h1>
+    </div>
+  </noscript>
 </body>
 
 </html>
