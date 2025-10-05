@@ -54,8 +54,8 @@ export default function Messages() {
 
   const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_NAME;
   const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-  
- const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
   const chatId = currentUid && uid ? [currentUid, uid].sort().join("_") : null;
 
   // ---------- Mobile Detection ----------
@@ -75,7 +75,6 @@ export default function Messages() {
     try {
       console.log('📱 FCM Token simulation for:', userId);
 
-      // ✅ FIXED: COMPLETELY BYPASS - No API calls
       const simulatedToken = 'simulated_token_' + Date.now();
       setFcmToken(simulatedToken);
 
@@ -91,7 +90,6 @@ export default function Messages() {
     try {
       console.log('📨 Notification simulation');
 
-      // ✅ FIXED: COMPLETELY BYPASS - No API calls
       if (recipientId && !recipientId.startsWith('guest_')) {
         console.log('✅ Notification would be sent to:', recipientId);
 
@@ -810,7 +808,8 @@ export default function Messages() {
           )}
 
           {notificationPermission === 'granted' && fcmToken && (
-            <span className="badge bg-success me-2" title="Notifications Active">
+            <span className="badge bg-success me-2" title="Notifications Active"
+              style={{ margin: "20px 200px !important" }}>
               🔔 Active
             </span>
           )}
