@@ -19,9 +19,9 @@ export default defineConfig({
         background_color: "#ffffff",
         display: "standalone",
         orientation: "portrait",
-        start_url: "/",      // Clean URL for APK
-        scope: "/",          // Root scope only
-        id: "/",             // Prevent extra params in PWA / APK
+        start_url: "/",
+        scope: "/",
+        id: "/",
         categories: ["social", "communication"],
         lang: "en",
         dir: "ltr",
