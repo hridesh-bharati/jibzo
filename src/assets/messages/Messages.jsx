@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { db, auth, getFCMToken, onMessageListener } from "../../assets/utils/firebaseConfig";
+import { db, auth, getFCMToken, onMessageListener, messaging } from "../../assets/utils/firebaseConfig";
 import {
   ref as dbRef,
   onValue,
@@ -12,6 +12,7 @@ import {
   onDisconnect,
 } from "firebase/database";
 import { onAuthStateChanged } from "firebase/auth";
+import { getToken, onMessage } from "firebase/messaging";
 import Picker from "emoji-picker-react";
 import axios from "axios";
 import "bootstrap/dist/css/bootstrap.min.css";
@@ -42,6 +43,8 @@ export default function Messages() {
 
   const [partnerStatus, setPartnerStatus] = useState(null);
   const [notificationPermission, setNotificationPermission] = useState('default');
+  const [fcmToken, setFcmToken] = useState(null);
+  const [isMobile, setIsMobile] = useState(false);
 
   const messagesEndRef = useRef(null);
   const longPressTimerRef = useRef(null);
@@ -52,84 +55,166 @@ export default function Messages() {
   const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
-  const chatId =
-    currentUid && uid ? [currentUid, uid].sort().join("_") : null;
+  const chatId = currentUid && uid ? [currentUid, uid].sort().join("_") : null;
+
+  // ---------- Mobile Detection ----------
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = window.innerWidth <= 768;
+      setIsMobile(mobile);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // ---------- FCM Functions ----------
   const saveFCMToken = async (userId) => {
     try {
-      console.log('Getting FCM token for user:', userId);
-      const token = await getFCMToken();
+      console.log('📱 Getting FCM token for user:', userId);
+      
+      let token;
+      try {
+        // Service worker registration for mobile support
+        if ('serviceWorker' in navigator) {
+          try {
+            const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+            console.log('✅ Service Worker registered:', registration);
+          } catch (swError) {
+            console.log('ℹ️ Service Worker registration:', swError.message);
+          }
+        }
+
+        // Try to get FCM token directly
+        if (messaging) {
+          token = await getToken(messaging, {
+            vapidKey: import.meta.env.VITE_VAPID_KEY || 'BIt5p8R9L4y9zQYVcT7XqKjZkLmNpOaRsTuVwXyZzAbCdEfGhIjKlMnOpQrStUvWxYzAbCdEfGhIjKlMnOpQrStUvWx'
+          });
+          console.log('✅ FCM Token obtained:', token ? 'Yes' : 'No');
+        }
+      } catch (fcmError) {
+        console.log('🔄 Using fallback FCM token method');
+        token = await getFCMToken(); // Fallback to your existing function
+      }
       
       if (token) {
-        console.log('FCM token obtained:', token);
-        await axios.post(`${API_BASE_URL}/save-token`, {
+        setFcmToken(token);
+        console.log('🔑 FCM token obtained');
+        
+        const response = await axios.post(`${API_BASE_URL}/save-token`, {
           userId: userId,
           fcmToken: token
+        }, {
+          timeout: 10000,
+          headers: {
+            'Content-Type': 'application/json'
+          }
         });
-        console.log('FCM token saved successfully');
+        
+        console.log('✅ FCM token saved successfully');
+        return true;
       } else {
-        console.log('No FCM token available');
+        console.log('❌ No FCM token available');
+        return false;
       }
     } catch (error) {
-      console.error('Error saving FCM token:', error);
+      console.error('❌ Error saving FCM token:', error);
+      if (error.code === 'messaging/permission-blocked') {
+        console.log('🔕 Notification permission blocked by user');
+      }
+      return false;
     }
   };
 
   const sendPushNotification = async (recipientId, messageText) => {
     try {
       if (!recipientId || recipientId.startsWith('guest_')) {
-        console.log('Skipping notification for guest user');
+        console.log('⏭️ Skipping notification for guest user');
         return;
       }
 
-      await axios.post(`${API_BASE_URL}/send-notification`, {
+      const response = await axios.post(`${API_BASE_URL}/send-notification`, {
         recipientId: recipientId,
         senderId: currentUid,
         message: messageText,
         chatId: chatId,
         senderName: auth.currentUser?.displayName || 'Someone',
         imageUrl: chatUser?.photoURL || null
+      }, {
+        timeout: 15000,
+        headers: {
+          'Content-Type': 'application/json'
+        }
       });
-      console.log('Push notification sent successfully');
+      
+      console.log('📨 Push notification sent successfully');
+      return response.data;
     } catch (error) {
-      console.error('Error sending notification:', error);
+      console.error('❌ Error sending notification:', error);
+      if (error.response) {
+        console.error('Server response error:', error.response.data);
+      } else if (error.request) {
+        console.error('No response received - Network error');
+      } else {
+        console.error('Request setup error:', error.message);
+      }
+      throw error;
     }
   };
 
   const requestNotificationPermission = async () => {
     try {
       if (!('Notification' in window)) {
-        console.log('This browser does not support notifications');
+        console.log('❌ This browser does not support notifications');
+        setNotificationPermission('unsupported');
         return 'unsupported';
       }
 
+      // Check current permission
       if (Notification.permission === 'granted') {
         setNotificationPermission('granted');
+        console.log('✅ Notification permission already granted');
+        
+        // Get token after permission is granted
+        if (currentUid && !currentUid.startsWith('guest_')) {
+          await saveFCMToken(currentUid);
+        }
         return 'granted';
       }
 
       if (Notification.permission === 'denied') {
         setNotificationPermission('denied');
-        console.log('Notification permission denied previously');
+        console.log('🔕 Notification permission denied previously');
         return 'denied';
       }
 
       // Permission is 'default' - request permission
+      console.log('🔄 Requesting notification permission...');
       const permission = await Notification.requestPermission();
       setNotificationPermission(permission);
-      console.log('Notification permission:', permission);
+      console.log('📋 Notification permission:', permission);
       
       if (permission === 'granted') {
         // Get token after permission is granted
         if (currentUid && !currentUid.startsWith('guest_')) {
           await saveFCMToken(currentUid);
         }
+        
+        // Show success message only on desktop
+        if (!isMobile) {
+          alert('✅ Notifications enabled successfully! You will now receive message alerts.');
+        }
+      } else if (permission === 'denied') {
+        if (!isMobile) {
+          alert('❌ Notifications blocked. Please enable them in your browser settings to receive message alerts.');
+        }
       }
       
       return permission;
     } catch (error) {
-      console.error('Error requesting notification permission:', error);
+      console.error('❌ Error requesting notification permission:', error);
+      setNotificationPermission('error');
       return 'error';
     }
   };
@@ -137,99 +222,149 @@ export default function Messages() {
   const initializeFCM = async () => {
     try {
       if (currentUid && !currentUid.startsWith('guest_')) {
-        console.log('Initializing FCM for user:', currentUid);
-        
-        // First request notification permission
-        await requestNotificationPermission();
+        console.log('🚀 Initializing FCM for user:', currentUid);
         
         // Setup foreground message listener
-        try {
-          onMessageListener()
-            .then((payload) => {
-              console.log('Foreground message received:', payload);
-              showCustomNotification(payload);
-            })
-            .catch((error) => {
-              console.log('No foreground messages yet:', error);
-            });
-        } catch (error) {
-          console.error('Error setting up message listener:', error);
+        setupForegroundMessages();
+
+        // Auto-request permission on desktop, but not on mobile to avoid popup blocking
+        if (!isMobile && Notification.permission === 'default') {
+          await requestNotificationPermission();
+        } else {
+          // On mobile or when permission already set, just save token if permission granted
+          if (Notification.permission === 'granted') {
+            await saveFCMToken(currentUid);
+          }
         }
       } else {
-        console.log('Skipping FCM for guest user');
+        console.log('⏭️ Skipping FCM for guest user');
       }
     } catch (error) {
-      console.error('FCM initialization error:', error);
+      console.error('❌ FCM initialization error:', error);
+    }
+  };
+
+  const setupForegroundMessages = () => {
+    try {
+      if (messaging) {
+        onMessage(messaging, (payload) => {
+          console.log('📨 Foreground message received:', payload);
+          showCustomNotification(payload);
+        });
+      } else {
+        // Fallback to your existing listener
+        onMessageListener()
+          .then((payload) => {
+            console.log('📨 Foreground message (fallback):', payload);
+            showCustomNotification(payload);
+          })
+          .catch((error) => {
+            console.log('No foreground messages:', error);
+          });
+      }
+    } catch (error) {
+      console.error('❌ Error setting up message listener:', error);
     }
   };
 
   const showCustomNotification = (payload) => {
-    const { notification, data } = payload;
-    
-    // Browser notification - Instagram jaise top notification
-    if ('Notification' in window && Notification.permission === 'granted') {
-      const notificationOptions = {
-        body: notification.body,
-        icon: notification.image || '/logo.png',
-        badge: '/logo.png',
-        image: notification.image || '/logo.png',
-        vibrate: [200, 100, 200, 100, 200],
-        tag: data?.chatId || 'message',
-        requireInteraction: false,
-        silent: false,
-        data: data // Extra data for click handling
-      };
+    try {
+      const { notification, data } = payload;
       
-      const notif = new Notification(notification.title, notificationOptions);
-      
-      // Auto close after 5 seconds
-      setTimeout(() => {
-        notif.close();
-      }, 5000);
-      
-      // Handle notification click
-      notif.onclick = () => {
-        window.focus();
-        if (data?.senderId) {
-          navigate(`/messages/${data.senderId}`);
-        }
-        notif.close();
-      };
-    }
-    
-    // Your existing floating notification
-    const floatingEvent = new CustomEvent('showFloatingNotification', {
-      detail: {
-        title: notification.title,
-        body: notification.body,
-        image: notification.image || '/logo.png',
-        url: `/messages/${data?.senderId || currentUid}`
+      // Browser notification
+      if ('Notification' in window && Notification.permission === 'granted') {
+        const notificationOptions = {
+          body: notification?.body || data?.message || 'New message',
+          icon: notification?.image || data?.imageUrl || '/logo.png',
+          badge: '/logo.png',
+          image: notification?.image || data?.imageUrl || '/logo.png',
+          vibrate: [200, 100, 200, 100, 200],
+          tag: data?.chatId || 'message',
+          requireInteraction: false,
+          silent: false,
+          data: data
+        };
+        
+        const notif = new Notification(
+          notification?.title || data?.senderName || 'New Message', 
+          notificationOptions
+        );
+        
+        // Auto close after 5 seconds
+        setTimeout(() => {
+          notif.close();
+        }, 5000);
+        
+        // Handle notification click
+        notif.onclick = () => {
+          window.focus();
+          if (data?.senderId) {
+            navigate(`/messages/${data.senderId}`);
+          } else if (data?.chatId) {
+            // Extract other user ID from chatId
+            const users = data.chatId.split('_');
+            const otherUserId = users.find(id => id !== currentUid);
+            if (otherUserId) {
+              navigate(`/messages/${otherUserId}`);
+            }
+          }
+          notif.close();
+        };
       }
-    });
-    window.dispatchEvent(floatingEvent);
+      
+      // Your existing floating notification
+      const floatingEvent = new CustomEvent('showFloatingNotification', {
+        detail: {
+          title: notification?.title || 'New Message',
+          body: notification?.body || data?.message || 'You have a new message',
+          image: notification?.image || data?.imageUrl || '/logo.png',
+          url: `/messages/${data?.senderId || uid || currentUid}`
+        }
+      });
+      window.dispatchEvent(floatingEvent);
+    } catch (error) {
+      console.error('❌ Error showing custom notification:', error);
+    }
   };
 
-  // Test notification function
+  // Test notification function with better error handling
   const testNotification = async () => {
     try {
       if (!uid) {
-        alert('No user selected for test');
+        alert('❌ Please select a user to test notifications');
         return;
       }
 
-      const response = await axios.post(`${API_BASE_URL}/send-notification`, {
-        recipientId: uid,
-        senderId: currentUid,
-        message: "🔔 Test Notification! This is a test message to check push notifications.",
-        chatId: chatId,
-        senderName: auth.currentUser?.displayName || "Test User",
-        imageUrl: auth.currentUser?.photoURL || null
-      });
-      console.log('Test notification sent:', response.data);
-      alert('Test notification sent! Check other tab/browser or wait for background sync.');
+      if (!currentUid || currentUid.startsWith('guest_')) {
+        alert('❌ Please login to test notifications');
+        return;
+      }
+
+      console.log('🧪 Testing notification...');
+      
+      const result = await sendPushNotification(
+        uid, 
+        "🔔 Test Notification! This is a test message to check push notifications."
+      );
+      
+      console.log('✅ Test notification result:', result);
+      alert('✅ Test notification sent successfully! Check your other devices or browser tabs.');
+      
     } catch (error) {
-      console.error('Test notification failed:', error);
-      alert('Test failed: ' + (error.response?.data?.message || error.message));
+      console.error('❌ Test notification failed:', error);
+      
+      let errorMessage = 'Test failed: ';
+      if (error.code === 'NETWORK_ERROR' || !error.response) {
+        errorMessage += 'Network error - Check if server is running and CORS configured';
+      } else if (error.response?.status === 404) {
+        errorMessage += 'Server endpoint not found';
+      } else if (error.response?.status === 500) {
+        errorMessage += 'Server error - Check server logs';
+      } else {
+        errorMessage += error.message;
+      }
+      
+      alert(errorMessage);
     }
   };
 
@@ -608,7 +743,7 @@ export default function Messages() {
   const toggleEmojiPicker = () => {
     setShowEmojiPicker(prev => !prev);
     // On mobile, we want to focus input but not show emoji picker that blocks keyboard
-    if (window.innerWidth <= 768) {
+    if (isMobile) {
       // On mobile, don't show emoji picker that blocks the keyboard
       setShowEmojiPicker(false);
       inputRef.current?.focus();
@@ -721,8 +856,8 @@ export default function Messages() {
         </Link>
 
         <div className="d-flex align-items-center">
-          {/* Notification Permission Status */}
-          {notificationPermission !== 'granted' && (
+          {/* Notification Status */}
+          {notificationPermission === 'default' && (
             <button 
               className="btn btn-sm btn-warning me-2"
               onClick={requestNotificationPermission}
@@ -732,12 +867,28 @@ export default function Messages() {
             </button>
           )}
 
+          {notificationPermission === 'denied' && (
+            <button 
+              className="btn btn-sm btn-danger me-2"
+              onClick={() => alert('Please enable notifications in your browser settings')}
+              title="Notifications Blocked"
+            >
+              🔔 Blocked
+            </button>
+          )}
+
+          {notificationPermission === 'granted' && fcmToken && (
+            <span className="badge bg-success me-2" title="Notifications Active">
+              🔔 Active
+            </span>
+          )}
+
           {/* Test Notification Button */}
           <button 
             className="btn btn-sm btn-info me-2"
             onClick={testNotification}
             title="Test Notification"
-            disabled={!uid}
+            disabled={!uid || !currentUid || currentUid.startsWith('guest_')}
           >
             Test 🔔
           </button>
@@ -975,7 +1126,7 @@ export default function Messages() {
         </div>
 
         {/* Emoji Picker - FIXED: Only show on desktop, not on mobile */}
-        {showEmojiPicker && window.innerWidth > 768 && (
+        {showEmojiPicker && !isMobile && (
           <div
             className="position-absolute"
             style={{ bottom: "100%", left: 0, zIndex: 999 }}
