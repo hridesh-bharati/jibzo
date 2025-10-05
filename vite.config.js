@@ -10,12 +10,7 @@ export default defineConfig({
     // ✅ Progressive Web App (PWA) configuration
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: [
-        "favicon.ico",
-        "robots.txt",
-        "icons/*.png",
-        "manifest.webmanifest"
-      ],
+      includeAssets: ["favicon.ico", "robots.txt", "icons/*.png", "manifest.webmanifest"],
       manifest: {
         name: "Jibzo Web App",
         short_name: "Jibzo",
@@ -24,9 +19,9 @@ export default defineConfig({
         background_color: "#ffffff",
         display: "standalone",
         orientation: "portrait",
-        start_url: "/", // ✅ Clean URL for APK launch
-        scope: "/", // ✅ Root scope only
-        id: "/", // ✅ Ensures PWA opens at root, prevents extra params
+        start_url: "/",      // Clean URL for APK
+        scope: "/",          // Root scope only
+        id: "/",             // Prevent extra params in PWA / APK
         categories: ["social", "communication"],
         lang: "en",
         dir: "ltr",
@@ -45,73 +40,61 @@ export default defineConfig({
           },
         ],
       },
-
-      // ✅ Service Worker caching configuration
       workbox: {
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         skipWaiting: true,
         runtimeCaching: [
           {
-            // Firebase Storage images/files
             urlPattern: /^https:\/\/firebasestorage\.googleapis\.com\/.*/i,
             handler: "CacheFirst",
             options: {
               cacheName: "firebase-storage-cache",
-              expiration: {
-                maxEntries: 60,
-                maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days
-              },
+              expiration: { maxEntries: 60, maxAgeSeconds: 7 * 24 * 60 * 60 },
             },
           },
           {
-            // Firestore / Firebase Realtime DB
             urlPattern: /^https:\/\/firestore\.googleapis\.com\/.*/i,
             handler: "NetworkFirst",
-            options: {
-              cacheName: "firebase-data-cache",
-              networkTimeoutSeconds: 10,
-            },
+            options: { cacheName: "firebase-data-cache", networkTimeoutSeconds: 10 },
           },
           {
-            // Google Fonts
             urlPattern: /^https:\/\/fonts\.(?:gstatic|googleapis)\.com\/.*/i,
             handler: "StaleWhileRevalidate",
-            options: {
-              cacheName: "google-fonts-cache",
-            },
+            options: { cacheName: "google-fonts-cache" },
           },
           {
-            // Images and static assets
             urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp)$/i,
             handler: "CacheFirst",
-            options: {
-              cacheName: "image-cache",
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
-              },
-            },
+            options: { cacheName: "image-cache", expiration: { maxEntries: 100, maxAgeSeconds: 30 * 24 * 60 * 60 } },
           },
         ],
       },
     }),
   ],
 
-  // ✅ Dev server settings
   server: {
     host: true,
     port: 5173,
 
-    // Support for client-side routing during dev (SPA)
-    middlewareMode: false,
+    // ✅ SPA fallback for local dev
+    middlewareMode: true,
     setupMiddlewares(middlewares) {
-      middlewares.push(history());
+      middlewares.push(
+        history({
+          verbose: false,
+          rewrites: [
+            { from: /^\/assets\/.*$/, to: (ctx) => ctx.parsedUrl.pathname },
+            { from: /^\/icons\/.*$/, to: (ctx) => ctx.parsedUrl.pathname },
+            { from: /^\/favicon\.ico$/, to: (ctx) => ctx.parsedUrl.pathname },
+            { from: /^\/manifest\.webmanifest$/, to: (ctx) => ctx.parsedUrl.pathname },
+          ],
+        })
+      );
       return middlewares;
     },
   },
 
-  // ✅ Build optimization
   build: {
     outDir: "dist",
     assetsDir: "assets",
@@ -127,6 +110,6 @@ export default defineConfig({
     },
   },
 
-  base: "./",
+  base: "/",
   publicDir: "public",
 });
