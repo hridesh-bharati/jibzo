@@ -746,7 +746,6 @@ export default function Messages() {
     );
   };
 
-  // ---------- Render ----------
   if (!currentUid) return <p className="text-center mt-5">Please login</p>;
 
   return (

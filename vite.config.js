@@ -109,7 +109,6 @@ export default defineConfig({
       },
     },
   },
-
   base: "/",
   publicDir: "public",
 });
