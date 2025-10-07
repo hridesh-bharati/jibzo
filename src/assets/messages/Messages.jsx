@@ -786,7 +786,7 @@ export default function Messages() {
 
         <div className="d-flex align-items-center">
           {/* Notification Status */}
-          {notificationPermission === 'default' && (
+          {/* {notificationPermission === 'default' && (
             <button
               className="btn btn-sm btn-warning me-2"
               onClick={requestNotificationPermission}
@@ -794,9 +794,9 @@ export default function Messages() {
             >
               🔔 Enable
             </button>
-          )}
+          )} */}
 
-          {notificationPermission === 'denied' && (
+          {/* {notificationPermission === 'denied' && (
             <button
               className="btn btn-sm btn-danger me-2"
               onClick={() => alert('Please enable notifications in your browser settings')}
@@ -804,24 +804,24 @@ export default function Messages() {
             >
               🔔 Blocked
             </button>
-          )}
+          )} */}
 
-          {notificationPermission === 'granted' && fcmToken && (
+          {/* {notificationPermission === 'granted' && fcmToken && (
             <span className="badge bg-success me-2" title="Notifications Active"
               style={{ margin: "20px 200px !important" }}>
               🔔 Active
             </span>
-          )}
+          )} */}
 
           {/* Test Notification Button */}
-          <button
+          {/* <button
             className="btn btn-sm btn-info me-2"
             onClick={testNotification}
             title="Test Notification"
             disabled={!uid || !currentUid || currentUid.startsWith('guest_')}
           >
             Test 🔔
-          </button>
+          </button> */}
 
           {/* Three-dot menu */}
           <div className="position-relative">
