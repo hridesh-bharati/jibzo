@@ -550,21 +550,9 @@ const AdminProfile = () => {
                 <h6 className="mb-0 fw-bold">Hridesh Bharati</h6>
               </div>
               <p className="text-secodary-sutle small mb-2">Founder & Creator of Jibzo App</p>
-              {/* <div className="d-flex justify-content-center gap-3 mb-1">
-                <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" className="text-muted fs-5">
-                  <i className="bi bi-twitter"></i>
-                </a>
-                <a href="https://github.com" target="_blank" rel="noopener noreferrer" className="text-muted fs-5">
-                  <i className="bi bi-github"></i>
-                </a>
-                <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer" className="text-muted fs-5">
-                  <i className="bi bi-linkedin"></i>
-                </a>
-              </div> */}
               <small className="text-muted d-block ">&copy; {new Date().getFullYear()} Jibzo Company</small>
             </div>
           </footer>
-
 
         </div>
       </div>

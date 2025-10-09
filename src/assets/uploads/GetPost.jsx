@@ -7,6 +7,7 @@ import {
   set,
   remove,
   push,
+  get
 } from "firebase/database";
 import { onAuthStateChanged } from "firebase/auth";
 import Heart from "./Heart";
@@ -16,6 +17,53 @@ import DownloadBtn from "./DownloadBtn";
 import { useNavigate } from "react-router-dom";
 
 const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL || "";
+
+/* -----------------------
+   Custom Hook for Dynamic User Data
+----------------------- */
+const useUserData = (userId) => {
+  const [userData, setUserData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  
+  useEffect(() => {
+    if (!userId) {
+      setUserData(null);
+      setLoading(false);
+      return;
+    }
+    
+    // First try users collection (new sync)
+    const userRef = ref(db, `users/${userId}`);
+    const unsubscribe = onValue(userRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        setUserData(data);
+      } else {
+        // Fallback to usersData (old structure)
+        const userDataRef = ref(db, `usersData/${userId}`);
+        onValue(userDataRef, (oldSnapshot) => {
+          const oldData = oldSnapshot.val();
+          if (oldData) {
+            setUserData(oldData);
+          } else {
+            // Final fallback for guest users or deleted accounts
+            setUserData({
+              displayName: 'User',
+              username: 'User',
+              photoURL: 'icons/avatar.jpg',
+              email: ''
+            });
+          }
+        });
+      }
+      setLoading(false);
+    });
+    
+    return () => unsubscribe();
+  }, [userId]);
+  
+  return { userData, loading };
+};
 
 /* -----------------------
    IMPROVED linkify function
@@ -97,17 +145,210 @@ function CardSkeleton() {
 }
 
 /* -----------------------
-   Fullscreen Modal Player - UPDATED: Pause all videos when opening
+   Post Component with Dynamic User Data
+----------------------- */
+function PostComponent({ 
+  post, 
+  currentUser, 
+  guestId, 
+  toggleLike, 
+  addComment, 
+  deleteComment, 
+  isAdmin, 
+  openOptions, 
+  openComments,
+  renderPreview,
+  videoRefs,
+  playingVideos,
+  handleVideoPlayStateChange,
+  commentsText,
+  handleCommentTextChange,
+  isLiking
+}) {
+  const { userData, loading } = useUserData(post.userId);
+  
+  if (loading) {
+    return <CardSkeleton />;
+  }
+
+  // Use dynamic user data if available, otherwise use post data (for backward compatibility)
+  const displayUser = userData?.displayName || userData?.username || post.user || 'User';
+  const displayUserPic = userData?.photoURL || post.userPic || 'icons/avatar.jpg';
+  const displayUserEmail = userData?.email || post.userEmail || '';
+
+  const uid = currentUser?.uid || guestId;
+  const liked = post.likes?.[uid];
+  const likeCount = post.likes ? Object.keys(post.likes).filter(key => post.likes[key]).length : 0;
+  const commentCount = post.comments ? Object.keys(post.comments).length : 0;
+  const postCommentText = commentsText[post.id] || "";
+  const isPostLiking = isLiking[post.id] || false;
+
+  const navigate = useNavigate();
+
+  const goToProfile = (userId) => {
+    navigate(`/user-profile/${userId}`);
+  };
+
+  return (
+    <div className="card border-light py-1 mb-3 shadow-sm">
+      <div className="card-header custom-white d-flex align-items-center border-0 px-3 py-1">
+        <img
+          src={displayUserPic}
+          alt="profile"
+          className="rounded-circle me-2 user-avatar"
+          style={{
+            width: 40, height: 40, objectFit: "cover", cursor: "pointer"
+          }}
+          onClick={() => goToProfile(post.userId)}
+        />
+        <div className="d-flex flex-column">
+          <strong className="username-link">{displayUser}</strong>
+          {displayUserEmail?.toLowerCase() === ADMIN_EMAIL?.toLowerCase() && (
+            <span
+              style={{
+                backgroundColor: "gold",
+                color: "#000",
+                fontWeight: "bold",
+                padding: "0 5px",
+                borderRadius: 4,
+                fontSize: "0.7rem",
+                marginTop: "2px"
+              }}
+            >
+              ADMIN
+            </span>
+          )}
+          <small className="text-muted text-start">
+            {post.timestamp ? new Date(post.timestamp).toLocaleDateString() : ""}
+          </small>
+        </div>
+        <button
+          className="btn btn-sm border ms-auto border-light"
+          onClick={() => openOptions({
+            ...post,
+            user: displayUser,
+            userPic: displayUserPic,
+            userEmail: displayUserEmail
+          })}
+          style={{
+            border: '1px solid #f3f4f6ff',
+            borderRadius: '8px',
+            padding: '4px 8px',
+            transition: 'all 0.2s ease'
+          }}
+          onMouseEnter={(e) => e.target.style.backgroundColor = '#f8f9fa'}
+          onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+        >
+          <i className="bi bi-three-dots"></i>
+        </button>
+      </div>
+
+      <div className="p-0 ps-4">
+        <p style={{ margin: 0, wordBreak: "break-word" }}>
+          <strong>{displayUser}</strong>{" "}
+          {linkify(post.caption).map((part, index) =>
+            React.isValidElement(part)
+              ? React.cloneElement(part, { key: index })
+              : part
+          )}
+        </p>
+      </div>
+
+      <div className="p-3 pb-0">{renderPreview(post)}</div>
+      <div className="card-body p-3 pt-0">
+        <div className="d-flex align-items-center justify-content-between mb-0">
+          <div className="d-flex align-items-center justify-content-between w-100">
+            <div className="d-flex align-items-center">
+              <Heart
+                liked={liked}
+                onToggle={() => toggleLike(post.id)}
+                disabled={isPostLiking}
+              />
+              <small className="text-muted ms-1">
+                {likeCount}
+              </small>
+            </div>
+
+            <div className="mx-3 d-flex align-items-center">
+              <button
+                className="btn btn-link text-muted p-0 me-2"
+                onClick={() => openComments({
+                  ...post,
+                  user: displayUser,
+                  userPic: displayUserPic,
+                  userEmail: displayUserEmail
+                })}
+              >
+                <i className="bi bi-chat fs-1"></i>
+              </button>
+              <small className="text-muted">{commentCount}</small>
+            </div>
+
+            <ShareButton link={post.src} />
+            <DownloadBtn link={post.src} />
+          </div>
+
+          {post.type === "pdf" && (
+            <button
+              className="btn btn-sm btn-light d-flex align-items-center me-2"
+              onClick={() =>
+                window.open(post.url || post.src, "_blank")
+              }
+            >
+              <i className="bi bi-file-earmark-pdf fs-4 text-danger me-1"></i>
+              Open
+            </button>
+          )}
+        </div>
+
+        {commentCount > 0 && (
+          <div
+            className="text-muted mb-2 ps-2"
+            style={{ cursor: "pointer" }}
+            onClick={() => openComments({
+              ...post,
+              user: displayUser,
+              userPic: displayUserPic,
+              userEmail: displayUserEmail
+            })}
+          >
+            View all {commentCount} comments
+          </div>
+        )}
+
+        <div className="input-group mt-1">
+          <input
+            type="text"
+            className="form-control"
+            placeholder="Add a comment..."
+            value={postCommentText}
+            onChange={(e) => handleCommentTextChange(post.id, e.target.value)}
+            onKeyDown={(e) =>
+              e.key === "Enter" && addComment(post.id, postCommentText)
+            }
+          />
+          <button
+            className="btn btn-primary"
+            disabled={!postCommentText.trim()}
+            onClick={() => addComment(post.id, postCommentText)}
+          >
+            <i className="bi bi-send me-1"></i>Post
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* -----------------------
+   Fullscreen Modal Player
 ----------------------- */
 function FullscreenVideoModal({ show, src, onClose, onFullscreenOpen }) {
   const videoRef = useRef(null);
 
   useEffect(() => {
     if (show) {
-      // Notify parent that fullscreen is opening
       onFullscreenOpen();
-
-      // Play the fullscreen video
       if (videoRef.current) {
         videoRef.current.play().catch(console.error);
       }
@@ -134,7 +375,6 @@ function FullscreenVideoModal({ show, src, onClose, onFullscreenOpen }) {
           ref={videoRef}
           src={src}
           autoPlay
-          // controls
           playsInline
           style={{
             width: "100%",
@@ -149,12 +389,11 @@ function FullscreenVideoModal({ show, src, onClose, onFullscreenOpen }) {
 }
 
 /* -----------------------
-   Fullscreen Image Modal - UPDATED: Pause all videos when opening
+   Fullscreen Image Modal
 ----------------------- */
 function FullscreenImageModal({ show, src, onClose, onFullscreenOpen }) {
   useEffect(() => {
     if (show) {
-      // Notify parent that fullscreen is opening
       onFullscreenOpen();
     }
   }, [show, onFullscreenOpen]);
@@ -192,7 +431,7 @@ function FullscreenImageModal({ show, src, onClose, onFullscreenOpen }) {
 }
 
 /* -----------------------
-   VideoPreview (All tab) - FIXED: Click to play/pause working
+   VideoPreview (All tab)
 ----------------------- */
 function VideoPreview({ src, id, videoRefs, onOpen, isPlaying, onPlayStateChange }) {
   const refEl = useRef(null);
@@ -223,7 +462,6 @@ function VideoPreview({ src, id, videoRefs, onOpen, isPlaying, onPlayStateChange
     e.stopPropagation();
     if (refEl.current) {
       if (refEl.current.paused) {
-        // Play the video
         refEl.current.muted = false;
         refEl.current.play().catch((error) => {
           console.log('Play failed:', error);
@@ -232,7 +470,6 @@ function VideoPreview({ src, id, videoRefs, onOpen, isPlaying, onPlayStateChange
         onPlayStateChange(id, true);
         setShowPlayIcon(false);
       } else {
-        // Pause the video
         refEl.current.pause();
         onPlayStateChange(id, false);
         setShowPlayIcon(true);
@@ -242,7 +479,6 @@ function VideoPreview({ src, id, videoRefs, onOpen, isPlaying, onPlayStateChange
 
   const handleFullscreenClick = (e) => {
     e.stopPropagation();
-    // Pause current video before opening fullscreen
     if (refEl.current && !refEl.current.paused) {
       refEl.current.pause();
       onPlayStateChange(id, false);
@@ -263,7 +499,6 @@ function VideoPreview({ src, id, videoRefs, onOpen, isPlaying, onPlayStateChange
     }
   };
 
-  // Handle video events
   const handlePlay = () => {
     onPlayStateChange(id, true);
     setShowPlayIcon(false);
@@ -308,21 +543,18 @@ function VideoPreview({ src, id, videoRefs, onOpen, isPlaying, onPlayStateChange
         }}
       />
 
-      {/* Play Icon Overlay - Shows when paused or on hover */}
       {showPlayIcon && (
         <div className="video-play-overlay">
           <i className="bi bi-play-fill text-white fs-1"></i>
         </div>
       )}
 
-      {/* Pause Indicator - Shows when playing */}
       {isPlaying && (
         <div className="playing-indicator">
           <i className="bi bi-pause-fill me-1"></i>Playing
         </div>
       )}
 
-      {/* Volume Indicator */}
       {isPlaying && (
         <div
           className="volume-indicator"
@@ -342,7 +574,6 @@ function VideoPreview({ src, id, videoRefs, onOpen, isPlaying, onPlayStateChange
         </div>
       )}
 
-      {/* Fullscreen Button */}
       <button
         className="btn btn-sm btn-dark position-absolute"
         style={{
@@ -361,14 +592,13 @@ function VideoPreview({ src, id, videoRefs, onOpen, isPlaying, onPlayStateChange
 }
 
 /* -----------------------
-   Custom Options Bottom Sheet - FIXED: No scroll issues
+   Custom Options Bottom Sheet
 ----------------------- */
 function OptionsBottomSheet({ show, post, onClose, onDelete, onCopyLink, canDelete }) {
   if (!show || !post) return null;
 
   return (
     <>
-      {/* Backdrop */}
       <div
         className="options-backdrop"
         onClick={onClose}
@@ -384,7 +614,6 @@ function OptionsBottomSheet({ show, post, onClose, onDelete, onCopyLink, canDele
         }}
       ></div>
 
-      {/* Bottom Sheet */}
       <div
         className="options-bottom-sheet"
         style={{
@@ -401,7 +630,6 @@ function OptionsBottomSheet({ show, post, onClose, onDelete, onCopyLink, canDele
           animation: 'slideUp 0.3s ease-out'
         }}
       >
-        {/* Header */}
         <div
           className="options-header"
           style={{
@@ -442,7 +670,6 @@ function OptionsBottomSheet({ show, post, onClose, onDelete, onCopyLink, canDele
           </button>
         </div>
 
-        {/* Post Info */}
         <div className="options-content">
           <h6 className="text-muted mb-2">
             Post: <small>{post?.caption || "Untitled"}</small>
@@ -451,7 +678,6 @@ function OptionsBottomSheet({ show, post, onClose, onDelete, onCopyLink, canDele
             Date: {post?.timestamp ? new Date(post.timestamp).toLocaleDateString() : ""}
           </small>
 
-          {/* Copy Link Button */}
           <button
             className="btn btn-outline-primary w-100 mb-2 d-flex align-items-center justify-content-center py-2"
             onClick={onCopyLink}
@@ -465,7 +691,6 @@ function OptionsBottomSheet({ show, post, onClose, onDelete, onCopyLink, canDele
             <i className="bi bi-link-45deg me-2"></i>Copy Link
           </button>
 
-          {/* Delete Button - Only show if user can delete */}
           {canDelete && (
             <button
               className="btn btn-danger w-100 d-flex align-items-center justify-content-center py-2"
@@ -482,7 +707,6 @@ function OptionsBottomSheet({ show, post, onClose, onDelete, onCopyLink, canDele
         </div>
       </div>
 
-      {/* Animations */}
       <style>{`
         @keyframes slideUp {
           from {
@@ -502,7 +726,6 @@ function OptionsBottomSheet({ show, post, onClose, onDelete, onCopyLink, canDele
           }
         }
 
-        /* Hover effects */
         .options-close-btn:hover {
           background-color: #f8f9fa !important;
         }
@@ -522,7 +745,7 @@ function OptionsBottomSheet({ show, post, onClose, onDelete, onCopyLink, canDele
 }
 
 /* -----------------------
-   Comments Offcanvas (YouTube Style) - UPDATED: Real-time comments
+   Comments Offcanvas
 ----------------------- */
 function CommentsOffcanvas({
   postId,
@@ -549,7 +772,6 @@ function CommentsOffcanvas({
       if (postData) {
         setPost(postData);
         const commentsData = postData.comments ? Object.entries(postData.comments) : [];
-        // Sort comments by timestamp (newest first)
         commentsData.sort(([, a], [, b]) => (b.timestamp || 0) - (a.timestamp || 0));
         setComments(commentsData);
       }
@@ -679,370 +901,6 @@ function CommentsOffcanvas({
 }
 
 /* -----------------------
-   ReelsPlayer (TikTok style) - UPDATED: Real-time interactions
------------------------ */
-function ReelsPlayer({
-  posts,
-  videoRefs,
-  currentUser,
-  guestId,
-  toggleLike,
-  addComment,
-  deleteComment,
-  isAdmin,
-}) {
-  const [activeVideo, setActiveVideo] = useState(null);
-  const [showComments, setShowComments] = useState(false);
-  const [currentPostId, setCurrentPostId] = useState(null);
-  const [commentText, setCommentText] = useState("");
-  const [playingStates, setPlayingStates] = useState({});
-  const [isAddingComment, setIsAddingComment] = useState(false);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          const videoId = entry.target.dataset.id;
-          if (entry.isIntersecting && entry.intersectionRatio > 0.75) {
-            setActiveVideo(videoId);
-          }
-        });
-      },
-      { threshold: [0.75] }
-    );
-
-    Object.values(videoRefs.current).forEach((el) => {
-      try {
-        observer.observe(el);
-      } catch { }
-    });
-
-    return () => {
-      Object.values(videoRefs.current).forEach((el) => {
-        try {
-          observer.unobserve(el);
-        } catch { }
-      });
-    };
-  }, [posts]);
-
-  useEffect(() => {
-    Object.entries(videoRefs.current).forEach(([id, videoEl]) => {
-      if (!videoEl) return;
-
-      if (id === activeVideo) {
-        videoEl.muted = false;
-        videoEl.play().catch((error) => {
-          console.log('Reels auto-play failed:', error);
-        });
-        setPlayingStates(prev => ({ ...prev, [id]: true }));
-      } else {
-        videoEl.pause();
-        videoEl.muted = true;
-        setPlayingStates(prev => ({ ...prev, [id]: false }));
-      }
-    });
-  }, [activeVideo]);
-
-  const handleVideoClick = (e, postId) => {
-    e.stopPropagation();
-    const videoEl = videoRefs.current[postId];
-    if (videoEl) {
-      if (videoEl.paused) {
-        videoEl.muted = false;
-        videoEl.play().catch(() => { });
-        setPlayingStates(prev => ({ ...prev, [postId]: true }));
-      } else {
-        videoEl.pause();
-        setPlayingStates(prev => ({ ...prev, [postId]: false }));
-      }
-    }
-  };
-
-  const openComments = (post) => {
-    setCurrentPostId(post.id);
-    setShowComments(true);
-    setCommentText("");
-  };
-
-  const handleAddComment = async (postId, text) => {
-    if (!text.trim() || isAddingComment) return;
-
-    setIsAddingComment(true);
-    try {
-      const userId = currentUser?.uid || guestId;
-      const userName =
-        currentUser?.displayName ||
-        currentUser?.email?.split("@")[0] ||
-        "Guest";
-      const userPic = currentUser?.photoURL || "";
-
-      await push(ref(db, `galleryImages/${postId}/comments`), {
-        userId,
-        userName,
-        userPic,
-        text: text.trim(),
-        timestamp: Date.now(),
-      });
-      setCommentText("");
-    } catch (error) {
-      console.error('Error adding comment:', error);
-    } finally {
-      setIsAddingComment(false);
-    }
-  };
-
-  return (
-    <>
-      <div
-        className="reels-container"
-        style={{
-          height: "90vh",
-          overflowY: "scroll",
-          scrollSnapType: "y mandatory",
-          background: "#000",
-        }}
-      >
-        {posts.map((post) => {
-          const uid = currentUser?.uid || guestId;
-          const liked = post.likes?.[uid];
-          const likeCount = post.likes ? Object.keys(post.likes).filter(key => post.likes[key]).length : 0;
-          const commentCount = post.comments ? Object.keys(post.comments).length : 0;
-          const isPlaying = playingStates[post.id] || false;
-
-          return (
-            <div
-              key={post.id}
-              style={{
-                height: "85vh",
-                width: "100%",
-                scrollSnapAlign: "start",
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                position: "relative",
-                overflow: "hidden",
-              }}
-            >
-              {/* Video with click handler */}
-              <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-                <video
-                  ref={(el) => (videoRefs.current[post.id] = el)}
-                  data-id={post.id}
-                  src={post.src}
-                  loop
-                  playsInline
-                  muted={false}
-                  className="p-0"
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    cursor: "pointer",
-                    objectFit: "cover"
-                  }}
-                  onClick={(e) => handleVideoClick(e, post.id)}
-                  onPlay={() => setPlayingStates(prev => ({ ...prev, [post.id]: true }))}
-                  onPause={() => setPlayingStates(prev => ({ ...prev, [post.id]: false }))}
-                  onError={() => console.log('Video error:', post.id)}
-                />
-
-                {/* Play/Pause overlay for reels */}
-                {!isPlaying && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: '50%',
-                      left: '50%',
-                      transform: 'translate(-50%, -50%)',
-                      background: 'rgba(0, 0, 0, 0.5)',
-                      borderRadius: '50%',
-                      width: 80,
-                      height: 80,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      pointerEvents: 'none'
-                    }}
-                  >
-                    <i className="bi bi-play-fill text-white fs-2" style={{ marginLeft: '8px' }}></i>
-                  </div>
-                )}
-
-                {/* Volume Indicator for Reels */}
-                {isPlaying && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: '10px',
-                      left: '10px',
-                      background: 'rgba(0, 0, 0, 0.7)',
-                      color: 'white',
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      fontSize: '0.7rem',
-                      pointerEvents: 'none'
-                    }}
-                  >
-                    <i className="bi bi-volume-up-fill me-1"></i>Unmuted
-                  </div>
-                )}
-              </div>
-
-              {/* Caption */}
-              <div
-                style={{
-                  position: "absolute",
-                  bottom: 100,
-                  left: 20,
-                  color: "#fff",
-                  fontSize: "0.95rem",
-                  textShadow: "0 0 8px rgba(0,0,0,0.9)",
-                  maxWidth: "70%",
-                }}
-              >
-                <img
-                  src={post.userPic || "icons/avatar.jpg"}
-                  alt="profile"
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: "50%",
-                    objectFit: "cover",
-                    border: "2px solid #fff",
-                    margin: "0 5px 0 0",
-                  }}
-                />
-                <strong>{post.user}</strong>
-                {post.userEmail?.toLowerCase() === ADMIN_EMAIL?.toLowerCase() && (
-                  <span
-                    style={{
-                      backgroundColor: "gold",
-                      color: "#000",
-                      fontWeight: "bold",
-                      padding: "0 5px",
-                      borderRadius: 4,
-                      marginLeft: 5,
-                    }}
-                  >
-                    ADMIN
-                  </span>
-                )}
-                <p style={{ margin: 0, wordBreak: "break-word" }}>
-                  {linkify(post.caption).map((part, index) =>
-                    React.isValidElement(part)
-                      ? React.cloneElement(part, { key: index })
-                      : part
-                  )}
-                </p>
-              </div>
-
-              {/* Buttons */}
-              <div
-                style={{
-                  position: "absolute",
-                  right: 15,
-                  bottom: 100,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "20px",
-                  alignItems: "center",
-                  color: "#fff",
-                }}
-              >
-                <div className="bg-white rounded-circle m-0 p-0">
-                  <button
-                    className="btn m-0"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleLike(post.id);
-                    }}
-                  >
-                    <i
-                      className={`bi bi-heart-fill fs-4 ${liked ? "text-danger" : "text-secondary"}`}
-                    ></i>
-                  </button>
-                </div>
-                <small style={{ color: "#fff" }}>{likeCount}</small>
-
-                <div className="bg-white rounded-circle">
-                  <button
-                    className="btn"
-                    onClick={() => openComments(post)}
-                  >
-                    <i className="bi bi-chat-fill fs-4"></i>
-                  </button>
-                </div>
-                <small style={{ color: "#fff" }}>{commentCount}</small>
-
-                <div className="bg-white rounded-circle px-1">
-                  <ShareButton link={post.src} />
-                </div>
-              </div>
-
-              {/* Comment input for each reel */}
-              <div
-                style={{
-                  position: "absolute",
-                  bottom: 15,
-                  left: 20,
-                  width: "90%",
-                  display: "flex",
-                  gap: "5px",
-                }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <input
-                  type="text"
-                  className="form-control form-control-sm"
-                  placeholder="Add a comment..."
-                  value={commentText}
-                  onChange={(e) => setCommentText(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleAddComment(post.id, commentText)}
-                  disabled={isAddingComment}
-                  style={{ borderRadius: "20px", padding: "5px 10px" }}
-                />
-                <button
-                  className="btn btn-sm btn-primary px-4"
-                  disabled={!commentText.trim() || isAddingComment}
-                  onClick={() => handleAddComment(post.id, commentText)}
-                  style={{ borderRadius: "20px" }}
-                >
-                  {isAddingComment ? (
-                    <div className="spinner-border spinner-border-sm me-1" role="status">
-                      <span className="visually-hidden">Loading...</span>
-                    </div>
-                  ) : (
-                    <i className="bi bi-send me-1"></i>
-                  )}
-                  Post
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* YouTube Style Comments */}
-      <CommentsOffcanvas
-        postId={currentPostId}
-        currentUser={currentUser}
-        guestId={guestId}
-        commentText={commentText}
-        setCommentText={setCommentText}
-        addComment={handleAddComment}
-        deleteComment={deleteComment}
-        isAdmin={isAdmin}
-        show={showComments}
-        onClose={() => {
-          setShowComments(false);
-          setCommentText("");
-        }}
-      />
-    </>
-  );
-}
-
-/* -----------------------
    PdfPreview
 ----------------------- */
 function PdfPreview({ url, name }) {
@@ -1068,7 +926,7 @@ function PdfPreview({ url, name }) {
 }
 
 /* -----------------------
-   Fisher-Yates shuffle algorithm for random post order
+   Fisher-Yates shuffle algorithm
 ----------------------- */
 function shuffleArray(array) {
   const shuffled = [...array];
@@ -1080,7 +938,7 @@ function shuffleArray(array) {
 }
 
 /* -----------------------
-   Main GetPost component - FIXED: Real-time like/comment without delay
+   Main GetPost component
 ----------------------- */
 export default function GetPost({ showFilter = true, uid }) {
   const [posts, setPosts] = useState([]);
@@ -1097,10 +955,10 @@ export default function GetPost({ showFilter = true, uid }) {
   const [commentsPostId, setCommentsPostId] = useState(null);
   const [commentsText, setCommentsText] = useState({});
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-  const [isLiking, setIsLiking] = useState({}); // Track like states per post
-  const navigate = useNavigate();
+  const [isLiking, setIsLiking] = useState({});
 
   const videoRefs = useRef({});
+  const navigate = useNavigate();
 
   useEffect(() => {
     let id = localStorage.getItem("guestId");
@@ -1131,13 +989,11 @@ export default function GetPost({ showFilter = true, uid }) {
 
       setPosts(arr);
 
-      // Only shuffle on initial load or when new posts are added
       if (isInitialLoad || arr.length !== shuffledPosts.length) {
         const shuffled = shuffleArray(arr);
         setShuffledPosts(shuffled);
         setIsInitialLoad(false);
       } else {
-        // Update existing shuffled posts with new data while maintaining order
         setShuffledPosts(prevShuffled => {
           const postMap = new Map(arr.map(post => [post.id, post]));
           return prevShuffled.map(post => postMap.get(post.id) || post);
@@ -1146,10 +1002,6 @@ export default function GetPost({ showFilter = true, uid }) {
     });
   }, [isInitialLoad, shuffledPosts.length]);
 
-  const goToProfile = (uid) => {
-    navigate(`/user-profile/${uid}`);
-  };
-
   const isAdmin = () =>
     (currentUser?.email || "").toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
@@ -1157,13 +1009,11 @@ export default function GetPost({ showFilter = true, uid }) {
   const toggleLike = async (postId) => {
     const userId = currentUser?.uid || guestId;
 
-    // Prevent multiple rapid likes
     if (isLiking[postId]) return;
 
     setIsLiking(prev => ({ ...prev, [postId]: true }));
 
     try {
-      // Immediate UI update
       setShuffledPosts(prevShuffled =>
         prevShuffled.map(post => {
           if (post.id === postId) {
@@ -1181,7 +1031,6 @@ export default function GetPost({ showFilter = true, uid }) {
         })
       );
 
-      // Firebase update
       const post = posts.find((p) => p.id === postId);
       const already = post?.likes?.[userId];
       const postOwnerId = post.userId;
@@ -1204,7 +1053,6 @@ export default function GetPost({ showFilter = true, uid }) {
       }
     } catch (error) {
       console.error('Error toggling like:', error);
-      // Revert UI update on error
       setShuffledPosts(prevShuffled =>
         prevShuffled.map(post => {
           if (post.id === postId) {
@@ -1236,7 +1084,6 @@ export default function GetPost({ showFilter = true, uid }) {
     };
 
     try {
-      // Immediate UI update for comment count
       setShuffledPosts(prevShuffled =>
         prevShuffled.map(post => {
           if (post.id === postId) {
@@ -1254,7 +1101,6 @@ export default function GetPost({ showFilter = true, uid }) {
         })
       );
 
-      // Firebase update
       await push(ref(db, `galleryImages/${postId}/comments`), newComment);
 
       setCommentsText(prev => ({
@@ -1263,7 +1109,6 @@ export default function GetPost({ showFilter = true, uid }) {
       }));
     } catch (error) {
       console.error('Error adding comment:', error);
-      // Revert UI update on error
       setShuffledPosts(prevShuffled =>
         prevShuffled.map(post => {
           if (post.id === postId) {
@@ -1307,19 +1152,16 @@ export default function GetPost({ showFilter = true, uid }) {
     }));
   };
 
-  // Open options bottom sheet
   const openOptions = (post) => {
     setOptionsPost(post);
     setShowOptions(true);
   };
 
-  // Close options bottom sheet
   const closeOptions = () => {
     setShowOptions(false);
     setOptionsPost(null);
   };
 
-  // Copy link function
   const handleCopyLink = () => {
     if (optionsPost?.src) {
       navigator.clipboard.writeText(optionsPost.src);
@@ -1327,29 +1169,23 @@ export default function GetPost({ showFilter = true, uid }) {
     }
   };
 
-  // Delete post function
   const handleDeletePost = () => {
     if (optionsPost?.id && optionsPost?.userId) {
       deletePost(optionsPost.id, optionsPost.userId);
     }
   };
 
-  // Check if user can delete the post
   const canDeletePost = (post) => {
     const uid = currentUser?.uid || guestId;
     return isAdmin() || uid === post.userId;
   };
 
-  // Pause all videos when fullscreen opens
   const handleFullscreenOpen = () => {
-    // Pause all videos in videoRefs
     Object.values(videoRefs.current).forEach((videoEl) => {
       if (videoEl && !videoEl.paused) {
         videoEl.pause();
       }
     });
-
-    // Reset all playing states
     setPlayingVideos({});
   };
 
@@ -1362,7 +1198,6 @@ export default function GetPost({ showFilter = true, uid }) {
         entries.forEach((entry) => {
           const videoId = entry.target.dataset.id;
           if (entry.isIntersecting && entry.intersectionRatio >= 0.7) {
-            // Only play if no other video is playing
             const isAnyVideoPlaying = Object.values(playingVideos).some(state => state);
             if (!isAnyVideoPlaying) {
               const videoEl = videoRefs.current[videoId];
@@ -1390,7 +1225,6 @@ export default function GetPost({ showFilter = true, uid }) {
     };
   }, [shuffledPosts, filter, playingVideos]);
 
-  // Filter posts based on current filter using shuffledPosts
   const getVisiblePosts = useCallback(() => {
     let filteredPosts = uid
       ? shuffledPosts.filter((p) => p.userId === uid && (filter === "all" || p.type === filter))
@@ -1464,7 +1298,6 @@ export default function GetPost({ showFilter = true, uid }) {
               className={`joi-tab-btn ${filter === t ? "active" : ''}`}
               onClick={() => {
                 setFilter(t);
-                // Pause all videos when switching tabs
                 Object.values(videoRefs.current).forEach((v) => {
                   try {
                     v && v.pause();
@@ -1480,157 +1313,34 @@ export default function GetPost({ showFilter = true, uid }) {
         </div>
       )}
 
-      {filter === "video" ? (
-        <ReelsPlayer
-          posts={visiblePosts}
-          videoRefs={videoRefs}
-          currentUser={currentUser}
-          guestId={guestId}
-          toggleLike={toggleLike}
-          addComment={addComment}
-          deleteComment={deleteComment}
-          isAdmin={isAdmin}
-        />
-      ) : (
-        <div className="gallery-feed p-2 container">
-          {visiblePosts.length === 0 ? (
-            [...Array(3)].map((_, i) => <CardSkeleton key={i} />)
-          ) : (
-            visiblePosts.map((post) => {
-              const uid = currentUser?.uid || guestId;
-              const liked = post.likes?.[uid];
-              const likeCount = post.likes
-                ? Object.keys(post.likes).filter(key => post.likes[key]).length
-                : 0;
-              const commentCount = post.comments ? Object.keys(post.comments).length : 0;
-              const postCommentText = commentsText[post.id] || "";
-              const isPostLiking = isLiking[post.id] || false;
-
-              return (
-                <div key={post.id} className="card border-light py-1 mb-3 shadow-sm">
-                  <div className="card-header custom-white d-flex align-items-center border-0 px-3 py-1">
-                    <img
-                      src={post.userPic || "icons/avatar.jpg"}
-                      alt="profile"
-                      className="rounded-circle me-2 user-avatar"
-                      style={{
-                        width: 40, height: 40, objectFit: "cover", cursor: "pointer"
-                      }}
-                      onClick={() => goToProfile(post.userId)}
-                    />
-                    <div className="d-flex flex-column">
-                      <strong className="username-link">{post.user || "Guest"}</strong>
-                      <small className="text-muted text-start">
-                        {post.timestamp ? new Date(post.timestamp).toLocaleDateString() : ""}
-                      </small>
-                    </div>
-                    <button
-                      className="btn btn-sm border ms-auto border-light"
-                      onClick={() => openOptions(post)}
-                      style={{
-                        border: '1px solid #f3f4f6ff',
-                        borderRadius: '8px',
-                        padding: '4px 8px',
-                        transition: 'all 0.2s ease'
-                      }}
-                      onMouseEnter={(e) => e.target.style.backgroundColor = '#f8f9fa'}
-                      onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                    >
-                      <i className="bi bi-three-dots"></i>
-                    </button>
-                  </div>
-
-                  <div className="p-0 ps-4">
-                    <p style={{ margin: 0, wordBreak: "break-word" }}>
-                      <strong>{post.user}</strong>{" "}
-                      {linkify(post.caption).map((part, index) =>
-                        React.isValidElement(part)
-                          ? React.cloneElement(part, { key: index })
-                          : part
-                      )}
-                    </p>
-                  </div>
-
-                  <div className="p-3 pb-0">{renderPreview(post)}</div>
-                  <div className="card-body p-3 pt-0">
-                    <div className="d-flex align-items-center justify-content-between mb-0">
-                      <div className="d-flex align-items-center justify-content-between w-100">
-                        <div className="d-flex align-items-center">
-                          <Heart
-                            liked={liked}
-                            onToggle={() => toggleLike(post.id)}
-                            disabled={isPostLiking}
-                          />
-                          <small className="text-muted ms-1">
-                            {likeCount}
-                          </small>
-                        </div>
-
-                        <div className="mx-3 d-flex align-items-center">
-                          <button
-                            className="btn btn-link text-muted p-0 me-2"
-                            onClick={() => openComments(post)}
-                          >
-                            <i className="bi bi-chat fs-1"></i>
-                          </button>
-                          <small className="text-muted">{commentCount}</small>
-                        </div>
-
-                        <ShareButton link={post.src} />
-                        <DownloadBtn link={post.src} />
-                      </div>
-
-                      {post.type === "pdf" && (
-                        <button
-                          className="btn btn-sm btn-light d-flex align-items-center me-2"
-                          onClick={() =>
-                            window.open(post.url || post.src, "_blank")
-                          }
-                        >
-                          <i className="bi bi-file-earmark-pdf fs-4 text-danger me-1"></i>
-                          Open
-                        </button>
-                      )}
-                    </div>
-
-                    {commentCount > 0 && (
-                      <div
-                        className="text-muted mb-2 ps-2"
-                        style={{ cursor: "pointer" }}
-                        onClick={() => openComments(post)}
-                      >
-                        View all {commentCount} comments
-                      </div>
-                    )}
-
-                    <div className="input-group mt-1">
-                      <input
-                        type="text"
-                        className="form-control"
-                        placeholder="Add a comment..."
-                        value={postCommentText}
-                        onChange={(e) => handleCommentTextChange(post.id, e.target.value)}
-                        onKeyDown={(e) =>
-                          e.key === "Enter" && addComment(post.id, postCommentText)
-                        }
-                      />
-                      <button
-                        className="btn btn-primary"
-                        disabled={!postCommentText.trim()}
-                        onClick={() => addComment(post.id, postCommentText)}
-                      >
-                        <i className="bi bi-send me-1"></i>Post
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          )}
-          <div style={{ marginBottom: "90px" }}></div>
-
-        </div>
-      )}
+      <div className="gallery-feed p-2 container">
+        {visiblePosts.length === 0 ? (
+          [...Array(3)].map((_, i) => <CardSkeleton key={i} />)
+        ) : (
+          visiblePosts.map((post) => (
+            <PostComponent
+              key={post.id}
+              post={post}
+              currentUser={currentUser}
+              guestId={guestId}
+              toggleLike={toggleLike}
+              addComment={addComment}
+              deleteComment={deleteComment}
+              isAdmin={isAdmin}
+              openOptions={openOptions}
+              openComments={openComments}
+              renderPreview={renderPreview}
+              videoRefs={videoRefs}
+              playingVideos={playingVideos}
+              handleVideoPlayStateChange={handleVideoPlayStateChange}
+              commentsText={commentsText}
+              handleCommentTextChange={handleCommentTextChange}
+              isLiking={isLiking}
+            />
+          ))
+        )}
+        <div style={{ marginBottom: "90px" }}></div>
+      </div>
 
       {/* Custom Options Bottom Sheet */}
       <OptionsBottomSheet
