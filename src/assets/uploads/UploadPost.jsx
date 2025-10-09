@@ -164,7 +164,7 @@ export default function UploadPost() {
           ) : (
             <div className="placeholder" onClick={() => fileInputRef.current?.click()}>
               <BsUpload size={50} className="mb-2" />
-              <p className="placeholder-text">Click to upload media or write text below</p>
+              <p className="placeholder-text">Click to upload media or <br/>write text below</p>
             </div>
           )}
 

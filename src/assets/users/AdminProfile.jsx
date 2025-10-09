@@ -1,7 +1,7 @@
 // src/components/AdminProfile.jsx
 import React, { useEffect, useState, useCallback } from "react";
 import { db, auth } from "../utils/firebaseConfig";
-import { ref, onValue, update } from "firebase/database";
+import { ref, onValue, update, get } from "firebase/database";
 import {
   signOut,
   updateProfile,
@@ -233,50 +233,69 @@ const AdminProfile = () => {
     () => { setFile(null); setUploading(false); }
   );
 
-  const handleUsernameUpdate = () => handleUpdate(
-    async () => {
-      if (!currentUser || !username.trim()) throw new Error("Username cannot be empty!");
-      
-      const validationError = validateUsername(username);
-      if (validationError) {
-        throw new Error(validationError);
-      }
+// src/components/AdminProfile.jsx में username update function
+const handleUsernameUpdate = () => handleUpdate(
+  async () => {
+    if (!currentUser || !username.trim()) throw new Error("Username cannot be empty!");
 
-      // Check if username is the same as current
-      if (username === profileData.username) {
-        throw new Error("Username is the same as current username");
-      }
+    const validationError = validateUsername(username);
+    if (validationError) {
+      throw new Error(validationError);
+    }
 
-      setUsernameLoading(true);
-      
-      // Check if username already exists in the database
-      const usersRef = ref(db, 'usersData');
-      const snapshot = await onValue(usersRef);
-      const usersData = snapshot.val();
-      
-      if (usersData) {
-        const usernameExists = Object.values(usersData).some(
-          user => user.username === username && user.uid !== currentUser.uid
-        );
-        
-        if (usernameExists) {
-          throw new Error("Username already taken. Please choose a different one.");
-        }
-      }
+    // Check if username is the same as current
+    if (username === profileData.username) {
+      throw new Error("Username is the same as current username");
+    }
 
-      // Update username in database and auth profile
-      await Promise.all([
-        update(ref(db, `usersData/${currentUser.uid}`), { username }),
-        updateProfile(currentUser, { displayName: username })
-      ]);
-      
-      setProfileData(prev => ({ ...prev, username }));
-      setUsernameError("");
-    },
-    "✅ Username updated successfully!",
-    "Failed to update username!",
-    () => setUsernameLoading(false)
-  );
+    setUsernameLoading(true);
+
+    // Check if username already exists in the database
+    const usersRef = ref(db, 'usersData');
+    const snapshot = await get(usersRef);
+    const usersData = snapshot.val();
+
+    if (usersData) {
+      const usernameExists = Object.values(usersData).some(
+        user => user.username && user.username.toLowerCase() === username.toLowerCase() && user.uid !== currentUser.uid
+      );
+
+      if (usernameExists) {
+        throw new Error("Username already taken. Please choose a different one.");
+      }
+    }
+
+    // ✅ FIX: Update username in database and all related fields
+    const updates = {
+      [`usersData/${currentUser.uid}/username`]: username,
+      [`usersData/${currentUser.uid}/displayName`]: username
+    };
+
+    await Promise.all([
+      update(ref(db), updates),
+      updateProfile(currentUser, { 
+        displayName: username,
+        // ✅ Also update in auth profile
+      })
+    ]);
+
+    // ✅ Force refresh profile data
+    setProfileData(prev => ({ 
+      ...prev, 
+      username: username, 
+      displayName: username 
+    }));
+    
+    setUsernameError("");
+    
+    // ✅ Show success message
+    // toast.success("✅ Username updated successfully!");
+    
+  },
+  "✅ Username updated successfully!",
+  "Failed to update username!",
+  () => setUsernameLoading(false)
+);
 
   const handleChangeWallpaper = useCallback(async () => {
     const input = document.createElement("input");
@@ -864,9 +883,9 @@ const EditProfileOffcanvas = ({
   );
 };
 
-const ProfileTab = ({ 
+const ProfileTab = ({
   profileData, file, setFile, bio, setBio, username, setUsername, usernameError, usernameLoading,
-  socialLinks, setSocialLinks, uploading, onDpUpdate, onBioUpdate, onUsernameUpdate, onSocialLinksUpdate 
+  socialLinks, setSocialLinks, uploading, onDpUpdate, onBioUpdate, onUsernameUpdate, onSocialLinksUpdate
 }) => (
   <>
     <div className="mb-4">
@@ -885,20 +904,20 @@ const ProfileTab = ({
 
     <div className="mb-4">
       <h6 className="fw-bold mb-3"><i className="bi bi-person me-2"></i>Username</h6>
-      <input 
-        type="text" 
-        className={`form-control ${usernameError ? 'is-invalid' : ''}`} 
-        value={username} 
-        onChange={(e) => setUsername(e.target.value)} 
-        placeholder="Enter new username" 
+      <input
+        type="text"
+        className={`form-control ${usernameError ? 'is-invalid' : ''}`}
+        value={username}
+        onChange={(e) => setUsername(e.target.value)}
+        placeholder="Enter new username"
       />
       {usernameError && <div className="invalid-feedback d-block">{usernameError}</div>}
       <small className="text-muted d-block mt-1">
         Username must be 3-20 characters and can contain letters, numbers, underscores, dots, and hyphens.
       </small>
-      <button 
-        className="btn btn-primary btn-sm mt-2 w-100" 
-        onClick={onUsernameUpdate} 
+      <button
+        className="btn btn-primary btn-sm mt-2 w-100"
+        onClick={onUsernameUpdate}
         disabled={usernameLoading || !!usernameError || username === profileData.username || !username.trim()}
       >
         {usernameLoading ? <><span className="spinner-border spinner-border-sm me-2"></span>Updating...</> : "Update Username"}

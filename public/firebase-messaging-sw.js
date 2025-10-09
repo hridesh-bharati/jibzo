@@ -1,4 +1,4 @@
-// public/firebase-messaging-sw.js - ONLY THIS CONTENT
+// public/firebase-messaging-sw.js
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
 
@@ -106,4 +106,16 @@ self.addEventListener('notificationclick', (event) => {
 // Notification close handle करें
 self.addEventListener('notificationclose', (event) => {
     console.log('[SW] Notification closed:', event);
+});
+
+// Service Worker installation
+self.addEventListener('install', (event) => {
+    console.log('[SW] Service Worker installed');
+    self.skipWaiting(); // Activate immediately
+});
+
+// Service Worker activation
+self.addEventListener('activate', (event) => {
+    console.log('[SW] Service Worker activated');
+    event.waitUntil(self.clients.claim()); // Take control immediately
 });

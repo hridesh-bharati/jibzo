@@ -7,6 +7,7 @@ import {
   set,
   remove,
   push,
+  get
 } from "firebase/database";
 import { onAuthStateChanged } from "firebase/auth";
 import Heart from "./Heart";
@@ -97,7 +98,7 @@ function CardSkeleton() {
 }
 
 /* -----------------------
-   Fullscreen Modal Player - UPDATED: Pause all videos when opening
+   Fullscreen Modal Player - FIXED: Video fullscreen
 ----------------------- */
 function FullscreenVideoModal({ show, src, onClose, onFullscreenOpen }) {
   const videoRef = useRef(null);
@@ -134,13 +135,14 @@ function FullscreenVideoModal({ show, src, onClose, onFullscreenOpen }) {
           ref={videoRef}
           src={src}
           autoPlay
-          // controls
+          controls
           playsInline
           style={{
             width: "100%",
             height: "auto",
             maxHeight: "90vh",
             background: "#000",
+            borderRadius: "8px"
           }}
         />
       </div>
@@ -149,7 +151,7 @@ function FullscreenVideoModal({ show, src, onClose, onFullscreenOpen }) {
 }
 
 /* -----------------------
-   Fullscreen Image Modal - UPDATED: Pause all videos when opening
+   Fullscreen Image Modal
 ----------------------- */
 function FullscreenImageModal({ show, src, onClose, onFullscreenOpen }) {
   useEffect(() => {
@@ -183,6 +185,7 @@ function FullscreenImageModal({ show, src, onClose, onFullscreenOpen }) {
             height: "auto",
             maxHeight: "90vh",
             objectFit: "contain",
+            borderRadius: "8px"
           }}
           alt="Fullscreen"
         />
@@ -192,7 +195,7 @@ function FullscreenImageModal({ show, src, onClose, onFullscreenOpen }) {
 }
 
 /* -----------------------
-   VideoPreview (All tab) - FIXED: Click to play/pause working
+   VideoPreview (All tab) - FIXED: Click to play/pause and fullscreen
 ----------------------- */
 function VideoPreview({ src, id, videoRefs, onOpen, isPlaying, onPlayStateChange }) {
   const refEl = useRef(null);
@@ -310,14 +313,43 @@ function VideoPreview({ src, id, videoRefs, onOpen, isPlaying, onPlayStateChange
 
       {/* Play Icon Overlay - Shows when paused or on hover */}
       {showPlayIcon && (
-        <div className="video-play-overlay">
-          <i className="bi bi-play-fill text-white fs-1"></i>
+        <div 
+          className="video-play-overlay"
+          style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            background: 'rgba(0, 0, 0, 0.5)',
+            borderRadius: '50%',
+            width: 60,
+            height: 60,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'none'
+          }}
+        >
+          <i className="bi bi-play-fill text-white fs-3"></i>
         </div>
       )}
 
       {/* Pause Indicator - Shows when playing */}
       {isPlaying && (
-        <div className="playing-indicator">
+        <div 
+          className="playing-indicator"
+          style={{
+            position: 'absolute',
+            top: '10px',
+            right: '10px',
+            background: 'rgba(0, 0, 0, 0.7)',
+            color: 'white',
+            padding: '4px 8px',
+            borderRadius: '4px',
+            fontSize: '0.7rem',
+            pointerEvents: 'none'
+          }}
+        >
           <i className="bi bi-pause-fill me-1"></i>Playing
         </div>
       )}
@@ -361,7 +393,7 @@ function VideoPreview({ src, id, videoRefs, onOpen, isPlaying, onPlayStateChange
 }
 
 /* -----------------------
-   Custom Options Bottom Sheet - FIXED: No scroll issues
+   Custom Options Bottom Sheet
 ----------------------- */
 function OptionsBottomSheet({ show, post, onClose, onDelete, onCopyLink, canDelete }) {
   if (!show || !post) return null;
@@ -1080,7 +1112,7 @@ function shuffleArray(array) {
 }
 
 /* -----------------------
-   Main GetPost component - FIXED: Real-time like/comment without delay
+   Main GetPost component - FIXED: Dynamic user data and video fullscreen
 ----------------------- */
 export default function GetPost({ showFilter = true, uid }) {
   const [posts, setPosts] = useState([]);
@@ -1097,8 +1129,8 @@ export default function GetPost({ showFilter = true, uid }) {
   const [commentsPostId, setCommentsPostId] = useState(null);
   const [commentsText, setCommentsText] = useState({});
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-  const [isLiking, setIsLiking] = useState({}); // Track like states per post
-  const navigate = useNavigate();
+  const [isLiking, setIsLiking] = useState({});
+  const [userProfiles, setUserProfiles] = useState({}); // ✅ NEW: Store user profiles
 
   const videoRefs = useRef({});
 
@@ -1114,6 +1146,19 @@ export default function GetPost({ showFilter = true, uid }) {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setCurrentUser(u));
     return () => unsub();
+  }, []);
+
+  // ✅ NEW: Fetch user profiles data
+  useEffect(() => {
+    const usersRef = ref(db, "usersData");
+    const unsubscribe = onValue(usersRef, (snapshot) => {
+      const usersData = snapshot.val();
+      if (usersData) {
+        setUserProfiles(usersData);
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   // Real-time Firebase listener for posts
@@ -1146,8 +1191,38 @@ export default function GetPost({ showFilter = true, uid }) {
     });
   }, [isInitialLoad, shuffledPosts.length]);
 
+  // ✅ NEW: Function to get user data for a post
+  const getUserData = (post) => {
+    const userId = post.userId;
+    
+    if (!userId || userId.startsWith('guest_')) {
+      return {
+        username: "Guest",
+        userPic: "icons/avatar.jpg",
+        displayName: "Guest"
+      };
+    }
+
+    const userProfile = userProfiles[userId];
+    if (userProfile) {
+      return {
+        username: userProfile.username || userProfile.displayName || "User",
+        userPic: userProfile.photoURL || "icons/avatar.jpg",
+        displayName: userProfile.displayName || userProfile.username || "User"
+      };
+    }
+
+    return {
+      username: "User",
+      userPic: "icons/avatar.jpg",
+      displayName: "User"
+    };
+  };
+
   const goToProfile = (uid) => {
-    navigate(`/user-profile/${uid}`);
+    if (uid && !uid.startsWith('guest_')) {
+      navigate(`/user-profile/${uid}`);
+    }
   };
 
   const isAdmin = () =>
@@ -1224,8 +1299,9 @@ export default function GetPost({ showFilter = true, uid }) {
     if (!text.trim()) return;
 
     const userId = currentUser?.uid || guestId;
-    const userName = currentUser?.displayName || currentUser?.email?.split("@")[0] || "Guest";
-    const userPic = currentUser?.photoURL || "";
+    const userData = getUserData({ userId }); // ✅ Use dynamic user data
+    const userName = userData.displayName;
+    const userPic = userData.userPic;
 
     const newComment = {
       userId,
@@ -1390,6 +1466,8 @@ export default function GetPost({ showFilter = true, uid }) {
     };
   }, [shuffledPosts, filter, playingVideos]);
 
+  const navigate = useNavigate();
+
   // Filter posts based on current filter using shuffledPosts
   const getVisiblePosts = useCallback(() => {
     let filteredPosts = uid
@@ -1505,12 +1583,17 @@ export default function GetPost({ showFilter = true, uid }) {
               const commentCount = post.comments ? Object.keys(post.comments).length : 0;
               const postCommentText = commentsText[post.id] || "";
               const isPostLiking = isLiking[post.id] || false;
+              
+              // ✅ FIX: Get dynamic user data
+              const userData = getUserData(post);
+              const displayName = userData.displayName;
+              const userPic = userData.userPic;
 
               return (
                 <div key={post.id} className="card border-light py-1 mb-3 shadow-sm">
                   <div className="card-header custom-white d-flex align-items-center border-0 px-3 py-1">
                     <img
-                      src={post.userPic || "icons/avatar.jpg"}
+                      src={userPic}
                       alt="profile"
                       className="rounded-circle me-2 user-avatar"
                       style={{
@@ -1519,7 +1602,7 @@ export default function GetPost({ showFilter = true, uid }) {
                       onClick={() => goToProfile(post.userId)}
                     />
                     <div className="d-flex flex-column">
-                      <strong className="username-link">{post.user || "Guest"}</strong>
+                      <strong className="username-link">{displayName}</strong>
                       <small className="text-muted text-start">
                         {post.timestamp ? new Date(post.timestamp).toLocaleDateString() : ""}
                       </small>
@@ -1542,7 +1625,7 @@ export default function GetPost({ showFilter = true, uid }) {
 
                   <div className="p-0 ps-4">
                     <p style={{ margin: 0, wordBreak: "break-word" }}>
-                      <strong>{post.user}</strong>{" "}
+                      <strong>{displayName}</strong>{" "}
                       {linkify(post.caption).map((part, index) =>
                         React.isValidElement(part)
                           ? React.cloneElement(part, { key: index })

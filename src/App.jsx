@@ -1,4 +1,4 @@
-// App.jsx
+// src/App.jsx
 import React, { useEffect, useState } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
@@ -9,6 +9,7 @@ import "react-toastify/dist/ReactToastify.css";
 import PrivateRoute from "./assets/Navbar/PrivateRoute";
 import Loader from "./assets/Loader/Loader";
 import BottomFooter from "./assets/Navbar/BottomFotter";
+import InstallPrompt from "./assets/Pwa/InstallApp";
 
 // Pages
 import UserRegister from "./assets/users/UserRegister";
@@ -29,14 +30,64 @@ import ViewStatus from "./assets/Status/ViewStatuses";
 import DeleteAccount from "./assets/users/DeleteAccount";
 import Support from "./assets/users/Support";
 import Blocked from "./assets/users/Blocked";
-import { UserRelationsProvider } from "./context/UserRelationsContext";
+
+// Gadgets & Tools
 import GadgetsTools from "./assets/Gadgets/GadgetsTools";
 import FileConverter from "./assets/Gadgets/FileConverter";
 import ImageCompressor from "./assets/Gadgets/ImageCompressor";
 import ImageResizer from "./assets/Gadgets/ImageResizer";
-import InstallPrompt from "./assets/Pwa/InstallApp";
 import FaceSticker from "./assets/Gadgets/AiModel/FaceSticker";
 import AgeCalculator from "./assets/Gadgets/AgeCal/AgeCalculator";
+
+// Context
+import { UserRelationsProvider } from "./context/UserRelationsContext";
+
+// Routes that don't need footer
+const NO_FOOTER_ROUTES = ["/", "/login", "/register"];
+
+// Public routes (accessible without authentication)
+const publicRoutes = [
+  { path: "/register", component: UserRegister },
+  { path: "/login", component: Login },
+  { path: "/support", component: Support },
+  { path: "/gadgets-and-tools", component: GadgetsTools }
+];
+
+// Protected routes (require authentication)
+const protectedRoutes = [
+  { path: "/home", component: Home },
+  { path: "/admin-profile", component: Profile },
+  { path: "/admin-profile/:uid", component: Profile },
+  { path: "/all-insta-users", component: InstaUsers },
+  { path: "/user-profile/:uid", component: InstaUserProfile },
+  { path: "/followers", component: Followers },
+  { path: "/followers/:uid", component: Followers },
+  { path: "/following", component: Following },
+  { path: "/following/:uid", component: Following },
+  { path: "/blocked", component: Blocked },
+  { path: "/blocked/:uid", component: Blocked },
+  { path: "/requested", component: Requested },
+  { path: "/requested/:uid", component: Requested },
+  { path: "/friends", component: Friends },
+  { path: "/friends/:uid", component: Friends },
+  { path: "/user/new/post", component: UploadPost },
+  { path: "/user/get-all-post/post", component: GetPost },
+  { path: "/post/:postId", component: GetPost },
+  { path: "/messages", component: Messages },
+  { path: "/messages/:uid", component: Messages },
+  { path: "/status/upload", component: UploadStatus },
+  { path: "/status", component: ViewStatus },
+  { path: "/delete-account", component: DeleteAccount }
+];
+
+// Gadgets sub-routes
+const gadgetsRoutes = [
+  { path: "file-converter", component: FileConverter },
+  { path: "image-compression", component: ImageCompressor },
+  { path: "image-resizer", component: ImageResizer },
+  { path: "face-sticker", component: FaceSticker },
+  { path: "age-calculator", component: AgeCalculator }
+];
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -45,10 +96,10 @@ const App = () => {
 
   useEffect(() => {
     const auth = getAuth();
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      if (u) {
-        setUser(u);
-        localStorage.setItem("currentUser", JSON.stringify(u));
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setUser(user);
+        localStorage.setItem("currentUser", JSON.stringify(user));
       } else {
         setUser(null);
         localStorage.removeItem("currentUser");
@@ -59,251 +110,68 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  if (loadingAuth) return <Loader />;
+  // Show loader while checking authentication
+  if (loadingAuth) {
+    return <Loader />;
+  }
+
+  const shouldShowFooter = user && !NO_FOOTER_ROUTES.includes(location.pathname);
 
   return (
     <UserRelationsProvider>
-      <>
+      <div className="app">
+        {/* PWA Install Prompt */}
         <InstallPrompt />
+        
+        {/* App Routes */}
         <Routes>
-          {/* Root redirects */}
-          <Route path="/" element={<Navigate to={user ? "/home" : "/login"} />} />
+          {/* Root redirect */}
+          <Route 
+            path="/" 
+            element={<Navigate to={user ? "/home" : "/login"} replace />} 
+          />
 
           {/* Public Routes */}
-          <Route
-            path="/register"
-            element={user ? <Navigate to="/home" /> : <UserRegister />}
-          />
-          <Route
-            path="/login"
-            element={user ? <Navigate to="/home" /> : <Login />}
-          />
+          {publicRoutes.map(({ path, component: Component }) => (
+            <Route
+              key={path}
+              path={path}
+              element={user ? <Navigate to="/home" replace /> : <Component />}
+            />
+          ))}
 
           {/* Protected Routes */}
-          <Route
-            path="/home"
-            element={
-              <PrivateRoute user={user}>
-                <Home />
-              </PrivateRoute>
-            }
-          />
+          {protectedRoutes.map(({ path, component: Component }) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <PrivateRoute user={user}>
+                  <Component />
+                </PrivateRoute>
+              }
+            />
+          ))}
 
-          {/* Profile Routes */}
-          <Route
-            path="/admin-profile"
-            element={
-              <PrivateRoute user={user}>
-                <Profile />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/admin-profile/:uid"
-            element={
-              <PrivateRoute user={user}>
-                <Profile />
-              </PrivateRoute>
-            }
-          />
-
-          {/* User Discovery Routes */}
-          <Route
-            path="/all-insta-users"
-            element={
-              <PrivateRoute user={user}>
-                <InstaUsers />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/user-profile/:uid"
-            element={
-              <PrivateRoute user={user}>
-                <InstaUserProfile />
-              </PrivateRoute>
-            }
-          />
-
-          {/* Relationship Routes */}
-          <Route
-            path="/followers"
-            element={
-              <PrivateRoute user={user}>
-                <Followers />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/followers/:uid"
-            element={
-              <PrivateRoute user={user}>
-                <Followers />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/following"
-            element={
-              <PrivateRoute user={user}>
-                <Following />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/following/:uid"
-            element={
-              <PrivateRoute user={user}>
-                <Following />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/blocked"
-            element={
-              <PrivateRoute user={user}>
-                <Blocked />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/blocked/:uid"
-            element={
-              <PrivateRoute user={user}>
-                <Blocked />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/requested"
-            element={
-              <PrivateRoute user={user}>
-                <Requested />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/requested/:uid"
-            element={
-              <PrivateRoute user={user}>
-                <Requested />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/friends"
-            element={
-              <PrivateRoute user={user}>
-                <Friends />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/friends/:uid"
-            element={
-              <PrivateRoute user={user}>
-                <Friends />
-              </PrivateRoute>
-            }
-          />
-
-          {/* Content Routes */}
-          <Route
-            path="/user/new/post"
-            element={
-              <PrivateRoute user={user}>
-                <UploadPost />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/user/get-all-post/post"
-            element={
-              <PrivateRoute user={user}>
-                <GetPost />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/post/:postId"
-            element={
-              <PrivateRoute user={user}>
-                <GetPost />
-              </PrivateRoute>
-            }
-          />
-
-          {/* Messaging Routes */}
-          <Route
-            path="/messages"
-            element={
-              <PrivateRoute user={user}>
-                <Messages />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/messages/:uid"
-            element={
-              <PrivateRoute user={user}>
-                <Messages />
-              </PrivateRoute>
-            }
-          />
-
-          {/* Status Routes */}
-          <Route
-            path="/status/upload"
-            element={
-              <PrivateRoute user={user}>
-                <UploadStatus />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/status"
-            element={
-              <PrivateRoute user={user}>
-                <ViewStatus />
-              </PrivateRoute>
-            }
-          />
-
-          {/* Account Management Routes */}
-          <Route
-            path="/delete-account"
-            element={
-              <PrivateRoute user={user}>
-                <DeleteAccount />
-              </PrivateRoute>
-            }
-          />
-
-          {/* Support Route (public) */}
-          <Route path="/support" element={<Support />} />
-
-          {/* Gadgets & Tools Routes */}
+          {/* Gadgets & Tools nested routes */}
           <Route path="/gadgets-and-tools" element={<GadgetsTools />}>
             <Route index element={<FileConverter />} />
-            <Route path="file-converter" element={<FileConverter />} />
-            <Route path="image-compression" element={<ImageCompressor />} />
-            <Route path="image-resizer" element={<ImageResizer />} />
-            <Route path="face-sticker" element={<FaceSticker />} />
-            <Route path="age-calculator" element={<AgeCalculator />} />
+            {gadgetsRoutes.map(({ path, component: Component }) => (
+              <Route key={path} path={path} element={<Component />} />
+            ))}
           </Route>
 
           {/* Catch-all route */}
-          <Route
-            path="*"
-            element={<Navigate to={user ? "/home" : "/login"} />}
+          <Route 
+            path="*" 
+            element={<Navigate to={user ? "/home" : "/login"} replace />} 
           />
         </Routes>
 
-        {/* Footer only if logged in and not on login/register/root */}
-        {user && !["/", "/login", "/register"].includes(location.pathname) && (
-          <BottomFooter />
-        )}
+        {/* Footer */}
+        {shouldShowFooter && <BottomFooter />}
 
+        {/* Toast Notifications */}
         <ToastContainer
           position="top-right"
           autoClose={3000}
@@ -314,7 +182,7 @@ const App = () => {
           draggable
           theme="colored"
         />
-      </>
+      </div>
     </UserRelationsProvider>
   );
 };
