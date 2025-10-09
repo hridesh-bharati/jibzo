@@ -147,6 +147,20 @@ const PasswordInput = ({
   </div>
 );
 
+// Username validation function
+const validateUsername = (username) => {
+  if (!username || username.length < 3) {
+    return "Username must be at least 3 characters long";
+  }
+  if (username.length > 20) {
+    return "Username must be less than 20 characters";
+  }
+  if (!/^[a-zA-Z0-9_.-]+$/.test(username)) {
+    return "Username can only contain letters, numbers, underscores, dots, and hyphens";
+  }
+  return null;
+};
+
 // Main Component
 const AdminProfile = () => {
   const currentUser = useAuth();
@@ -159,6 +173,9 @@ const AdminProfile = () => {
 
   const [file, setFile] = useState(null);
   const [bio, setBio] = useState("");
+  const [username, setUsername] = useState("");
+  const [usernameError, setUsernameError] = useState("");
+  const [usernameLoading, setUsernameLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [socialLinks, setSocialLinks] = useState({ list: [] });
   const [newEmail, setNewEmail] = useState("");
@@ -177,6 +194,7 @@ const AdminProfile = () => {
   useEffect(() => {
     if (profileData) {
       setBio(profileData.bio || "");
+      setUsername(profileData.username || "");
       const linksList = profileData.socialLinks
         ? Object.entries(profileData.socialLinks)
           .filter(([_, link]) => link)
@@ -213,6 +231,51 @@ const AdminProfile = () => {
     "🎉 Profile picture updated!",
     "Error uploading profile picture!",
     () => { setFile(null); setUploading(false); }
+  );
+
+  const handleUsernameUpdate = () => handleUpdate(
+    async () => {
+      if (!currentUser || !username.trim()) throw new Error("Username cannot be empty!");
+      
+      const validationError = validateUsername(username);
+      if (validationError) {
+        throw new Error(validationError);
+      }
+
+      // Check if username is the same as current
+      if (username === profileData.username) {
+        throw new Error("Username is the same as current username");
+      }
+
+      setUsernameLoading(true);
+      
+      // Check if username already exists in the database
+      const usersRef = ref(db, 'usersData');
+      const snapshot = await onValue(usersRef);
+      const usersData = snapshot.val();
+      
+      if (usersData) {
+        const usernameExists = Object.values(usersData).some(
+          user => user.username === username && user.uid !== currentUser.uid
+        );
+        
+        if (usernameExists) {
+          throw new Error("Username already taken. Please choose a different one.");
+        }
+      }
+
+      // Update username in database and auth profile
+      await Promise.all([
+        update(ref(db, `usersData/${currentUser.uid}`), { username }),
+        updateProfile(currentUser, { displayName: username })
+      ]);
+      
+      setProfileData(prev => ({ ...prev, username }));
+      setUsernameError("");
+    },
+    "✅ Username updated successfully!",
+    "Failed to update username!",
+    () => setUsernameLoading(false)
   );
 
   const handleChangeWallpaper = useCallback(async () => {
@@ -354,6 +417,13 @@ const AdminProfile = () => {
     "Logged out!",
     "Logout failed!"
   );
+
+  // Username validation on change
+  const handleUsernameChange = (newUsername) => {
+    setUsername(newUsername);
+    const error = validateUsername(newUsername);
+    setUsernameError(error || "");
+  };
 
   if (loading) {
     return (
@@ -498,21 +568,9 @@ const AdminProfile = () => {
                 <h6 className="mb-0 fw-bold">Hridesh Bharati</h6>
               </div>
               <p className="text-secodary-sutle small mb-2">Founder & Creator of Jibzo App</p>
-              {/* <div className="d-flex justify-content-center gap-3 mb-1">
-                <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" className="text-muted fs-5">
-                  <i className="bi bi-twitter"></i>
-                </a>
-                <a href="https://github.com" target="_blank" rel="noopener noreferrer" className="text-muted fs-5">
-                  <i className="bi bi-github"></i>
-                </a>
-                <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer" className="text-muted fs-5">
-                  <i className="bi bi-linkedin"></i>
-                </a>
-              </div> */}
               <small className="text-muted d-block ">&copy; {new Date().getFullYear()} Jibzo Company</small>
             </div>
           </footer>
-
 
         </div>
       </div>
@@ -525,6 +583,10 @@ const AdminProfile = () => {
           setFile={setFile}
           bio={bio}
           setBio={setBio}
+          username={username}
+          setUsername={handleUsernameChange}
+          usernameError={usernameError}
+          usernameLoading={usernameLoading}
           socialLinks={socialLinks}
           setSocialLinks={setSocialLinks}
           newEmail={newEmail}
@@ -548,6 +610,7 @@ const AdminProfile = () => {
           needsPasswordSetup={needsPasswordSetup}
           onDpUpdate={handleDpUpdate}
           onBioUpdate={handleBioUpdate}
+          onUsernameUpdate={handleUsernameUpdate}
           onSocialLinksUpdate={handleSocialLinksUpdate}
           onEmailUpdate={handleEmailUpdate}
           onPasswordUpdate={handlePasswordUpdate}
@@ -640,7 +703,6 @@ const ProfileHeader = ({ profileData, currentUser, authProvider, isOwner, upload
     }
   `}</style>
           </button>
-
         )}
       </div>
       <p className="text-muted mb-2">
@@ -690,13 +752,13 @@ const SocialLinks = ({ links }) => (
 
 // Offcanvas Component
 const EditProfileOffcanvas = ({
-  profileData, file, setFile, bio, setBio, socialLinks, setSocialLinks,
-  newEmail, setNewEmail, emailPassword, setEmailPassword,
+  profileData, file, setFile, bio, setBio, username, setUsername, usernameError, usernameLoading,
+  socialLinks, setSocialLinks, newEmail, setNewEmail, emailPassword, setEmailPassword,
   currentPassword, setCurrentPassword, newPassword, setNewPassword,
   uploading, emailUpdateLoading, passwordUpdateLoading, setupPasswordLoading,
   showCurrentPassword, setShowCurrentPassword, showNewPassword, setShowNewPassword,
   hasPassword, authProvider, needsPasswordSetup,
-  onDpUpdate, onBioUpdate, onSocialLinksUpdate, onEmailUpdate,
+  onDpUpdate, onBioUpdate, onUsernameUpdate, onSocialLinksUpdate, onEmailUpdate,
   onPasswordUpdate, onSetupPassword, onToggleLock, onLogout,
   isAdmin
 }) => {
@@ -739,11 +801,16 @@ const EditProfileOffcanvas = ({
                 setFile={setFile}
                 bio={bio}
                 setBio={setBio}
+                username={username}
+                setUsername={setUsername}
+                usernameError={usernameError}
+                usernameLoading={usernameLoading}
                 socialLinks={socialLinks}
                 setSocialLinks={setSocialLinks}
                 uploading={uploading}
                 onDpUpdate={onDpUpdate}
                 onBioUpdate={onBioUpdate}
+                onUsernameUpdate={onUsernameUpdate}
                 onSocialLinksUpdate={onSocialLinksUpdate}
               />
             </div>
@@ -797,7 +864,10 @@ const EditProfileOffcanvas = ({
   );
 };
 
-const ProfileTab = ({ profileData, file, setFile, bio, setBio, socialLinks, setSocialLinks, uploading, onDpUpdate, onBioUpdate, onSocialLinksUpdate }) => (
+const ProfileTab = ({ 
+  profileData, file, setFile, bio, setBio, username, setUsername, usernameError, usernameLoading,
+  socialLinks, setSocialLinks, uploading, onDpUpdate, onBioUpdate, onUsernameUpdate, onSocialLinksUpdate 
+}) => (
   <>
     <div className="mb-4">
       <h6 className="fw-bold mb-3"><i className="bi bi-person-badge me-2"></i>Profile Picture</h6>
@@ -811,6 +881,28 @@ const ProfileTab = ({ profileData, file, setFile, bio, setBio, socialLinks, setS
           </button>
         </div>
       </div>
+    </div>
+
+    <div className="mb-4">
+      <h6 className="fw-bold mb-3"><i className="bi bi-person me-2"></i>Username</h6>
+      <input 
+        type="text" 
+        className={`form-control ${usernameError ? 'is-invalid' : ''}`} 
+        value={username} 
+        onChange={(e) => setUsername(e.target.value)} 
+        placeholder="Enter new username" 
+      />
+      {usernameError && <div className="invalid-feedback d-block">{usernameError}</div>}
+      <small className="text-muted d-block mt-1">
+        Username must be 3-20 characters and can contain letters, numbers, underscores, dots, and hyphens.
+      </small>
+      <button 
+        className="btn btn-primary btn-sm mt-2 w-100" 
+        onClick={onUsernameUpdate} 
+        disabled={usernameLoading || !!usernameError || username === profileData.username || !username.trim()}
+      >
+        {usernameLoading ? <><span className="spinner-border spinner-border-sm me-2"></span>Updating...</> : "Update Username"}
+      </button>
     </div>
 
     <div className="mb-4">
@@ -928,8 +1020,7 @@ const PrivacyTab = ({ profileData, onToggleLock, onLogout, isAdmin }) => (
 
     <div className="mb-4">
       <h6 className="fw-bold mb-3"><i className="bi bi-box-arrow-right me-2"></i>Session</h6>
-      <button className="btn btn-outline-danger btn-sm w-100" onClick={onLogout}>
-        <i className="bi bi-box-arrow-right me-2"></i>Logout</button>
+      <button className="btn btn-outline-danger btn-sm w-100" onClick={onLogout}><i className="bi bi-box-arrow-right me-2"></i>Logout</button>
     </div>
 
     <div className="mb-3">
@@ -938,4 +1029,5 @@ const PrivacyTab = ({ profileData, onToggleLock, onLogout, isAdmin }) => (
     </div>
   </>
 );
+
 export default AdminProfile;
