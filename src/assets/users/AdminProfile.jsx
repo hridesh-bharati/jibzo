@@ -929,8 +929,7 @@ const PrivacyTab = ({ profileData, onToggleLock, onLogout, isAdmin }) => (
     <div className="mb-4">
       <h6 className="fw-bold mb-3"><i className="bi bi-box-arrow-right me-2"></i>Session</h6>
       <button className="btn btn-outline-danger btn-sm w-100" onClick={onLogout}>
-        <i className="bi bi-box-arrow-right me-2"></i>Logout
-      </button>
+        <i className="bi bi-box-arrow-right me-2"></i>Logout</button>
     </div>
 
     <div className="mb-3">
@@ -939,5 +938,4 @@ const PrivacyTab = ({ profileData, onToggleLock, onLogout, isAdmin }) => (
     </div>
   </>
 );
-
 export default AdminProfile;
