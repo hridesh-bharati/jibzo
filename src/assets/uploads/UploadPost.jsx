@@ -119,15 +119,13 @@ export default function UploadPost() {
         userId = guestId;
       }
 
+      // Store minimal user data - only userId for dynamic fetching
       await push(dbRef(db, "galleryImages"), {
         src: fileUrl,
         caption: caption.trim(),
         timestamp: Date.now(),
         type: uploadType,
-        user: currentUser?.displayName || currentUser?.email?.split("@")[0] || "Guest",
-        userId: userId,
-        userEmail: currentUser?.email || "",
-        userPic: currentUser?.photoURL || "icons/avatar.jpg",
+        userId: userId, // Only store userId, fetch user data dynamically
       });
 
       toast.success("Post uploaded successfully!");

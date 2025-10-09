@@ -1,7 +1,7 @@
 // src/components/AdminProfile.jsx
 import React, { useEffect, useState, useCallback } from "react";
 import { db, auth } from "../utils/firebaseConfig";
-import { ref, onValue, update } from "firebase/database";
+import { ref, onValue, update, set } from "firebase/database";
 import {
   signOut,
   updateProfile,
@@ -37,11 +37,33 @@ const useAuth = () => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (!user && !paramUid) navigate("/login");
       setCurrentUser(user);
+      
+      // Sync user to database whenever auth state changes
+      if (user) {
+        syncUserToDatabase(user);
+      }
     });
     return () => unsubscribe();
   }, [paramUid, navigate]);
 
   return currentUser;
+};
+
+// Sync user data to Firebase Realtime Database
+const syncUserToDatabase = async (user) => {
+  if (!user) return;
+  
+  try {
+    await set(ref(db, `users/${user.uid}`), {
+      displayName: user.displayName || user.email?.split('@')[0] || 'User',
+      email: user.email,
+      photoURL: user.photoURL || "icons/avatar.jpg",
+      lastUpdated: Date.now()
+    });
+    console.log('User synced to database');
+  } catch (error) {
+    console.error('Error syncing user to database:', error);
+  }
 };
 
 const useUserProfile = (uid) => {
@@ -51,9 +73,29 @@ const useUserProfile = (uid) => {
   useEffect(() => {
     if (!uid) return;
 
+    // First try to get from usersData (existing data)
     const userRef = ref(db, `usersData/${uid}`);
     const unsubscribe = onValue(userRef, (snapshot) => {
-      setProfileData(snapshot.val());
+      const data = snapshot.val();
+      if (data) {
+        setProfileData(data);
+      } else {
+        // If no usersData, try to get from users collection (new sync)
+        const newUserRef = ref(db, `users/${uid}`);
+        onValue(newUserRef, (newSnapshot) => {
+          const newData = newSnapshot.val();
+          if (newData) {
+            setProfileData(newData);
+          } else {
+            // Fallback to basic data
+            setProfileData({
+              username: 'User',
+              email: '',
+              photoURL: 'icons/avatar.jpg'
+            });
+          }
+        });
+      }
       setLoading(false);
     });
 
@@ -204,10 +246,14 @@ const AdminProfile = () => {
       if (!currentUser || !file) throw new Error("Select an image first!");
       setUploading(true);
       const photoURL = await uploadToCloudinary(file);
+      
+      // Update both usersData (existing) and users (new sync)
       await Promise.all([
         update(ref(db, `usersData/${currentUser.uid}`), { photoURL }),
+        update(ref(db, `users/${currentUser.uid}`), { photoURL }),
         updateProfile(currentUser, { photoURL })
       ]);
+      
       setProfileData(prev => ({ ...prev, photoURL }));
     },
     "🎉 Profile picture updated!",
@@ -256,7 +302,13 @@ const AdminProfile = () => {
       const credential = EmailAuthProvider.credential(currentUser.email, emailPassword);
       await reauthenticateWithCredential(currentUser, credential);
       await updateEmail(currentUser, newEmail);
-      await update(ref(db, `usersData/${currentUser.uid}`), { email: newEmail });
+      
+      // Update both usersData and users collections
+      await Promise.all([
+        update(ref(db, `usersData/${currentUser.uid}`), { email: newEmail }),
+        update(ref(db, `users/${currentUser.uid}`), { email: newEmail })
+      ]);
+      
       setProfileData(prev => ({ ...prev, email: newEmail }));
       setNewEmail("");
       setEmailPassword("");

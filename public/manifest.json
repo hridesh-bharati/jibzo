@@ -3,13 +3,15 @@
   "short_name": "Jibzo",
   "lang": "en-IN",
   "dir": "ltr",
-  "start_url": "/?source=pwa",
+  "start_url": "/?utm_source=pwa",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
   "background_color": "#ffffff",
   "theme_color": "#1976d2",
-  "description": "Jibzo is a modern platform to share images, videos, and documents with creative filters and community features.",
+  "description": "Jibzo is a modern creative sharing platform for photos, videos, and documents — connect with friends, share your moments, and express your creativity.",
+  "categories": ["social", "photography", "media", "productivity"],
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "icons/icon-192.png",
@@ -22,14 +24,46 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-1024.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
   "shortcuts": [
     {
       "name": "New Post",
       "short_name": "Post",
-      "description": "Upload image, video or PDF",
-      "url": "/upload",
+      "description": "Upload image, video, or PDF",
+      "url": "/user/new/post",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Messages",
+      "short_name": "Chats",
+      "description": "Open your messages instantly",
+      "url": "/messages",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Upload Status",
+      "short_name": "Status",
+      "description": "Share daily status updates",
+      "url": "/status/upload",
       "icons": [
         {
           "src": "icons/icon-192.png",
@@ -44,21 +78,21 @@
       "src": "/screenshots/home.jpg",
       "sizes": "1080x1920",
       "type": "image/jpg",
-      "label": "Home Feed"
+      "label": "Jibzo Home Feed"
     },
     {
       "src": "/screenshots/upload.jpg",
       "sizes": "1080x1920",
       "type": "image/jpg",
-      "label": "Upload Screen"
+      "label": "Upload & Create Post"
+    },
+    {
+      "src": "/screenshots/profile.jpg",
+      "sizes": "1080x1920",
+      "type": "image/jpg",
+      "label": "User Profile Page"
     }
   ],
-  "categories": [
-    "social",
-    "photography",
-    "productivity",
-    "media"
-  ],
-  "prefer_related_applications": false,
-  "related_applications": []
+  "related_applications": [],
+  "iarc_rating_id": "JIBZO2025PWA"
 }
