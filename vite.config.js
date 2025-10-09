@@ -30,7 +30,7 @@ export default defineConfig({
           },
           {
             src: "/icons/icon-512.png",
-            sizes: "512x512",
+            sizes: "512x512", 
             type: "image/png",
             purpose: "maskable any"
           }
@@ -57,8 +57,7 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
-    strictPort: true,
-    https: true
+    strictPort: true
   },
   build: {
     outDir: "dist",
