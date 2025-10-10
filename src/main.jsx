@@ -32,11 +32,7 @@ class ErrorBoundary extends React.Component {
       errorInfo: errorInfo
     });
     
-    // Log error to analytics service (if available)
     console.error("Application Error:", error, errorInfo);
-    
-    // You can also send errors to your error reporting service here
-    // logErrorToService(error, errorInfo);
   }
 
   handleReload = () => {
@@ -49,13 +45,15 @@ class ErrorBoundary extends React.Component {
 
   render() {
     if (this.state.hasError) {
+      // SAFELY access error info with null checks
+      const errorMessage = this.state.error ? this.state.error.toString() : 'Unknown error';
+      const componentStack = this.state.errorInfo?.componentStack || 'No stack trace available';
+
       return (
         <div className="error-boundary">
           <div className="error-content">
             <div className="error-icon">⚠️</div>
             <h1>Something went wrong</h1>
-            <p>We're sorry for the inconvenience. Please try reloading the page.</p>
-            
             <div className="error-actions">
               <button 
                 className="btn btn-primary" 
@@ -74,8 +72,8 @@ class ErrorBoundary extends React.Component {
             {process.env.NODE_ENV === 'development' && (
               <details className="error-details">
                 <summary>Error Details (Development)</summary>
-                <pre>{this.state.error && this.state.error.toString()}</pre>
-                <pre>{this.state.errorInfo.componentStack}</pre>
+                <pre>{errorMessage}</pre>
+                <pre>{componentStack}</pre>
               </details>
             )}
           </div>

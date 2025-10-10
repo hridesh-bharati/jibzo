@@ -259,7 +259,7 @@ const InstaUser = () => {
 
   // --- UI ---
   return (
-    <div className="container p-0 mb-5" style={{ maxWidth: 600, background: "rgba(238, 252, 255, 1)" }}>
+    <div className="container p-0 pb-1 mb-3" style={{ maxWidth: 600, background: "rgba(238, 252, 255, 1)" }}>
 
       {/* Sticky Header */}
       <div
@@ -338,21 +338,22 @@ const InstaUser = () => {
                 padding: "10px"
               }}
             >
-              <div
-                className="bg-light d-flex align-items-center p-2 flex-grow-1"
+              <div className="bg-light d-flex align-items-center p-2 flex-grow-1"
                 style={{
                   borderLeft: '4px solid #0dcaf0',
-                  borderRadius: '10px',
-                  cursor: 'pointer'
-                }}
-                onClick={() => navigate(`/user-profile/${user.uid}`)}
-              >
-                {/* User Info */}
-                <div className="d-flex align-items-center flex-grow-1">
+                  borderRadius: '10px'
+                }}>
+
+                {/* Clickable user info area */}
+                <div
+                  className="d-flex align-items-center flex-grow-1"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => navigate(`/user-profile/${user.uid}`)}
+                >
                   <img
                     src={user.photoURL || '/icons/avatar.jpg'}
                     alt="avatar"
-                    className="rounded-circle border border-3 border-white ms-1 me-3"
+                    className="rounded-circle border border-3 border-white ms-1 me-2"
                     style={{ width: 50, height: 50, objectFit: 'cover' }}
                     onError={(e) => {
                       e.target.src = '/icons/avatar.jpg';
@@ -363,22 +364,19 @@ const InstaUser = () => {
                     {user.displayName && user.displayName !== user.username && (
                       <div className="text-muted small">{user.displayName}</div>
                     )}
-                    {/* {user.bio && (
-                      <div className="text-muted small text-truncate" style={{ maxWidth: '200px' }}>
-                        {user.bio}
-                      </div>
-                    )} */}
                   </div>
                 </div>
 
-                {/* Buttons */}
-                <div className="d-flex gap-2 align-items-center">
+                {/* Buttons - with stopPropagation */}
+                <div className="d-flex gap-2 align-items-center" onClick={(e) => e.stopPropagation()}>
                   {btn.type === 'received' ? (
-                    // Accept/Decline buttons for received requests
                     <div className="d-flex gap-1">
                       <button
                         className="btn btn-sm px-3 btn-success"
-                        onClick={() => acceptFollowRequest(user.uid)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          acceptFollowRequest(user.uid);
+                        }}
                         disabled={isLoading}
                       >
                         {isLoading ? (
@@ -391,21 +389,26 @@ const InstaUser = () => {
                       </button>
                       <button
                         className="btn btn-sm btn-outline-danger"
-                        onClick={() => declineFollowRequest(user.uid)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          declineFollowRequest(user.uid);
+                        }}
                         disabled={isLoading}
                       >
                         Decline
                       </button>
                     </div>
                   ) : (
-                    // Regular action button
                     <button
                       className={`btn btn-sm px-4 ${btn.type === 'friends' ? 'btn-success' :
-                          btn.type === 'following' ? 'btn-outline-secondary' :
-                            btn.type === 'requested' ? 'btn-outline-warning' :
-                              'btn-primary'
+                        btn.type === 'following' ? 'btn-outline-secondary' :
+                          btn.type === 'requested' ? 'btn-outline-warning' :
+                            'btn-primary'
                         }`}
-                      onClick={() => btn.action(user.uid)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        btn.action(user.uid);
+                      }}
                       disabled={isLoading}
                     >
                       {isLoading ? (
@@ -421,7 +424,10 @@ const InstaUser = () => {
                   {currentUser?.email === ADMIN_EMAIL && (
                     <button
                       className="btn btn-sm btn-danger m-0 px-2"
-                      onClick={() => handleDeleteUser(user.uid, user.username || user.displayName)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteUser(user.uid, user.username || user.displayName);
+                      }}
                       title="Delete User"
                     >
                       <i className="bi bi-trash3"></i>
@@ -429,6 +435,7 @@ const InstaUser = () => {
                   )}
                 </div>
               </div>
+
             </li>
           );
         })}

@@ -41,6 +41,7 @@ import AgeCalculator from "./assets/Gadgets/AgeCal/AgeCalculator";
 
 // Context
 import { UserRelationsProvider } from "./context/UserRelationsContext";
+import Reels from "./assets/uploads/Reels";
 
 // Routes that don't need footer
 const NO_FOOTER_ROUTES = ["/", "/login", "/register"];
@@ -77,7 +78,9 @@ const protectedRoutes = [
   { path: "/messages/:uid", component: Messages },
   { path: "/status/upload", component: UploadStatus },
   { path: "/status", component: ViewStatus },
-  { path: "/delete-account", component: DeleteAccount }
+  { path: "/delete-account", component: DeleteAccount },
+  { path: "/reels", component: Reels }
+  
 ];
 
 // Gadgets sub-routes
@@ -160,6 +163,7 @@ const App = () => {
               <Route key={path} path={path} element={<Component />} />
             ))}
           </Route>
+          
 
           {/* Catch-all route */}
           <Route 

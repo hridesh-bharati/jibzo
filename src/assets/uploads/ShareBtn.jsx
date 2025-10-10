@@ -1,9 +1,26 @@
 // src/components/Gallery/ShareBtn.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { db } from "../../assets/utils/firebaseConfig";
+import { ref, set, get, onValue } from "firebase/database";
 
-export default function ShareButton({ link, title = "Check this out!" }) {
+export default function ShareButton({ link, postId, title = "Check this out!" }) {
   const url = link || window.location.href;
   const [open, setOpen] = useState(false);
+  const [shareCount, setShareCount] = useState(0);
+
+  // Fetch share count when component mounts
+  useEffect(() => {
+    if (!postId) return;
+
+    const shareCountRef = ref(db, `galleryImages/${postId}/shareCount`);
+    
+    const unsubscribe = onValue(shareCountRef, (snapshot) => {
+      const count = snapshot.val() || 0;
+      setShareCount(count);
+    });
+
+    return () => unsubscribe();
+  }, [postId]);
 
   const shareLinks = [
     { name: "Instagram", icon: "bi-instagram", url: `https://www.instagram.com/?url=${encodeURIComponent(url)}`, color: "#C13584" },
@@ -15,6 +32,56 @@ export default function ShareButton({ link, title = "Check this out!" }) {
     { name: "Telegram", icon: "bi-telegram", url: `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(title)}`, color: "#0088cc" },
     { name: "Email", icon: "bi-envelope", url: `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(url)}`, color: "#EA4335" },
   ];
+
+  // Function to increment share count
+  const incrementShareCount = async () => {
+    if (!postId) return;
+    
+    try {
+      const shareCountRef = ref(db, `galleryImages/${postId}/shareCount`);
+      const snapshot = await get(shareCountRef);
+      const currentCount = snapshot.val() || 0;
+      await set(shareCountRef, currentCount + 1);
+    } catch (error) {
+      console.error("Error updating share count:", error);
+    }
+  };
+
+  const handleShare = (platformUrl) => {
+    // Increment share count
+    incrementShareCount();
+    
+    // Open share window
+    window.open(platformUrl, '_blank', 'noopener,noreferrer');
+    setOpen(false);
+  };
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      // Increment share count for copy link too
+      incrementShareCount();
+      setOpen(false);
+      
+      // Optional: Show a toast notification
+      if (window.toast) {
+        window.toast.success("Link copied to clipboard!");
+      }
+    } catch (error) {
+      console.error("Failed to copy link:", error);
+      // Fallback for older browsers
+      const textArea = document.createElement("textarea");
+      textArea.value = url;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+      
+      // Still increment share count
+      incrementShareCount();
+      setOpen(false);
+    }
+  };
 
   const handleBackdropClick = (e) => {
     if (e.target === e.currentTarget) {
@@ -34,10 +101,32 @@ export default function ShareButton({ link, title = "Check this out!" }) {
           cursor: 'pointer',
           padding: '8px',
           color: '#6c757d',
-          transition: 'all 0.2s ease'
+          transition: 'all 0.2s ease',
+          position: 'relative'
         }}
       >
         <i className="bi bi-share-fill"></i>
+        
+        {/* Share Count Badge - Only show if there are shares */}
+        {shareCount > 0 && (
+          <span 
+            style={{
+              position: 'absolute',
+              top: '60px',
+              right: '10px',
+              // backgroundColor: '#ff4444',
+              color: 'white',
+              width: '16px',
+              height: '16px',
+              fontSize: '1rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {shareCount > 99 ? '99+' : shareCount}
+          </span>
+        )}
       </button>
 
       {open && (
@@ -89,17 +178,25 @@ export default function ShareButton({ link, title = "Check this out!" }) {
                 borderBottom: '1px solid #e9ecef'
               }}
             >
-              <h5 
-                className="share-title"
-                style={{
-                  margin: 0,
-                  fontWeight: '600',
-                  color: '#212529',
-                  fontSize: '1.1rem'
-                }}
-              >
-                Share this
-              </h5>
+              <div>
+                <h5 
+                  className="share-title"
+                  style={{
+                    margin: 0,
+                    fontWeight: '600',
+                    color: '#212529',
+                    fontSize: '1.1rem',
+                    marginBottom: '4px'
+                  }}
+                >
+                  Share this
+                </h5>
+                {shareCount > 0 && (
+                  <small style={{ color: '#6c757d', fontSize: '0.8rem' }}>
+                    Shared {shareCount} {shareCount === 1 ? 'time' : 'times'}
+                  </small>
+                )}
+              </div>
               <button 
                 className="share-close-btn"
                 onClick={() => setOpen(false)}
@@ -134,10 +231,7 @@ export default function ShareButton({ link, title = "Check this out!" }) {
                 <button
                   key={platform.name}
                   className="share-platform-btn"
-                  onClick={() => {
-                    window.open(platform.url, '_blank', 'noopener,noreferrer');
-                    setOpen(false);
-                  }}
+                  onClick={() => handleShare(platform.url)}
                   style={{
                     display: 'flex',
                     flexDirection: 'column',
@@ -187,10 +281,7 @@ export default function ShareButton({ link, title = "Check this out!" }) {
             {/* Copy Link Button */}
             <button
               className="copy-link-btn"
-              onClick={() => {
-                navigator.clipboard.writeText(url);
-                setOpen(false);
-              }}
+              onClick={handleCopyLink}
               style={{
                 width: '100%',
                 marginTop: '24px',
@@ -259,7 +350,7 @@ export default function ShareButton({ link, title = "Check this out!" }) {
 
             @media (max-width: 360px) {
               .share-grid {
-                grid-template-columns: repeat(3, 1fr) !important;
+                gridTemplateColumns: repeat(3, 1fr) !important;
               }
             }
           `}</style>

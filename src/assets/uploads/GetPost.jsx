@@ -313,7 +313,7 @@ function VideoPreview({ src, id, videoRefs, onOpen, isPlaying, onPlayStateChange
 
       {/* Play Icon Overlay - Shows when paused or on hover */}
       {showPlayIcon && (
-        <div 
+        <div
           className="video-play-overlay"
           style={{
             position: 'absolute',
@@ -336,7 +336,7 @@ function VideoPreview({ src, id, videoRefs, onOpen, isPlaying, onPlayStateChange
 
       {/* Pause Indicator - Shows when playing */}
       {isPlaying && (
-        <div 
+        <div
           className="playing-indicator"
           style={{
             position: 'absolute',
@@ -924,7 +924,7 @@ function ReelsPlayer({
               <div
                 style={{
                   position: "absolute",
-                  bottom: 100,
+                  bottom: 60,
                   left: 20,
                   color: "#fff",
                   fontSize: "0.95rem",
@@ -973,10 +973,10 @@ function ReelsPlayer({
                 style={{
                   position: "absolute",
                   right: 15,
-                  bottom: 100,
+                  bottom: 90,
                   display: "flex",
                   flexDirection: "column",
-                  gap: "20px",
+                  gap: "10px",
                   alignItems: "center",
                   color: "#fff",
                 }}
@@ -1007,7 +1007,11 @@ function ReelsPlayer({
                 <small style={{ color: "#fff" }}>{commentCount}</small>
 
                 <div className="bg-white rounded-circle px-1">
-                  <ShareButton link={post.src} />
+                  <ShareButton
+                    link={post.src}
+                    postId={post.id}
+                    title={post.caption || "Check this out!"}
+                  />
                 </div>
               </div>
 
@@ -1015,13 +1019,14 @@ function ReelsPlayer({
               <div
                 style={{
                   position: "absolute",
-                  bottom: 15,
-                  left: 20,
+                  bottom: 0,
+                  // left: 10,
                   width: "90%",
                   display: "flex",
                   gap: "5px",
                 }}
                 onClick={(e) => e.stopPropagation()}
+                className="w-100 p-2"
               >
                 <input
                   type="text"
@@ -1044,9 +1049,7 @@ function ReelsPlayer({
                       <span className="visually-hidden">Loading...</span>
                     </div>
                   ) : (
-                    <i className="bi bi-send me-1"></i>
-                  )}
-                  Post
+                    <i className="bi bi-send me-1"></i>)}
                 </button>
               </div>
             </div>
@@ -1112,12 +1115,12 @@ function shuffleArray(array) {
 }
 
 /* -----------------------
-   Main GetPost component - FIXED: Dynamic user data and video fullscreen
+   Main GetPost component
 ----------------------- */
-export default function GetPost({ showFilter = true, uid }) {
+export default function GetPost({ showFilter = true, uid, defaultFilter = "all" }) {
   const [posts, setPosts] = useState([]);
   const [shuffledPosts, setShuffledPosts] = useState([]);
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useState(defaultFilter);
   const [optionsPost, setOptionsPost] = useState(null);
   const [showOptions, setShowOptions] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
@@ -1130,7 +1133,7 @@ export default function GetPost({ showFilter = true, uid }) {
   const [commentsText, setCommentsText] = useState({});
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [isLiking, setIsLiking] = useState({});
-  const [userProfiles, setUserProfiles] = useState({}); // ✅ NEW: Store user profiles
+  const [userProfiles, setUserProfiles] = useState({});
 
   const videoRefs = useRef({});
 
@@ -1194,7 +1197,7 @@ export default function GetPost({ showFilter = true, uid }) {
   // ✅ NEW: Function to get user data for a post
   const getUserData = (post) => {
     const userId = post.userId;
-    
+
     if (!userId || userId.startsWith('guest_')) {
       return {
         username: "Guest",
@@ -1583,7 +1586,7 @@ export default function GetPost({ showFilter = true, uid }) {
               const commentCount = post.comments ? Object.keys(post.comments).length : 0;
               const postCommentText = commentsText[post.id] || "";
               const isPostLiking = isLiking[post.id] || false;
-              
+
               // ✅ FIX: Get dynamic user data
               const userData = getUserData(post);
               const displayName = userData.displayName;

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { FaHome, FaCamera, FaUsers, FaRegImage } from "react-icons/fa";
 import { HiOutlineStatusOnline } from "react-icons/hi";
+import { BiMoviePlay } from "react-icons/bi"; // Added for Reels icon
 
 const buttonStyle = (isActive) => ({
   width: 50,
@@ -34,6 +35,7 @@ export default function BottomFooter() {
   const navItems = [
     { path: "/home", label: "Home", icon: <FaHome size={24} /> },
     { path: "/user/get-all-post/post", label: "Gallery", icon: <FaRegImage size={24} /> },
+    { path: "/reels", label: "Reels", icon: <BiMoviePlay size={24} /> },
     { path: "/user/new/post", label: "Upload", icon: <FaCamera size={24} /> },
     { path: "/all-insta-users", label: "Users", icon: <FaUsers size={24} /> },
     { path: "/status", label: "Story", icon: <HiOutlineStatusOnline size={24} /> },

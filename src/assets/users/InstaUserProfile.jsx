@@ -14,7 +14,7 @@ const ProfileSkeleton = () => (
     <div className="w-100 bg-secondary rounded-top" style={{ height: "200px" }}></div>
     <div className="position-relative">
       <div className="position-absolute" style={{ bottom: "-60px", left: "20px" }}>
-        <div className="rounded-circle bg-light border border-4 border-white" 
+        <div className="rounded-circle bg-light border border-4 border-white"
           style={{ width: "120px", height: "120px" }}></div>
       </div>
     </div>
@@ -23,7 +23,7 @@ const ProfileSkeleton = () => (
       <div className="skeleton-line" style={{ width: "150px", height: "16px" }}></div>
       <div className="d-flex gap-2 m-3 flex-wrap">
         {[1, 2, 3].map(item => (
-          <div key={item} className="skeleton-line" 
+          <div key={item} className="skeleton-line"
             style={{ width: "100px", height: "32px", borderRadius: "20px" }}></div>
         ))}
       </div>
@@ -54,12 +54,18 @@ const BlockedProfile = ({ type, onUnblock, userId, username }) => (
         {type === 'blockedBy' ? 'Profile Unavailable' : 'Profile Blocked'}
       </h3>
       <p className="text-muted mb-4">
-        {type === 'blockedBy' 
-          ? `You can't view ${username || 'this user'}'s profile because they blocked you.` 
+        {type === 'blockedBy'
+          ? `You can't view ${username || 'this user'}'s profile because they blocked you.`
           : `You blocked ${username || 'this user'}. Unblock to view their profile.`}
       </p>
       {type === 'blocked' && onUnblock && (
-        <button className="btn btn-success btn-lg px-4" onClick={() => onUnblock(userId)}>
+        <button
+          className="btn btn-success btn-lg px-4"
+          onClick={(e) => {
+            e.stopPropagation();
+            onUnblock(userId);
+          }}
+        >
           <i className="bi bi-unlock me-2"></i>Unblock User
         </button>
       )}
@@ -81,26 +87,36 @@ const LockedProfile = ({ username, onFollow, userPhoto }) => (
       <i className="bi bi-lock-fill display-4 text-secondary mb-3"></i>
       <h3 className="fw-bold text-dark mb-3">This Account is Private</h3>
       <p className="text-muted mb-4">Follow {username} to see their photos and videos.</p>
-      <button className="btn btn-primary btn-lg w-100 py-2" onClick={onFollow}>
+      <button
+        className="btn btn-primary btn-lg w-100 py-2"
+        onClick={(e) => {
+          e.stopPropagation();
+          onFollow();
+        }}
+      >
         <i className="bi bi-person-plus me-2"></i>Follow
       </button>
     </div>
   </div>
 );
 
-// Reusable Button Component
-const ActionButton = ({ 
-  children, 
-  variant = "primary", 
-  onClick, 
-  disabled = false, 
+// Reusable Button Component with event propagation prevention
+const ActionButton = ({
+  children,
+  variant = "primary",
+  onClick,
+  disabled = false,
   loading = false,
   icon,
-  ...props 
+  ...props
 }) => (
   <button
-    className={`btn btn-sm ${variant.includes('outline-') ? variant : `btn-${variant}`} d-flex align-items-center gap-1`}
-    onClick={onClick}
+    className={`btn btn-sm ${variant.includes('outline-') ? variant : `btn-${variant}`} d-flex align-items-center gap-1 bg-light`}
+    onClick={(e) => {
+      e.stopPropagation(); // Prevent event bubbling
+      e.preventDefault(); // Prevent default behavior
+      onClick?.(e);
+    }}
     disabled={disabled || loading}
     {...props}
   >
@@ -118,8 +134,9 @@ const ProfileHeader = ({ userData, currentUser, relationship, userActions, uid, 
   const navigate = useNavigate();
   const { isFriend, isFollowing, hasReceivedRequest, hasSentRequest, isBlocked, isFollower } = relationship;
 
-  const handleAction = useCallback(async (action) => {
+  const handleAction = useCallback(async (action, e) => {
     if (isUpdating) return;
+    e?.stopPropagation(); // Stop event bubbling
     try {
       await action(uid);
     } catch (error) {
@@ -127,10 +144,19 @@ const ProfileHeader = ({ userData, currentUser, relationship, userActions, uid, 
     }
   }, [uid, isUpdating]);
 
+  const handleNavigation = useCallback((path, e) => {
+    e?.stopPropagation();
+    navigate(path);
+  }, [navigate]);
+
   const renderActionButtons = () => {
     if (currentUser?.uid === uid) {
       return (
-        <ActionButton variant="outline-primary" icon="bi bi-pencil-square me-1" as={Link} to="/admin-profile">
+        <ActionButton
+          variant="outline-primary"
+          icon="bi bi-pencil-square me-1"
+          onClick={(e) => handleNavigation("/admin-profile", e)}
+        >
           Edit Profile
         </ActionButton>
       );
@@ -140,95 +166,101 @@ const ProfileHeader = ({ userData, currentUser, relationship, userActions, uid, 
       friend: {
         condition: isFriend,
         buttons: [
-          { 
-            variant: "outline-secondary", 
-            icon: "bi bi-person-check me-1", 
-            text: "Friends", 
-            action: userActions.unfollowUser 
+          {
+            variant: "outline-secondary",
+            icon: "bi bi-person-check me-1",
+            text: "Friends",
+            action: userActions.unfollowUser
           },
-          { 
-            variant: "outline-primary", 
-            icon: "bi bi-chat me-1", 
-            text: "Message", 
-            onClick: () => navigate(`/messages/${uid}`) 
+          {
+            variant: "outline-primary",
+            icon: "bi bi-chat me-1",
+            text: "Message",
+            onClick: (e) => handleNavigation(`/messages/${uid}`, e)
           }
         ]
       },
       following: {
-        condition: isFollowing,
+        condition: isFollowing && !isFriend,
         buttons: [
-          { 
-            variant: "outline-secondary", 
-            icon: "bi bi-person-check me-1", 
-            text: "Following", 
-            action: userActions.unfollowUser 
+          {
+            variant: "outline-secondary",
+            icon: "bi bi-person-check me-1",
+            text: "Following",
+            action: userActions.unfollowUser
           },
           ...(isFollower ? [{
-            variant: "primary", 
-            icon: "bi bi-arrow-left-right me-1", 
-            text: "Follow Back", 
-            action: userActions.followBack 
+            variant: "primary",
+            icon: "bi bi-arrow-left-right me-1",
+            text: "Follow Back",
+            action: userActions.followBack
           }] : [])
         ]
       },
       follower: {
-        condition: isFollower && !isFollowing,
+        condition: isFollower && !isFollowing && !isFriend,
         buttons: [
-          { 
-            variant: "primary", 
-            icon: "bi bi-person-plus me-1", 
-            text: "Follow Back", 
-            action: userActions.followBack 
+          {
+            variant: "primary",
+            icon: "bi bi-person-plus me-1",
+            text: "Follow Back",
+            action: userActions.followBack
           },
-          { 
-            variant: "outline-primary", 
-            icon: "bi bi-chat me-1", 
-            text: "Message", 
-            onClick: () => navigate(`/messages/${uid}`) 
+          {
+            variant: "outline-primary",
+            icon: "bi bi-chat me-1",
+            text: "Message",
+            onClick: (e) => handleNavigation(`/messages/${uid}`, e)
           }
         ]
       },
       receivedRequest: {
         condition: hasReceivedRequest,
         buttons: [
-          { 
-            variant: "primary", 
-            icon: "bi bi-check-lg me-1", 
-            text: "Accept", 
-            action: userActions.acceptRequest 
+          {
+            variant: "primary",
+            icon: "bi bi-check-lg me-1",
+            text: "Accept",
+            action: userActions.acceptRequest
           },
-          { 
-            variant: "outline-secondary", 
-            text: "Decline", 
-            action: userActions.declineRequest 
+          {
+            variant: "outline-secondary",
+            text: "Decline",
+            action: userActions.declineRequest
           }
         ]
       },
       sentRequest: {
         condition: hasSentRequest,
         buttons: [
-          { 
-            variant: "outline-secondary", 
-            icon: "bi bi-clock me-1", 
-            text: "Requested", 
-            action: userActions.cancelFollowRequest 
+          {
+            variant: "outline-warning",
+            icon: "bi bi-clock me-1",
+            text: "Requested",
+            action: userActions.cancelFollowRequest
+          },
+          {
+            variant: "outline-primary",
+            icon: "bi bi-chat me-1",
+            text: "Message",
+            onClick: (e) => handleNavigation(`/messages/${uid}`, e)
           }
         ]
       },
       default: {
         condition: true,
         buttons: [
-          { 
-            variant: "primary", 
-            icon: "bi bi-person-plus me-1", 
-            text: "Follow", 
-            action: userActions.followUser 
+          {
+            variant: "primary",
+            icon: "bi bi-person-plus me-1",
+            text: "Follow",
+            action: userActions.followUser
           },
-          { 
-            variant: "outline-primary", 
-            icon: "bi bi-chat me-1", 
-            text: "Message", 
-            onClick: () => navigate(`/messages/${uid}`) 
+          {
+            variant: "outline-primary",
+            icon: "bi bi-chat me-1",
+            text: "Message",
+            onClick: (e) => handleNavigation(`/messages/${uid}`, e)
           }
         ]
       }
@@ -240,8 +272,11 @@ const ProfileHeader = ({ userData, currentUser, relationship, userActions, uid, 
         key={index}
         variant={button.variant}
         icon={button.icon}
-        onClick={button.action ? () => handleAction(button.action) : button.onClick}
-        loading={isUpdating}
+        onClick={button.action ?
+          (e) => handleAction(button.action, e) :
+          button.onClick
+        }
+        // loading={isUpdating}
         disabled={isUpdating}
       >
         {button.text}
@@ -271,11 +306,11 @@ const ProfileHeader = ({ userData, currentUser, relationship, userActions, uid, 
         </div>
 
         {/* Profile Picture Overlay */}
-        <div className="position-absolute d-flex align-items-center justify-content-start w-100 px-3" style={{ bottom: "-60px" }}>
+        <div className="position-absolute d-flex align-items-center justify-content-start w-100 px-3" style={{ bottom: "-10px" }}>
           <img
             src={userData.photoURL || "/icons/avatar.jpg"}
             alt="Profile"
-            className="rounded-circle shadow-lg border border-4 border-white bg-white"
+            className="rounded-circle border border-4 border-white bg-white"
             width={120}
             height={120}
             style={{ objectFit: "cover", boxShadow: "0 4px 20px rgba(0,0,0,0.15)" }}
@@ -284,35 +319,7 @@ const ProfileHeader = ({ userData, currentUser, relationship, userActions, uid, 
         </div>
       </div>
 
-      {/* Action Buttons */}
-      <div className="d-flex gap-2 justify-content-end me-3 mb-3 flex-wrap">
-        {renderActionButtons()}
-        
-        {/* Block/Unblock Actions */}
-        {currentUser?.uid !== uid && (
-          !isBlocked ? (
-            <ActionButton
-              variant="outline-danger"
-              icon="bi bi-slash-circle me-1"
-              onClick={() => handleAction(userActions.blockUser)}
-              loading={isUpdating}
-              disabled={isUpdating}
-            >
-              Block
-            </ActionButton>
-          ) : (
-            <ActionButton
-              variant="outline-success"
-              icon="bi bi-unlock me-1"
-              onClick={() => handleAction(userActions.unblockUser)}
-              loading={isUpdating}
-              disabled={isUpdating}
-            >
-              Unblock
-            </ActionButton>
-          )
-        )}
-      </div>
+
 
       {/* User Info */}
       <div className="ms-3 mb-3 mt-4">
@@ -320,18 +327,48 @@ const ProfileHeader = ({ userData, currentUser, relationship, userActions, uid, 
           <h4 className="fw-bold text-dark mb-0">{userData.username || "Instagram User"}</h4>
           {userData.isLocked && <i className="bi bi-lock-fill text-secondary" title="Private Account"></i>}
         </div>
-        
+
         {userData.displayName && userData.displayName !== userData.username && (
           <p className="text-dark fw-medium mb-2">{userData.displayName}</p>
         )}
-        
+
         {userData.bio && <p className="text-muted mb-2">{userData.bio}</p>}
-        
-        {currentUser?.uid !== uid && userData.email && (
+
+        {/* {currentUser?.uid !== uid && userData.email && (
           <p className="text-muted small">
             <i className="bi bi-envelope me-1"></i>
             {userData.email}
           </p>
+        )} */}
+      </div>
+      {/* Action Buttons */}
+      <div className="d-flex gap-2 justify-content-start m-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
+        {renderActionButtons()}
+
+        {/* Block/Unblock Actions - ALWAYS ACTIVE except when blocked by user */}
+        {currentUser?.uid !== uid && !isBlocked && (
+          <ActionButton
+            variant="outline-danger"
+            icon="bi bi-slash-circle me-1"
+            onClick={(e) => handleAction(userActions.blockUser, e)}
+            // loading={isUpdating}
+            disabled={isUpdating}
+          >
+            Block
+          </ActionButton>
+        )}
+
+        {/* Unblock button when user is blocked */}
+        {currentUser?.uid !== uid && isBlocked && (
+          <ActionButton
+            variant="outline-success"
+            icon="bi bi-unlock me-1"
+            onClick={(e) => handleAction(userActions.unblockUser, e)}
+            // loading={isUpdating}
+            disabled={isUpdating}
+          >
+            Unblock
+          </ActionButton>
         )}
       </div>
     </div>
@@ -340,6 +377,14 @@ const ProfileHeader = ({ userData, currentUser, relationship, userActions, uid, 
 
 // Profile Stats Component
 const ProfileStats = ({ userData, currentUser, currentUserRelations, uid }) => {
+  const navigate = useNavigate();
+
+  const handleStatClick = useCallback((path, e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    navigate(path);
+  }, [navigate]);
+
   const stats = useMemo(() => {
     const baseStats = [
       {
@@ -378,16 +423,21 @@ const ProfileStats = ({ userData, currentUser, currentUserRelations, uid }) => {
   return (
     <div className="d-flex justify-content-around border-top border-bottom py-3 mx-3">
       {stats.map((stat, index) => (
-        <Link key={index} to={stat.path} className="text-decoration-none text-center position-relative">
+        <div
+          key={index}
+          className="text-decoration-none text-center position-relative"
+          style={{ cursor: 'pointer' }}
+          onClick={(e) => handleStatClick(stat.path, e)}
+        >
           <div className="fw-bold fs-5 text-dark">{stat.count}</div>
           <div className="text-muted small">{stat.label}</div>
           {stat.showBadge && (
-            <span className="position-absolute translate-middle badge rounded-pill bg-danger" 
+            <span className="position-absolute translate-middle badge rounded-pill bg-danger"
               style={{ top: "-5px", right: "-5px" }}>
               {stat.count}
             </span>
           )}
-        </Link>
+        </div>
       ))}
     </div>
   );
@@ -396,7 +446,7 @@ const ProfileStats = ({ userData, currentUser, currentUserRelations, uid }) => {
 // Chat Button Component
 const ChatButton = ({ username, uid }) => {
   const navigate = useNavigate();
-  
+
   return (
     <div className="m-3">
       <button
@@ -409,7 +459,10 @@ const ChatButton = ({ username, uid }) => {
           padding: '0.75rem 1.5rem',
           fontWeight: '600'
         }}
-        onClick={() => navigate(`/messages/${uid}`)}
+        onClick={(e) => {
+          e.stopPropagation();
+          navigate(`/messages/${uid}`);
+        }}
       >
         <i className="bi bi-chat-dots me-2"></i>
         Chat with {username}
@@ -445,7 +498,7 @@ export default function InstaUserProfile() {
 
     const followBack = async (targetUID) => {
       if (!currentUser?.uid) return;
-      
+
       const updates = {
         [`usersData/${currentUser.uid}/following/${targetUID}`]: { timestamp: Date.now() },
         [`usersData/${targetUID}/followers/${currentUser.uid}`]: { timestamp: Date.now() },
@@ -472,7 +525,7 @@ export default function InstaUserProfile() {
 
   // Auth state
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, 
+    const unsubscribe = onAuthStateChanged(auth,
       (user) => setCurrentUser(user),
       (authError) => {
         console.error("Auth error:", authError);
@@ -494,11 +547,11 @@ export default function InstaUserProfile() {
     setError(null);
 
     const userRef = ref(db, `usersData/${uid}`);
-    const unsubscribe = onValue(userRef, 
+    const unsubscribe = onValue(userRef,
       (snapshot) => {
         snapshot.exists() ? setUserData(snapshot.val()) : setError("User not found");
         setLoading(false);
-      }, 
+      },
       (dbError) => {
         console.error("Database error:", dbError);
         setError("Failed to load user profile");
@@ -512,20 +565,32 @@ export default function InstaUserProfile() {
   // Calculate relationship status
   const relationship = useMemo(() => {
     if (!currentUser?.uid || !uid) return {};
-    
-    const relations = calculateRelationship(currentUser.uid, { uid }, currentUserRelations);
-    const isMutualFriend = relations.isFriend || (relations.isFollowing && relations.isFollower);
 
-    return { ...relations, isFriend: isMutualFriend, isMutualFriend };
+    const relations = calculateRelationship(currentUser.uid, { uid }, currentUserRelations);
+
+    // Fix: Ensure all relationship states are properly calculated
+    const isMutualFriend = relations.isFriend || (relations.isFollowing && relations.isFollower);
+    const hasSentRequest = relations.hasSentRequest || false;
+    const hasReceivedRequest = relations.hasReceivedRequest || false;
+    const isBlocked = relations.isBlocked || false;
+
+    return {
+      ...relations,
+      isFriend: isMutualFriend,
+      isMutualFriend,
+      hasSentRequest,
+      hasReceivedRequest,
+      isBlocked
+    };
   }, [currentUser, uid, currentUserRelations, calculateRelationship]);
 
   // Block status checks
-  const isBlockedByProfile = useMemo(() => 
+  const isBlockedByProfile = useMemo(() =>
     currentUserRelations.blockedBy?.some(user => user.uid === uid) || false,
     [currentUserRelations.blockedBy, uid]
   );
 
-  const isProfileBlocked = useMemo(() => 
+  const isProfileBlocked = useMemo(() =>
     currentUserRelations.blocked?.some(user => user.uid === uid) || false,
     [currentUserRelations.blocked, uid]
   );
@@ -547,8 +612,8 @@ export default function InstaUserProfile() {
   if (isProfileBlocked) return <BlockedProfile type="blocked" userId={uid} username={userData.username} onUnblock={enhancedUserActions.unblockUser} />;
 
   return (
-    <div className="min-vh-100 bg-white">
-      <ProfileHeader 
+    <div className="min-vh-100 bg-white" onClick={(e) => e.stopPropagation()}>
+      <ProfileHeader
         userData={userData}
         currentUser={currentUser}
         relationship={relationship}
@@ -561,7 +626,7 @@ export default function InstaUserProfile() {
         <ChatButton username={userData.username} uid={uid} />
       )}
 
-      <ProfileStats 
+      <ProfileStats
         userData={userData}
         currentUser={currentUser}
         currentUserRelations={currentUserRelations}
@@ -570,7 +635,7 @@ export default function InstaUserProfile() {
 
       {/* Content Area */}
       {shouldShowLockedProfile ? (
-        <LockedProfile 
+        <LockedProfile
           username={userData.username}
           userPhoto={userData.photoURL}
           onFollow={() => enhancedUserActions.followUser(uid)}
