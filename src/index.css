@@ -97,6 +97,7 @@ input {
   color: #000;
   /* black text for contrast */
 }
+
 /* chat btn  */
 .chat-3d-btn {
   background: linear-gradient(145deg, #4e54c8, #8f94fb);
@@ -119,7 +120,7 @@ input {
   box-shadow: 0 4px #3b40a4, 0 4px 6px rgba(0, 0, 0, 0.2);
 }
 
-.selection-none{
+.selection-none {
   user-select: none !important;
 }
 
@@ -131,7 +132,7 @@ input {
 
 .hover-shadow:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 15px rgba(0,0,0,0.1) !important;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1) !important;
 }
 
 .stats-card {
@@ -183,6 +184,7 @@ input {
   0% {
     background-position: 200% 0;
   }
+
   100% {
     background-position: -200% 0;
   }
@@ -214,15 +216,64 @@ input {
     flex-direction: column;
     align-items: flex-start !important;
   }
-  
+
   .user-card .justify-content-end {
     justify-content: flex-start !important;
     margin-top: 1rem;
     width: 100%;
   }
-  
+
   .action-btn {
     min-width: auto;
     flex: 1;
   }
+}
+
+/* PDF viewer header/toolbar hide */
+.pdfViewer.removePageBorders .page {
+  border: none !important;
+}
+
+.toolbar {
+  display: none !important;
+}
+
+#toolbarContainer {
+  display: none !important;
+}
+
+#secondaryToolbar {
+  display: none !important;
+}
+
+.sidebar-toggle {
+  display: none !important;
+}
+
+.findbar {
+  display: none !important;
+}
+
+#sidebarContainer {
+  display: none !important;
+}
+
+/* PDF.js specific selectors */
+.pdfViewer .page {
+  margin: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Hide all PDF viewer controls */
+#viewerContainer {
+  top: 0 !important;
+}
+
+/* Alternative approach - hide all toolbar elements */
+[class*="toolbar"], 
+[class*="Toolbar"],
+[aria-label*="toolbar"],
+[aria-label*="Toolbar"] {
+  display: none !important;
 }

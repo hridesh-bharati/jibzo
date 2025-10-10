@@ -1089,19 +1089,42 @@ function PdfPreview({ url, name }) {
         overflow: "hidden",
         marginBottom: 10,
         background: "#fff",
+        height: "400px"
       }}
     >
       <iframe
-        src={`https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(
-          url
-        )}`}
+        src={`https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(url)}`}
         title={name || "Document.pdf"}
-        style={{ width: "100%", height: "400px", border: "none" }}
+        style={{ 
+          width: "100%", 
+          height: "100%", 
+          border: "none",
+          // Additional styles to ensure toolbar stays hidden
+          position: "relative",
+          top: "-40px", // Adjust this value as needed
+          height: "calc(100% + 40px)" // Compensate for the negative top
+        }}
+        onLoad={(e) => {
+          // Additional JavaScript to hide toolbar after load
+          try {
+            const iframe = e.target;
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+            
+            // Wait for PDF viewer to load
+            setTimeout(() => {
+              const toolbars = iframeDoc.querySelectorAll('.toolbar, #toolbarContainer, .findbar');
+              toolbars.forEach(toolbar => {
+                toolbar.style.display = 'none';
+              });
+            }, 1000);
+          } catch (error) {
+            console.log('Cannot access iframe content:', error);
+          }
+        }}
       />
     </div>
   );
 }
-
 /* -----------------------
    Fisher-Yates shuffle algorithm for random post order
 ----------------------- */

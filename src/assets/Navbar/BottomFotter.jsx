@@ -35,10 +35,10 @@ export default function BottomFooter() {
   const navItems = [
     { path: "/home", label: "Home", icon: <FaHome size={24} /> },
     { path: "/user/get-all-post/post", label: "Gallery", icon: <FaRegImage size={24} /> },
-    { path: "/reels", label: "Reels", icon: <BiMoviePlay size={24} /> },
+    { path: "/status", label: "Story", icon: <HiOutlineStatusOnline size={24} /> },
     { path: "/user/new/post", label: "Upload", icon: <FaCamera size={24} /> },
     { path: "/all-insta-users", label: "Users", icon: <FaUsers size={24} /> },
-    { path: "/status", label: "Story", icon: <HiOutlineStatusOnline size={24} /> },
+    { path: "/reels", label: "Reels", icon: <BiMoviePlay size={24} /> },
   ];
 
   return (
