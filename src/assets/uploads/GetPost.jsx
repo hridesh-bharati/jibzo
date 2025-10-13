@@ -1703,22 +1703,21 @@ export default function GetPost({ showFilter = true, uid, defaultFilter = "all" 
 
                       <ShareButton link={post.src} clasName="text-primary" />
                       <DownloadBtn link={post.src} postId={post.id} layout="horizontal" />
-                    </div>
-
-                    {/* ✅ FIXED: PDF Button in separate section */}
-                    {post.type === "pdf" && (
-                      <div className="mt-2">
+                      {post.type === "pdf" && (
                         <button
-                          className="btn btn-sm btn-light d-flex align-items-center"
+                          className="btn btn-sm  d-flex align-items-center"
                           onClick={() =>
                             window.open(post.url || post.src, "_blank")
                           }
                         >
                           <i className="bi bi-file-earmark-pdf fs-4 text-danger me-1"></i>
-                          Open PDF
+                          Open
                         </button>
-                      </div>
-                    )}
+                      )}
+                    </div>
+
+                    {/* ✅ FIXED: PDF Button in separate section */}
+
 
                     {commentCount > 0 && (
                       <div
