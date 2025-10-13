@@ -671,10 +671,10 @@ const ProfileHeader = ({ profileData, currentUser, authProvider, isOwner, upload
             className="rounded-circle border border-3 border-white shadow"
             style={{ width: '100px', height: '100px', objectFit: 'cover' }}
           />
-          <div className="ms-3 mb-2 d-block">
+          {/* <div className="ms-3 mb-2 d-block">
             <h4 className="text-muted fw-bold mb-1 text-shadow">{profileData.username}</h4>
             <p className="text-white-80 mb-0 text-shadow">{profileData.bio || "No bio yet"}</p>
-          </div>
+          </div> */}
         </div>
       </div>
 

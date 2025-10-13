@@ -711,7 +711,7 @@ function CommentsOffcanvas({
 }
 
 /* -----------------------
-   ReelsPlayer (TikTok style) - UPDATED: Real-time interactions
+   ReelsPlayer (TikTok style) - UPDATED: Using Heart Component
 ----------------------- */
 function ReelsPlayer({
   posts,
@@ -729,6 +729,7 @@ function ReelsPlayer({
   const [commentText, setCommentText] = useState("");
   const [playingStates, setPlayingStates] = useState({});
   const [isAddingComment, setIsAddingComment] = useState(false);
+  const [isLiking, setIsLiking] = useState({});
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -821,6 +822,23 @@ function ReelsPlayer({
       console.error('Error adding comment:', error);
     } finally {
       setIsAddingComment(false);
+    }
+  };
+
+  const handleToggleLike = async (postId) => {
+    const userId = currentUser?.uid || guestId;
+
+    // Prevent multiple rapid likes
+    if (isLiking[postId]) return;
+
+    setIsLiking(prev => ({ ...prev, [postId]: true }));
+
+    try {
+      await toggleLike(postId);
+    } catch (error) {
+      console.error('Error toggling like:', error);
+    } finally {
+      setIsLiking(prev => ({ ...prev, [postId]: false }));
     }
   };
 
@@ -968,12 +986,12 @@ function ReelsPlayer({
                 </p>
               </div>
 
-              {/* Buttons */}
+              {/* Buttons - UPDATED: Using Heart Component */}
               <div
                 style={{
                   position: "absolute",
                   right: 15,
-                  bottom: 90,
+                  bottom: 65,
                   display: "flex",
                   flexDirection: "column",
                   gap: "10px",
@@ -981,37 +999,39 @@ function ReelsPlayer({
                   color: "#fff",
                 }}
               >
-                <div className="bg-white rounded-circle m-0 p-0">
-                  <button
-                    className="btn m-0"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleLike(post.id);
-                    }}
-                  >
-                    <i
-                      className={`bi bi-heart-fill fs-4 ${liked ? "text-danger" : "text-secondary"}`}
-                    ></i>
-                  </button>
+                {/* Like Button with Heart Component */}
+                <div className="d-flex flex-column align-items-center">
+                  <Heart
+                    liked={liked}
+                    onToggle={() => handleToggleLike(post.id)}
+                    disabled={isLiking[post.id]}
+                    className="text-white"
+                    size="lg"
+                  />
+                  <small style={{ color: "#fff", marginTop: "2px" }}>{likeCount}</small>
                 </div>
-                <small style={{ color: "#fff" }}>{likeCount}</small>
 
-                <div className="bg-white rounded-circle">
-                  <button
-                    className="btn"
-                    onClick={() => openComments(post)}
-                  >
-                    <i className="bi bi-chat-fill fs-4"></i>
+                {/* Comment Button */}
+                <div className="d-flex flex-column align-items-center">
+                  <button className="btn py-0 my-0" onClick={() => openComments(post)}>
+                    <i className="bi bi-chat-left-dots fs-4 text-light"></i>
                   </button>
+                  <small style={{ color: "#fff", marginTop: "2px" }}>{commentCount}</small>
                 </div>
-                <small style={{ color: "#fff" }}>{commentCount}</small>
 
-                <div className="bg-white rounded-circle px-1">
+                {/* Share Button */}
+                <div className="d-flex flex-column align-items-center">
                   <ShareButton
                     link={post.src}
                     postId={post.id}
                     title={post.caption || "Check this out!"}
+                    className="text-light"
                   />
+                </div>
+
+                {/* ✅ FIXED: Download Button for Reels */}
+                <div className="d-flex flex-column align-items-center">
+                  <DownloadBtn link={post.src} postId={post.id} layout="vertical" />
                 </div>
               </div>
 
@@ -1020,7 +1040,6 @@ function ReelsPlayer({
                 style={{
                   position: "absolute",
                   bottom: 0,
-                  // left: 10,
                   width: "90%",
                   display: "flex",
                   gap: "5px",
@@ -1095,21 +1114,19 @@ function PdfPreview({ url, name }) {
       <iframe
         src={`https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(url)}`}
         title={name || "Document.pdf"}
-        style={{ 
-          width: "100%", 
-          height: "100%", 
+        style={{
+          width: "100%",
+          height: "100%",
           border: "none",
-          // Additional styles to ensure toolbar stays hidden
           position: "relative",
-          top: "-40px", // Adjust this value as needed
-          height: "calc(100% + 40px)" // Compensate for the negative top
+          top: "-40px",
         }}
         onLoad={(e) => {
           // Additional JavaScript to hide toolbar after load
           try {
             const iframe = e.target;
             const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-            
+
             // Wait for PDF viewer to load
             setTimeout(() => {
               const toolbars = iframeDoc.querySelectorAll('.toolbar, #toolbarContainer, .findbar');
@@ -1125,6 +1142,7 @@ function PdfPreview({ url, name }) {
     </div>
   );
 }
+
 /* -----------------------
    Fisher-Yates shuffle algorithm for random post order
 ----------------------- */
@@ -1651,7 +1669,6 @@ export default function GetPost({ showFilter = true, uid, defaultFilter = "all" 
 
                   <div className="p-0 ps-4">
                     <p style={{ margin: 0, wordBreak: "break-word" }}>
-                      <strong>{displayName}</strong>{" "}
                       {linkify(post.caption).map((part, index) =>
                         React.isValidElement(part)
                           ? React.cloneElement(part, { key: index })
@@ -1663,44 +1680,45 @@ export default function GetPost({ showFilter = true, uid, defaultFilter = "all" 
                   <div className="p-3 pb-0">{renderPreview(post)}</div>
                   <div className="card-body p-3 pt-0">
                     <div className="d-flex align-items-center justify-content-between mb-0">
-                      <div className="d-flex align-items-center justify-content-between w-100">
-                        <div className="d-flex align-items-center">
-                          <Heart
-                            liked={liked}
-                            onToggle={() => toggleLike(post.id)}
-                            disabled={isPostLiking}
-                          />
-                          <small className="text-muted ms-1">
-                            {likeCount}
-                          </small>
-                        </div>
-
-                        <div className="mx-3 d-flex align-items-center">
-                          <button
-                            className="btn btn-link text-muted p-0 me-2"
-                            onClick={() => openComments(post)}
-                          >
-                            <i className="bi bi-chat fs-1"></i>
-                          </button>
-                          <small className="text-muted">{commentCount}</small>
-                        </div>
-
-                        <ShareButton link={post.src} />
-                        <DownloadBtn link={post.src} />
+                      <div className="d-flex align-items-center">
+                        <Heart
+                          liked={liked}
+                          onToggle={() => toggleLike(post.id)}
+                          disabled={isPostLiking}
+                        />
+                        <small className="text-muted ms-1">
+                          {likeCount}
+                        </small>
                       </div>
 
-                      {post.type === "pdf" && (
+                      <div className="mx-1 d-flex align-items-center">
                         <button
-                          className="btn btn-sm btn-light d-flex align-items-center me-2"
+                          className="btn btn-link text-muted p-0 me-2"
+                          onClick={() => openComments(post)}
+                        >
+                          <i className="bi bi-chat fs-3"></i>
+                        </button>
+                        <small className="text-muted">{commentCount}</small>
+                      </div>
+
+                      <ShareButton link={post.src} clasName="text-primary" />
+                      <DownloadBtn link={post.src} postId={post.id} layout="horizontal" />
+                    </div>
+
+                    {/* ✅ FIXED: PDF Button in separate section */}
+                    {post.type === "pdf" && (
+                      <div className="mt-2">
+                        <button
+                          className="btn btn-sm btn-light d-flex align-items-center"
                           onClick={() =>
                             window.open(post.url || post.src, "_blank")
                           }
                         >
                           <i className="bi bi-file-earmark-pdf fs-4 text-danger me-1"></i>
-                          Open
+                          Open PDF
                         </button>
-                      )}
-                    </div>
+                      </div>
+                    )}
 
                     {commentCount > 0 && (
                       <div

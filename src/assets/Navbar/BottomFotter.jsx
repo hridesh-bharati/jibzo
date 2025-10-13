@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { FaHome, FaCamera, FaUsers, FaRegImage } from "react-icons/fa";
 import { HiOutlineStatusOnline } from "react-icons/hi";
-import { BiMoviePlay } from "react-icons/bi"; // Added for Reels icon
+import { BiMoviePlay } from "react-icons/bi";
 
 const buttonStyle = (isActive) => ({
   width: 50,

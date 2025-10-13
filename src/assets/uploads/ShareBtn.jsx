@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import { db } from "../../assets/utils/firebaseConfig";
 import { ref, set, get, onValue } from "firebase/database";
 
-export default function ShareButton({ link, postId, title = "Check this out!" }) {
+export default function ShareButton({ link, postId, title = "Check this out!", className }) {
   const url = link || window.location.href;
   const [open, setOpen] = useState(false);
   const [shareCount, setShareCount] = useState(0);
@@ -13,7 +13,7 @@ export default function ShareButton({ link, postId, title = "Check this out!" })
     if (!postId) return;
 
     const shareCountRef = ref(db, `galleryImages/${postId}/shareCount`);
-    
+
     const unsubscribe = onValue(shareCountRef, (snapshot) => {
       const count = snapshot.val() || 0;
       setShareCount(count);
@@ -36,7 +36,7 @@ export default function ShareButton({ link, postId, title = "Check this out!" })
   // Function to increment share count
   const incrementShareCount = async () => {
     if (!postId) return;
-    
+
     try {
       const shareCountRef = ref(db, `galleryImages/${postId}/shareCount`);
       const snapshot = await get(shareCountRef);
@@ -50,7 +50,7 @@ export default function ShareButton({ link, postId, title = "Check this out!" })
   const handleShare = (platformUrl) => {
     // Increment share count
     incrementShareCount();
-    
+
     // Open share window
     window.open(platformUrl, '_blank', 'noopener,noreferrer');
     setOpen(false);
@@ -62,7 +62,7 @@ export default function ShareButton({ link, postId, title = "Check this out!" })
       // Increment share count for copy link too
       incrementShareCount();
       setOpen(false);
-      
+
       // Optional: Show a toast notification
       if (window.toast) {
         window.toast.success("Link copied to clipboard!");
@@ -76,7 +76,7 @@ export default function ShareButton({ link, postId, title = "Check this out!" })
       textArea.select();
       document.execCommand("copy");
       document.body.removeChild(textArea);
-      
+
       // Still increment share count
       incrementShareCount();
       setOpen(false);
@@ -91,29 +91,24 @@ export default function ShareButton({ link, postId, title = "Check this out!" })
 
   return (
     <>
-      <button 
-        className="share-btn" 
+      <button
+        className={`btn share-btn border-0 ${className}`}
         onClick={() => setOpen(true)}
         style={{
           background: 'none',
           border: 'none',
-          fontSize: '1.5rem',
+          fontSize: '1.2rem',
           cursor: 'pointer',
-          padding: '8px',
-          color: '#6c757d',
           transition: 'all 0.2s ease',
           position: 'relative'
         }}
       >
         <i className="bi bi-share-fill"></i>
-        
+
         {/* Share Count Badge - Only show if there are shares */}
         {shareCount > 0 && (
-          <span 
+          <span
             style={{
-              position: 'absolute',
-              top: '60px',
-              right: '10px',
               // backgroundColor: '#ff4444',
               color: 'white',
               width: '16px',
@@ -122,6 +117,7 @@ export default function ShareButton({ link, postId, title = "Check this out!" })
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              margin:"0 9px"
             }}
           >
             {shareCount > 99 ? '99+' : shareCount}
@@ -132,7 +128,7 @@ export default function ShareButton({ link, postId, title = "Check this out!" })
       {open && (
         <>
           {/* Backdrop */}
-          <div 
+          <div
             className="share-backdrop"
             onClick={handleBackdropClick}
             style={{
@@ -148,7 +144,7 @@ export default function ShareButton({ link, postId, title = "Check this out!" })
           ></div>
 
           {/* Bottom Sheet */}
-          <div 
+          <div
             className="share-bottom-sheet"
             style={{
               position: 'fixed',
@@ -167,7 +163,7 @@ export default function ShareButton({ link, postId, title = "Check this out!" })
             }}
           >
             {/* Header */}
-            <div 
+            <div
               className="share-header"
               style={{
                 display: 'flex',
@@ -179,7 +175,7 @@ export default function ShareButton({ link, postId, title = "Check this out!" })
               }}
             >
               <div>
-                <h5 
+                <h5
                   className="share-title"
                   style={{
                     margin: 0,
@@ -197,7 +193,7 @@ export default function ShareButton({ link, postId, title = "Check this out!" })
                   </small>
                 )}
               </div>
-              <button 
+              <button
                 className="share-close-btn"
                 onClick={() => setOpen(false)}
                 style={{
@@ -218,7 +214,7 @@ export default function ShareButton({ link, postId, title = "Check this out!" })
             </div>
 
             {/* Share Options Grid */}
-            <div 
+            <div
               className="share-grid"
               style={{
                 display: 'grid',
@@ -257,14 +253,14 @@ export default function ShareButton({ link, postId, title = "Check this out!" })
                     e.target.style.boxShadow = 'none';
                   }}
                 >
-                  <i 
+                  <i
                     className={`bi ${platform.icon}`}
                     style={{
                       fontSize: '1.5rem',
                       marginBottom: '6px'
                     }}
                   ></i>
-                  <span 
+                  <span
                     style={{
                       fontSize: '0.7rem',
                       fontWeight: '500',

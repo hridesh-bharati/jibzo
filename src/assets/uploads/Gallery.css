@@ -111,6 +111,7 @@
   from {
     transform: scaleX(0);
   }
+
   to {
     transform: scaleX(1);
   }
@@ -192,6 +193,7 @@
   0% {
     background-position: 200% 0;
   }
+
   100% {
     background-position: -200% 0;
   }
@@ -218,7 +220,7 @@
 
 .user-avatar:hover {
   transform: scale(1.05);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .username-link {
@@ -254,11 +256,11 @@
     font-size: 0.8rem;
     padding: 10px 0;
   }
-  
+
   .form-control {
     padding: 10px 16px !important;
   }
-  
+
   .card-body {
     padding: 1rem !important;
   }
@@ -271,11 +273,25 @@
 }
 
 /* Ensure proper icon sizing */
-.bi-xs { font-size: 0.75rem; }
-.bi-sm { font-size: 0.875rem; }
-.bi-lg { font-size: 1.25rem; }
-.bi-xl { font-size: 1.5rem; }
-.bi-2x { font-size: 2rem; }
+.bi-xs {
+  font-size: 0.75rem;
+}
+
+.bi-sm {
+  font-size: 0.875rem;
+}
+
+.bi-lg {
+  font-size: 1.25rem;
+}
+
+.bi-xl {
+  font-size: 1.5rem;
+}
+
+.bi-2x {
+  font-size: 2rem;
+}
 
 /* Add to src/components/Gallery/Gallery.css */
 
@@ -294,14 +310,27 @@
 }
 
 @keyframes fadeInOut {
-  0% { opacity: 0; }
-  20% { opacity: 1; }
-  80% { opacity: 1; }
-  100% { opacity: 0; }
+  0% {
+    opacity: 0;
+  }
+
+  20% {
+    opacity: 1;
+  }
+
+  80% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
 }
-.gallery-feed{
+
+.gallery-feed {
   background: rgb(223, 223, 255);
 }
+
 /* Add to Gallery.css */
 .video-play-overlay {
   position: absolute;
@@ -348,8 +377,33 @@
 }
 
 @keyframes fadeInOut {
-  0% { opacity: 0; }
-  20% { opacity: 1; }
-  80% { opacity: 1; }
-  100% { opacity: 0; }
+  0% {
+    opacity: 0;
+  }
+
+  20% {
+    opacity: 1;
+  }
+
+  80% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+button.btn {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+button.btn:hover,
+button.btn:focus,
+button.btn:active {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
 }
