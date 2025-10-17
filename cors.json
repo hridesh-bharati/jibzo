@@ -1,6 +1,6 @@
 [
   {
-    "origin": ["http://localhost:5173", "http://10.84.238.196:5173"],
+    "origin": ["http://localhost:5173", "http://10.140.192.196:5173/"],
     "method": ["GET", "POST", "PUT", "DELETE"],
     "maxAgeSeconds": 3600,
     "responseHeader": ["Content-Type", "x-goog-meta-*"]

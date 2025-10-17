@@ -7,7 +7,8 @@ const tabs = [
   { to: "/gadgets-and-tools/image-compression", icon: FaCompressAlt, label: "Compress" },
   { to: "/gadgets-and-tools/image-resizer", icon: FaExpandAlt, label: "Resize" },
   { to: "/gadgets-and-tools/face-sticker", icon: FaStickyNote, label: "Face" },
-  { to: "/gadgets-and-tools/age-calculator", icon: FaCalculator, label: "Age" }
+  { to: "/gadgets-and-tools/age-calculator", icon: FaCalculator, label: "Age" },
+  { to: "/gadgets-and-tools/video-downlaoder", icon: FaCalculator, label: "Downloader" }
 ];
 
 const TabItem = ({ to, icon: Icon, label }) => (
