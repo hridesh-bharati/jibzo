@@ -410,10 +410,10 @@ const UserRegister = () => {
         {/* Main Content */}
         <div className="card-content">
           {/* Social Login Section */}
-          <div className="social-section m-0 p-0">
-            <div className="social-buttons m-0 p-0">
+          <div className="social-section ">
+            <div className="social-buttons">
               <button
-                className="social-btn google-btn p-0 m-0"
+                className="social-btn google-btn "
                 onClick={handleGoogleSignIn}
                 disabled={googleLoading}
               >

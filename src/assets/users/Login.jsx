@@ -218,10 +218,10 @@ const Login = () => {
 
         {/* ---------------- SOCIAL LOGIN BUTTONS ---------------- */}
         {stage === "login" && (
-          <div className="social-login-section">
-            <div className="social-buttons-grid">
+          <div className="social-login-section p-3">
+            <div className="social-buttons-grid p-0 m-0">
               <button
-                className="btn-google"
+                className="btn-google m-0"
                 onClick={handleGoogleLogin}
                 disabled={googleLoading}
               >
@@ -242,7 +242,7 @@ const Login = () => {
               </button>
 
               <button
-                className="btn-github"
+                className="btn-github m-0"
                 onClick={handleGitHubLogin}
                 disabled={githubLoading}
               >
