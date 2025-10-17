@@ -2,36 +2,19 @@ import React, { useState } from "react";
 import { db } from "../../utils/firebaseConfig";
 import { ref, set, get, onValue } from "firebase/database";
 
-export default function VideoDownloader() {
+
+export default function UniversalDownloader() {
   const [url, setUrl] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [downloadHistory, setDownloadHistory] = useState([]);
 
-  // Supported platforms
+  // Supported platforms display ke liye
   const supportedPlatforms = [
-    { name: "Instagram", domains: ["instagram.com", "instagr.am"] },
-    { name: "YouTube", domains: ["youtube.com", "youtu.be"] },
-    { name: "Facebook", domains: ["facebook.com", "fb.watch"] },
-    { name: "Twitter", domains: ["twitter.com", "x.com"] },
-    { name: "TikTok", domains: ["tiktok.com"] },
-    { name: "Dailymotion", domains: ["dailymotion.com"] },
-    { name: "Vimeo", domains: ["vimeo.com"] },
-    { name: "Likee", domains: ["likee.video"] },
-    { name: "SnackVideo", domains: ["snackvideo.com"] },
-    { name: "MX Player", domains: ["mxplayer.in"] }
+    "Instagram", "YouTube", "Facebook", "Twitter", 
+    "TikTok", "Dailymotion", "Vimeo", "Likee",
+    "SnackVideo", "MX Player", "Josh", "Roposo"
   ];
-
-  // Detect platform from URL
-  const detectPlatform = (url) => {
-    for (let platform of supportedPlatforms) {
-      if (platform.domains.some(domain => url.includes(domain))) {
-        return platform.name;
-      }
-    }
-    return "Direct Video";
-  };
 
   // Update download count in Firebase
   const updateDownloadCount = async (platform) => {
@@ -40,21 +23,6 @@ export default function VideoDownloader() {
       const snapshot = await get(countRef);
       const currentCount = snapshot.exists() ? snapshot.val() : 0;
       await set(countRef, currentCount + 1);
-      
-      // Add to history
-      const historyRef = ref(db, `downloadHistory`);
-      const historySnapshot = await get(historyRef);
-      const currentHistory = historySnapshot.exists() ? historySnapshot.val() : [];
-      const newHistory = [
-        {
-          url: url,
-          platform: platform,
-          timestamp: new Date().toISOString(),
-          filename: getFileName(url)
-        },
-        ...currentHistory.slice(0, 9) // Keep last 10
-      ];
-      await set(historyRef, newHistory);
     } catch (error) {
       console.error("Error updating download count:", error);
     }
@@ -63,8 +31,7 @@ export default function VideoDownloader() {
   // Extract filename from URL
   const getFileName = (url) => {
     try {
-      const urlObj = new URL(url);
-      let filename = urlObj.pathname.split('/').pop();
+      let filename = url.split("/").pop().split("?")[0];
       if (!filename || !filename.includes('.')) {
         filename = `video_${Date.now()}.mp4`;
       }
@@ -74,7 +41,19 @@ export default function VideoDownloader() {
     }
   };
 
-  // Main download function
+  // Detect platform from URL
+  const detectPlatform = (url) => {
+    if (url.includes('instagram.com')) return "Instagram";
+    if (url.includes('youtube.com') || url.includes('youtu.be')) return "YouTube";
+    if (url.includes('facebook.com') || url.includes('fb.watch')) return "Facebook";
+    if (url.includes('tiktok.com')) return "TikTok";
+    if (url.includes('twitter.com') || url.includes('x.com')) return "Twitter";
+    if (url.includes('likee.video')) return "Likee";
+    if (url.includes('snackvideo.com')) return "SnackVideo";
+    return "Other Platform";
+  };
+
+  // Main download function - DIRECT DOWNLOAD (VidMate Style)
   const handleDownload = async () => {
     if (!url.trim()) {
       setError("❌ Please enter a video URL");
@@ -87,28 +66,19 @@ export default function VideoDownloader() {
 
     try {
       const platform = detectPlatform(url);
-      console.log(`📱 Detected Platform: ${platform}`);
+      console.log(`📱 Downloading from: ${platform}`);
 
-      let downloadUrl = url;
-
-      // For social media platforms, use download service
-      if (platform !== "Direct Video") {
-        downloadUrl = await getDownloadLink(url, platform);
-      }
-
-      console.log("🔗 Download URL:", downloadUrl);
-
-      // Download the video
-      const response = await fetch(downloadUrl);
+      // DIRECT DOWNLOAD - No proxy
+      const response = await fetch(url);
       
       if (!response.ok) {
-        throw new Error(`Download failed: ${response.status} ${response.statusText}`);
+        throw new Error(`Download failed: ${response.status}. Try a different URL.`);
       }
 
       const blob = await response.blob();
       
       if (blob.size === 0) {
-        throw new Error("Received empty file");
+        throw new Error("Received empty file. Video might be restricted.");
       }
 
       // Create download
@@ -121,53 +91,23 @@ export default function VideoDownloader() {
       document.body.removeChild(a);
       URL.revokeObjectURL(blobUrl);
 
-      // Update stats
+      // Update Firebase stats
       await updateDownloadCount(platform);
       
       setSuccess(`✅ ${platform} video downloaded successfully! (${formatFileSize(blob.size)})`);
-      
-      // Add to local history
-      setDownloadHistory(prev => [{
-        url: url,
-        platform: platform,
-        timestamp: new Date().toLocaleString(),
-        size: formatFileSize(blob.size)
-      }, ...prev.slice(0, 4)]);
-
-      setUrl(""); // Clear input after successful download
+      setUrl(""); // Clear input
 
     } catch (err) {
       console.error("❌ Download error:", err);
-      setError(`❌ Download failed: ${err.message}`);
+      
+      if (url.includes('instagram.com') || url.includes('youtube.com')) {
+        setError(`❌ ${detectPlatform(url)} videos require app download. Try VidMate app for better results.`);
+      } else {
+        setError(`❌ Download failed: ${err.message}`);
+      }
     } finally {
       setIsLoading(false);
     }
-  };
-
-  // Get download link from service (you can replace with your own API)
-  const getDownloadLink = async (url, platform) => {
-    // Using free video downloader APIs
-    const services = [
-      `https://api.vevioz.com/api/button/mp4/${encodeURIComponent(url)}`,
-      `https://api.douyin.wtf/api?url=${encodeURIComponent(url)}`,
-      `https://api.tiklydown.eu.org/api/download?url=${encodeURIComponent(url)}`
-    ];
-
-    for (let service of services) {
-      try {
-        const response = await fetch(service);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.url || data.videoUrl || data.downloadUrl) {
-            return data.url || data.videoUrl || data.downloadUrl;
-          }
-        }
-      } catch (error) {
-        console.log(`Service failed: ${service}`);
-      }
-    }
-
-    throw new Error(`Could not get download link for ${platform}`);
   };
 
   const formatFileSize = (bytes) => {
@@ -178,12 +118,11 @@ export default function VideoDownloader() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  // Sample URLs for quick testing
+  // Sample URLs for testing
   const sampleUrls = [
-    { name: "Instagram Reel", url: "https://www.instagram.com/reel/Cx9J8kioe6P/" },
-    { name: "YouTube Short", url: "https://youtube.com/shorts/ABC123" },
-    { name: "TikTok Video", url: "https://www.tiktok.com/@user/video/123456" },
-    { name: "Facebook Video", url: "https://fb.watch/abc123/" }
+    { name: "MP4 Video", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" },
+    { name: "WebM Video", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.webm" },
+    { name: "Sample Video", url: "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4" }
   ];
 
   return (
@@ -192,9 +131,9 @@ export default function VideoDownloader() {
       <div className="text-center mb-4">
         <h1 className="text-primary mb-2">
           <i className="bi bi-download me-2"></i>
-          Universal Video Downloader
+          Video Downloader
         </h1>
-        <p className="text-muted">Download videos from Instagram, YouTube, TikTok, and 100+ other platforms</p>
+        <p className="text-muted">Download videos from direct links</p>
       </div>
 
       {/* Main Download Card */}
@@ -207,10 +146,9 @@ export default function VideoDownloader() {
               <input
                 type="text"
                 className="form-control form-control-lg"
-                placeholder="Paste Instagram, YouTube, TikTok, Facebook, etc. link here..."
+                placeholder="Paste direct video URL here..."
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                style={{ borderRight: 'none' }}
               />
               <button 
                 className="btn btn-primary px-4"
@@ -234,7 +172,7 @@ export default function VideoDownloader() {
 
           {/* Quick Sample Links */}
           <div className="mb-3">
-            <small className="text-muted d-block mb-2">Try with sample URLs:</small>
+            <small className="text-muted d-block mb-2">Try with sample videos:</small>
             <div className="d-flex flex-wrap gap-2">
               {sampleUrls.map((sample, index) => (
                 <button
@@ -265,53 +203,35 @@ export default function VideoDownloader() {
         </div>
       </div>
 
-      {/* Supported Platforms */}
+      {/* Supported Platforms Info */}
       <div className="card mt-4 border-0">
         <div className="card-body">
           <h5 className="card-title">
-            <i className="bi bi-check-circle text-success me-2"></i>
-            Supported Platforms
+            <i className="bi bi-info-circle text-primary me-2"></i>
+            How to Use
           </h5>
           <div className="row">
-            {supportedPlatforms.map((platform, index) => (
-              <div key={index} className="col-6 col-md-4 col-lg-3 mb-2">
-                <div className="d-flex align-items-center">
-                  <i className="bi bi-check text-success me-2"></i>
-                  <small>{platform.name}</small>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Download History */}
-      {downloadHistory.length > 0 && (
-        <div className="card mt-4 border-0">
-          <div className="card-body">
-            <h5 className="card-title">
-              <i className="bi bi-clock-history me-2"></i>
-              Recent Downloads
-            </h5>
-            <div className="list-group list-group-flush">
-              {downloadHistory.map((item, index) => (
-                <div key={index} className="list-group-item d-flex justify-content-between align-items-center">
-                  <div>
-                    <small className="fw-bold text-primary">{item.platform}</small>
-                    <br />
-                    <small className="text-muted">{item.url.substring(0, 50)}...</small>
-                  </div>
-                  <div className="text-end">
-                    <small className="text-muted">{item.timestamp}</small>
-                    <br />
-                    <small className="text-success">{item.size}</small>
-                  </div>
-                </div>
-              ))}
+            <div className="col-md-6">
+              <h6>✅ Direct Links Work:</h6>
+              <ul className="small">
+                <li>MP4, WebM, OGG files</li>
+                <li>CDN video links</li>
+                <li>Cloud storage videos</li>
+                <li>Direct file URLs</li>
+              </ul>
+            </div>
+            <div className="col-md-6">
+              <h6>❌ Social Media Need App:</h6>
+              <ul className="small">
+                <li>Instagram - Use VidMate app</li>
+                <li>YouTube - Use SnapTube app</li>
+                <li>TikTok - Use TikTok Downloader</li>
+                <li>Facebook - Use FB Downloader</li>
+              </ul>
             </div>
           </div>
         </div>
-      )}
+      </div>
 
       {/* Features */}
       <div className="row mt-4 text-center">
@@ -319,8 +239,8 @@ export default function VideoDownloader() {
           <div className="card border-0 bg-light">
             <div className="card-body">
               <i className="bi bi-lightning-charge text-warning fs-2"></i>
-              <h6>Fast Download</h6>
-              <small className="text-muted">High-speed video downloading</small>
+              <h6>Fast</h6>
+              <small className="text-muted">Quick downloads</small>
             </div>
           </div>
         </div>
@@ -328,8 +248,8 @@ export default function VideoDownloader() {
           <div className="card border-0 bg-light">
             <div className="card-body">
               <i className="bi bi-shield-check text-success fs-2"></i>
-              <h6>Safe & Secure</h6>
-              <small className="text-muted">No ads, no malware</small>
+              <h6>Safe</h6>
+              <small className="text-muted">No ads</small>
             </div>
           </div>
         </div>
@@ -337,8 +257,8 @@ export default function VideoDownloader() {
           <div className="card border-0 bg-light">
             <div className="card-body">
               <i className="bi bi-phone text-primary fs-2"></i>
-              <h6>All Platforms</h6>
-              <small className="text-muted">Works on all devices</small>
+              <h6>Simple</h6>
+              <small className="text-muted">Easy to use</small>
             </div>
           </div>
         </div>
