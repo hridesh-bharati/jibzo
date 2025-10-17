@@ -20,53 +20,7 @@ export default function UniversalDownloader() {
     }
   };
 
-  // Instagram download using services
-  const downloadInstagram = async (url) => {
-    const services = [
-      `https://api.vevioz.com/api/button/mp4/${encodeURIComponent(url)}`,
-      `https://api.douyin.wtf/api?url=${encodeURIComponent(url)}`,
-      `https://youtube4kdownloader.com/ajax/instagram.php?url=${encodeURIComponent(url)}`
-    ];
-
-    for (let service of services) {
-      try {
-        console.log(`Trying service: ${service}`);
-        const response = await fetch(service);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.url || data.videoUrl || data.downloadUrl) {
-            return data.url || data.videoUrl || data.downloadUrl;
-          }
-        }
-      } catch (error) {
-        console.log(`Service failed: ${service}`);
-      }
-    }
-    throw new Error("All services failed");
-  };
-
-  // YouTube download
-  const downloadYouTube = async (url) => {
-    const services = [
-      `https://api.vevioz.com/api/button/mp4/${encodeURIComponent(url)}`,
-      `https://yt5s.com/en/api/convert` // POST request needed
-    ];
-
-    for (let service of services) {
-      try {
-        const response = await fetch(service);
-        if (response.ok) {
-          const data = await response.json();
-          return data.url || data.videoUrl;
-        }
-      } catch (error) {
-        console.log(`YouTube service failed: ${service}`);
-      }
-    }
-    throw new Error("YouTube download not available");
-  };
-
-  // Main download function
+  // CORS-free download methods
   const handleDownload = async () => {
     if (!url.trim()) {
       setError("❌ Please enter a video URL");
@@ -78,74 +32,72 @@ export default function UniversalDownloader() {
     setSuccess("");
 
     try {
-      let downloadUrl = url;
-      let platform = "Direct";
-
       // Instagram
       if (url.includes('instagram.com')) {
-        platform = "Instagram";
-        downloadUrl = await downloadInstagram(url);
+        const downloadUrl = `https://instasave.ink/en/instagram-video-downloader?url=${encodeURIComponent(url)}`;
+        window.open(downloadUrl, '_blank');
+        await updateDownloadCount("Instagram");
+        setSuccess("✅ Opening Instagram downloader...");
       }
       // YouTube
       else if (url.includes('youtube.com') || url.includes('youtu.be')) {
-        platform = "YouTube";
-        downloadUrl = await downloadYouTube(url);
+        const downloadUrl = `https://en.y2mate.guru/?url=${encodeURIComponent(url)}`;
+        window.open(downloadUrl, '_blank');
+        await updateDownloadCount("YouTube");
+        setSuccess("✅ Opening YouTube downloader...");
       }
-      // Direct video files
+      // TikTok
+      else if (url.includes('tiktok.com')) {
+        const downloadUrl = `https://snaptik.app/?url=${encodeURIComponent(url)}`;
+        window.open(downloadUrl, '_blank');
+        await updateDownloadCount("TikTok");
+        setSuccess("✅ Opening TikTok downloader...");
+      }
+      // Facebook
+      else if (url.includes('facebook.com') || url.includes('fb.watch')) {
+        const downloadUrl = `https://getfbstuff.com/facebook-video-downloader?url=${encodeURIComponent(url)}`;
+        window.open(downloadUrl, '_blank');
+        await updateDownloadCount("Facebook");
+        setSuccess("✅ Opening Facebook downloader...");
+      }
+      // Direct video files (no CORS issue)
       else if (url.includes('.mp4') || url.includes('.webm') || url.includes('.ogg')) {
-        platform = "Direct Video";
-        // Direct download works for these
+        // Direct download - no CORS for same-origin or CORS-enabled URLs
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+          throw new Error(`Download failed: ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        
+        if (blob.size === 0) {
+          throw new Error("Received empty file");
+        }
+
+        // Create download
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = `video_${Date.now()}.mp4`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(blobUrl);
+
+        await updateDownloadCount("Direct Video");
+        setSuccess(`✅ Video downloaded successfully! (${formatFileSize(blob.size)})`);
       }
-      // Other social media
-      else if (url.includes('facebook.com') || url.includes('tiktok.com')) {
-        throw new Error("Use VidMate app for Facebook/TikTok downloads");
+      // Unsupported
+      else {
+        throw new Error("Unsupported URL. Try Instagram, YouTube, TikTok, or direct video links.");
       }
 
-      console.log(`📱 Downloading from: ${platform}`);
-      console.log(`🔗 Final URL: ${downloadUrl}`);
-
-      // Download the video
-      const response = await fetch(downloadUrl);
-      
-      if (!response.ok) {
-        throw new Error(`Download failed: ${response.status}`);
-      }
-
-      const blob = await response.blob();
-      
-      if (blob.size === 0) {
-        throw new Error("Received empty file");
-      }
-
-      // Create download
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = blobUrl;
-      a.download = `video_${Date.now()}.mp4`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(blobUrl);
-
-      // Update Firebase stats
-      await updateDownloadCount(platform);
-      
-      setSuccess(`✅ ${platform} video downloaded successfully! (${formatFileSize(blob.size)})`);
       setUrl("");
 
     } catch (err) {
       console.error("❌ Download error:", err);
-      
-      if (err.message.includes("Use VidMate app")) {
-        setError(`❌ ${err.message}`);
-      } else if (url.includes('instagram.com')) {
-        setError(`❌ Instagram download failed. Try these solutions:
-        1. Use VidMate mobile app
-        2. Try different Instagram URL
-        3. Use Instagram downloader websites`);
-      } else {
-        setError(`❌ Download failed: ${err.message}`);
-      }
+      setError(`❌ ${err.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -159,15 +111,17 @@ export default function UniversalDownloader() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  // Working sample URLs
+  // Working URLs for testing
   const sampleUrls = [
     { 
       name: "Test MP4", 
-      url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" 
+      url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+      type: "direct"
     },
     { 
       name: "Test WebM", 
-      url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.webm" 
+      url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.webm", 
+      type: "direct"
     }
   ];
 
@@ -179,7 +133,7 @@ export default function UniversalDownloader() {
           <i className="bi bi-download me-2"></i>
           Video Downloader
         </h1>
-        <p className="text-muted">Download Instagram videos and direct links</p>
+        <p className="text-muted">Download videos without CORS errors</p>
       </div>
 
       {/* Main Download Card */}
@@ -192,7 +146,7 @@ export default function UniversalDownloader() {
               <input
                 type="text"
                 className="form-control form-control-lg"
-                placeholder="Paste Instagram URL or direct video link..."
+                placeholder="Paste Instagram, YouTube, TikTok URL or direct video link..."
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
               />
@@ -204,7 +158,7 @@ export default function UniversalDownloader() {
                 {isLoading ? (
                   <>
                     <span className="spinner-border spinner-border-sm me-2" />
-                    Downloading...
+                    Processing...
                   </>
                 ) : (
                   <>
@@ -234,11 +188,9 @@ export default function UniversalDownloader() {
 
           {/* Messages */}
           {error && (
-            <div className="alert alert-danger" role="alert">
+            <div className="alert alert-danger d-flex align-items-center" role="alert">
               <i className="bi bi-exclamation-triangle-fill me-2"></i>
-              {error.split('\n').map((line, i) => (
-                <div key={i}>{line}</div>
-              ))}
+              <div>{error}</div>
             </div>
           )}
           
@@ -251,72 +203,71 @@ export default function UniversalDownloader() {
         </div>
       </div>
 
-      {/* Why CORS Happens */}
-      <div className="card mt-4 border-0 bg-warning bg-opacity-10">
+      {/* How It Works */}
+      <div className="card mt-4 border-0 bg-light">
         <div className="card-body">
           <h5 className="card-title">
-            <i className="bi bi-info-circle me-2"></i>
-            Why Instagram/YouTube Don't Work Directly?
+            <i className="bi bi-lightbulb me-2"></i>
+            How This Avoids CORS Errors
           </h5>
-          <p className="mb-2">
-            <strong>CORS Policy:</strong> Browsers block cross-origin requests for security.
-          </p>
           <div className="row">
             <div className="col-md-6">
-              <h6>🚫 Browser Limitations:</h6>
+              <h6>✅ Direct Video Links:</h6>
               <ul className="small">
-                <li>Can't directly download from Instagram</li>
-                <li>Can't directly download from YouTube</li>
-                <li>Social media platforms block web downloads</li>
+                <li>MP4, WebM, OGG files</li>
+                <li>CDN video links</li>
+                <li>Cloud storage videos</li>
+                <li>No CORS issues</li>
               </ul>
             </div>
             <div className="col-md-6">
-              <h6>✅ VidMate Solutions:</h6>
+              <h6>🔗 Social Media Links:</h6>
               <ul className="small">
-                <li>Uses mobile apps (no CORS)</li>
-                <li>Uses backend servers</li>
-                <li>Direct network access</li>
-                <li>No browser restrictions</li>
+                <li>Instagram - Opens downloader site</li>
+                <li>YouTube - Opens downloader site</li>
+                <li>TikTok - Opens downloader site</li>
+                <li>Facebook - Opens downloader site</li>
               </ul>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Alternative Solutions */}
-      <div className="card mt-4 border-0">
-        <div className="card-body">
-          <h5 className="card-title">
-            <i className="bi bi-phone me-2"></i>
-            Best Solutions for Social Media Downloads
-          </h5>
-          <div className="row text-center">
-            <div className="col-md-4 mb-3">
-              <div className="card border-primary">
-                <div className="card-body">
-                  <i className="bi bi-phone text-primary fs-2"></i>
-                  <h6>VidMate App</h6>
-                  <small className="text-muted">Best for Instagram, YouTube</small>
-                </div>
-              </div>
+      {/* Platform Support */}
+      <div className="row mt-4 text-center">
+        <div className="col-md-3 mb-3">
+          <div className="card border-primary">
+            <div className="card-body">
+              <i className="bi bi-instagram text-primary fs-2"></i>
+              <h6>Instagram</h6>
+              <small className="text-muted">Reels & Posts</small>
             </div>
-            <div className="col-md-4 mb-3">
-              <div className="card border-success">
-                <div className="card-body">
-                  <i className="bi bi-download text-success fs-2"></i>
-                  <h6>SnapTube</h6>
-                  <small className="text-muted">YouTube specialist</small>
-                </div>
-              </div>
+          </div>
+        </div>
+        <div className="col-md-3 mb-3">
+          <div className="card border-danger">
+            <div className="card-body">
+              <i className="bi bi-youtube text-danger fs-2"></i>
+              <h6>YouTube</h6>
+              <small className="text-muted">Videos & Shorts</small>
             </div>
-            <div className="col-md-4 mb-3">
-              <div className="card border-info">
-                <div className="card-body">
-                  <i className="bi bi-instagram text-info fs-2"></i>
-                  <h6>Instagram Downloaders</h6>
-                  <small className="text-muted">Websites & apps</small>
-                </div>
-              </div>
+          </div>
+        </div>
+        <div className="col-md-3 mb-3">
+          <div className="card border-dark">
+            <div className="card-body">
+              <i className="bi bi-tiktok text-dark fs-2"></i>
+              <h6>TikTok</h6>
+              <small className="text-muted">Videos</small>
+            </div>
+          </div>
+        </div>
+        <div className="col-md-3 mb-3">
+          <div className="card border-info">
+            <div className="card-body">
+              <i className="bi bi-facebook text-info fs-2"></i>
+              <h6>Facebook</h6>
+              <small className="text-muted">Videos & Reels</small>
             </div>
           </div>
         </div>
