@@ -1,54 +1,136 @@
-// api/proxy.js - Updated version
-export default async function handler(req, res) {
-  const { url } = req.query;
-  if (!url) return res.status(400).send("Missing 'url' parameter");
+const fetch = require('node-fetch');
 
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+module.exports = async (req, res) => {
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS, POST');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   
-  if (req.method === "OPTIONS") return res.status(200).end();
+  // Handle OPTIONS request
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  // Only allow GET requests
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  const { url } = req.query;
+  
+  if (!url) {
+    return res.status(400).json({ error: "Missing 'url' parameter" });
+  }
+
+  console.log('Received URL:', url);
 
   try {
+    // Instagram specific handling
+    if (url.includes('instagram.com')) {
+      return handleInstagramDownload(req, res, url);
+    }
+
+    // Generic video download for other URLs
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
         'Accept': 'video/mp4,video/webm,video/*;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Sec-Fetch-Dest': 'video',
-        'Sec-Fetch-Mode': 'no-cors',
-        'Sec-Fetch-Site': 'cross-site',
+        'Referer': 'https://www.instagram.com/',
       },
-      referrer: 'https://www.instagram.com/',
+      timeout: 30000
     });
 
     if (!response.ok) {
-      console.log('Response status:', response.status);
-      console.log('Response headers:', Object.fromEntries(response.headers));
-      throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
     const contentType = response.headers.get('content-type');
-    console.log('Content-Type:', contentType);
+    const contentLength = response.headers.get('content-length');
 
-    if (!contentType || !contentType.includes('video')) {
-      // If we get HTML instead of video, Instagram is blocking us
-      throw new Error('Instagram blocked the request. Got HTML instead of video.');
+    console.log('Response - Status:', response.status, 'Type:', contentType, 'Size:', contentLength);
+
+    // Check if response is HTML (blocked) or video
+    if (contentType && contentType.includes('text/html')) {
+      throw new Error('Instagram returned HTML page instead of video. Direct download not possible.');
     }
 
-    const arrayBuffer = await response.arrayBuffer();
+    const buffer = await response.buffer();
     
-    res.setHeader("Content-Type", contentType);
-    res.setHeader("Content-Length", arrayBuffer.byteLength);
-    res.setHeader("Content-Disposition", "attachment; filename=instagram_video.mp4");
-    res.setHeader("Cache-Control", "no-cache");
-    
-    res.send(Buffer.from(arrayBuffer));
-  } catch (err) {
-    console.error("Proxy error:", err);
+    if (buffer.length === 0) {
+      throw new Error('Received empty response');
+    }
+
+    res.setHeader('Content-Type', contentType || 'video/mp4');
+    res.setHeader('Content-Length', buffer.length);
+    res.setHeader('Content-Disposition', `attachment; filename="downloaded_video.mp4"`);
+    res.setHeader('Cache-Control', 'no-cache');
+
+    res.send(buffer);
+
+  } catch (error) {
+    console.error('Download error:', error);
     res.status(500).json({ 
-      error: "Proxy error: " + err.message,
-      details: "Instagram may be blocking this request. Try a different approach."
+      error: 'Download failed',
+      message: error.message,
+      type: 'SERVER_ERROR'
+    });
+  }
+};
+
+// Instagram specific handler
+async function handleInstagramDownload(req, res, url) {
+  try {
+    // First, try to get the HTML page to find video URL
+    const htmlResponse = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      }
+    });
+
+    if (!htmlResponse.ok) {
+      throw new Error(`Cannot access Instagram page: ${htmlResponse.status}`);
+    }
+
+    const html = await htmlResponse.text();
+    
+    // Try to find video URL in HTML
+    const videoUrlMatch = html.match(/"video_url":"([^"]+)"/) || html.match(/<meta property="og:video" content="([^"]+)"/);
+    
+    if (videoUrlMatch && videoUrlMatch[1]) {
+      let videoUrl = videoUrlMatch[1].replace(/\\u0026/g, '&');
+      console.log('Found video URL:', videoUrl);
+      
+      // Download the actual video
+      const videoResponse = await fetch(videoUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Referer': 'https://www.instagram.com/',
+        }
+      });
+
+      if (!videoResponse.ok) {
+        throw new Error(`Failed to download video: ${videoResponse.status}`);
+      }
+
+      const videoBuffer = await videoResponse.buffer();
+      
+      res.setHeader('Content-Type', 'video/mp4');
+      res.setHeader('Content-Length', videoBuffer.length);
+      res.setHeader('Content-Disposition', 'attachment; filename="instagram_video.mp4"');
+      res.setHeader('Cache-Control', 'no-cache');
+      
+      res.send(videoBuffer);
+    } else {
+      throw new Error('Could not find video URL in Instagram page. The video might be private or require login.');
+    }
+
+  } catch (error) {
+    console.error('Instagram download error:', error);
+    res.status(500).json({ 
+      error: 'Instagram download failed',
+      message: error.message,
+      type: 'INSTAGRAM_ERROR'
     });
   }
 }
