@@ -25,39 +25,23 @@ export default function FileConverter() {
   // Mobile device detection
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
-  // Enhanced cleanup on unmount
+  // Cleanup camera on unmount
   useEffect(() => {
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
-      // Tesseract.terminate() removed - causes error in newer versions
     };
   }, []);
 
-  // Fixed Camera functions - Better error handling
+  // Camera functions
   const startCamera = async () => {
     try {
       setCameraError("");
-      setLoading(true);
 
       // Check if browser supports mediaDevices
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         setCameraError("Camera not supported in this browser");
-        setLoading(false);
-        return;
-      }
-
-      // Stop existing stream if any
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-        streamRef.current = null;
-      }
-
-      // Ensure videoRef is available
-      if (!videoRef.current) {
-        setCameraError("Camera element not available");
-        setLoading(false);
         return;
       }
 
@@ -73,89 +57,26 @@ export default function FileConverter() {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
 
-      // Direct assignment without complex promise
-      videoRef.current.srcObject = stream;
-      
-      // Wait for video to be ready
-      await new Promise((resolve, reject) => {
-        const video = videoRef.current;
-        
-        if (!video) {
-          reject(new Error("Video element not found"));
-          return;
+      // Wait a bit for video element to be ready
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          setCameraActive(true);
+        } else {
+          stream.getTracks().forEach(track => track.stop());
+          setCameraError("Camera element not ready");
         }
-
-        const onLoaded = () => {
-          video.removeEventListener('loadedmetadata', onLoaded);
-          video.removeEventListener('error', onError);
-          resolve();
-        };
-
-        const onError = (error) => {
-          video.removeEventListener('loadedmetadata', onLoaded);
-          video.removeEventListener('error', onError);
-          reject(new Error(`Video stream error: ${error.message}`));
-        };
-
-        video.addEventListener('loadedmetadata', onLoaded);
-        video.addEventListener('error', onError);
-
-        // If video is already ready, resolve immediately
-        if (video.readyState >= 2) { // HAVE_CURRENT_DATA or better
-          video.removeEventListener('loadedmetadata', onLoaded);
-          video.removeEventListener('error', onError);
-          resolve();
-        }
-
-        // Fallback timeout
-        setTimeout(() => {
-          video.removeEventListener('loadedmetadata', onLoaded);
-          video.removeEventListener('error', onError);
-          if (video.videoWidth > 0 && video.videoHeight > 0) {
-            resolve();
-          } else {
-            reject(new Error("Camera stream timeout - check camera permissions"));
-          }
-        }, 3000);
-      });
-
-      setCameraActive(true);
-      setCameraError("");
+      }, 100);
 
     } catch (err) {
       console.error("Camera error:", err);
-      let errorMessage = "Camera access failed: ";
-      
-      if (err.name === 'NotAllowedError') {
-        errorMessage += "Camera permission denied. Please allow camera access.";
-      } else if (err.name === 'NotFoundError') {
-        errorMessage += "No camera found on this device.";
-      } else if (err.name === 'NotSupportedError') {
-        errorMessage += "Camera not supported in this browser.";
-      } else {
-        errorMessage += err.message;
-      }
-      
-      setCameraError(errorMessage);
-      
-      // Clean up on error
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-        streamRef.current = null;
-      }
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
-      }
-    } finally {
-      setLoading(false);
+      setCameraError("Camera access failed: " + err.message);
     }
   };
 
   const stopCamera = () => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => {
-        track.stop();
-      });
+      streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
 
@@ -167,7 +88,6 @@ export default function FileConverter() {
     setCameraError("");
   };
 
-  // Improved capture function
   const captureImage = () => {
     if (!videoRef.current || !canvasRef.current) {
       setCameraError("Camera not ready");
@@ -177,46 +97,30 @@ export default function FileConverter() {
     const video = videoRef.current;
     const canvas = canvasRef.current;
 
-    // Check if video is actually playing
-    if (video.videoWidth === 0 || video.videoHeight === 0 || video.paused || video.ended) {
-      setCameraError("Camera stream not loaded properly");
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      setCameraError("Camera stream not loaded");
       return;
     }
 
-    try {
-      const context = canvas.getContext('2d');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      
-      // Draw current video frame to canvas
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const context = canvas.getContext('2d');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      // Convert to JPEG with quality settings
-      const imageData = canvas.toDataURL('image/jpeg', 0.85);
-      
-      setCapturedImages(prev => [...prev, {
-        id: Date.now(),
-        data: imageData,
-        name: `captured-${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`
-      }]);
+    const imageData = canvas.toDataURL('image/jpeg', 0.9);
+    setCapturedImages(prev => [...prev, {
+      id: Date.now(),
+      data: imageData,
+      name: `captured-${Date.now()}.jpg`
+    }]);
 
-      // Success feedback
-      if (isMobile && navigator.vibrate) {
-        navigator.vibrate(50);
-      }
-
-      // Show success message
-      setCameraError("");
-      
-    } catch (error) {
-      console.error("Capture error:", error);
-      setCameraError("Failed to capture image");
+    // Haptic feedback for mobile
+    if (isMobile && navigator.vibrate) {
+      navigator.vibrate(50);
     }
   };
 
   const useCapturedImage = () => {
-    if (capturedImages.length === 0) return;
-    
     const newImageFiles = capturedImages.map(img =>
       dataURLtoFile(img.data, img.name)
     );
@@ -238,27 +142,18 @@ export default function FileConverter() {
     return new File([u8arr], filename, { type: mime });
   };
 
-  // Improved tab switching
-  const handleTabSwitch = async (tab) => {
-    setActiveTab(tab);
-    setCameraError("");
-    
-    if (tab === "camera") {
-      // Small delay to ensure DOM is updated
+  // Handle tab switching
+  const handleTabSwitch = (tab) => {
+    if (tab === "camera" && cameraActive) {
+      // Reinitialize camera if already active
       setTimeout(() => {
-        if (!cameraActive) {
-          startCamera();
-        } else if (videoRef.current && streamRef.current) {
-          // Reinitialize camera if already active
+        if (videoRef.current && streamRef.current) {
           videoRef.current.srcObject = streamRef.current;
         }
-      }, 300);
-    } else {
-      // Stop camera when switching away from camera tab
-      if (cameraActive) {
-        stopCamera();
-      }
+      }, 100);
     }
+    setActiveTab(tab);
+    setCameraError("");
   };
 
   // Mobile-optimized Preview Component
@@ -332,11 +227,9 @@ export default function FileConverter() {
     });
   };
 
-  // Enhanced OCR Text Scanner Function
+  // OCR Text Scanner Function
   const handleTextScan = async () => {
-    const allImages = [...imageFiles, ...capturedImages.map(img => dataURLtoFile(img.data, img.name))];
-    
-    if (!allImages.length && !pdfFile && capturedImages.length === 0) {
+    if (!imageFiles.length && !pdfFile && capturedImages.length === 0) {
       alert("Please select images, use camera, or upload PDF first!");
       return;
     }
@@ -347,39 +240,30 @@ export default function FileConverter() {
 
     try {
       let textResults = [];
+      const allImages = [...imageFiles, ...capturedImages.map(img => dataURLtoFile(img.data, img.name))];
 
-      // Process images
       if (allImages.length > 0) {
         for (let i = 0; i < allImages.length; i++) {
-          setOcrProgress(Math.round((i / allImages.length) * 100));
-          
           const result = await Tesseract.recognize(
             allImages[i],
-            'eng', // Start with English only for better performance
+            'eng+hin',
             {
               logger: m => {
                 if (m.status === 'recognizing text') {
-                  setOcrProgress(Math.round((i + m.progress) / allImages.length * 100));
+                  setOcrProgress(Math.round(m.progress * 100));
                 }
               }
             }
           );
-          
           textResults.push(`--- Image ${i + 1} ---\n${result.data.text}\n`);
         }
-      } 
-      // Process PDF
-      else if (pdfFile) {
-        setExtractedText("Processing PDF pages...");
-        
+      } else if (pdfFile) {
         const arrayBuffer = await pdfFile.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
         for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-          setOcrProgress(Math.round((pageNum / pdf.numPages) * 100));
-          
           const page = await pdf.getPage(pageNum);
-          const viewport = page.getViewport({ scale: isMobile ? 1.5 : 2.0 });
+          const viewport = page.getViewport({ scale: isMobile ? 2.0 : 3.0 });
 
           const canvas = document.createElement("canvas");
           const ctx = canvas.getContext("2d");
@@ -388,39 +272,30 @@ export default function FileConverter() {
 
           await page.render({ canvasContext: ctx, viewport }).promise;
 
-          const imageData = canvas.toDataURL("image/jpeg", 0.8);
+          const imageData = canvas.toDataURL("image/jpeg", 0.9);
 
           const result = await Tesseract.recognize(
             imageData,
-            'eng',
+            'eng+hin',
             {
               logger: m => {
                 if (m.status === 'recognizing text') {
-                  const pageProgress = (pageNum - 1 + m.progress) / pdf.numPages;
-                  setOcrProgress(Math.round(pageProgress * 100));
+                  setOcrProgress(Math.round(m.progress * 100));
                 }
               }
             }
           );
 
           textResults.push(`--- Page ${pageNum} ---\n${result.data.text}\n`);
-          
-          // Clean up
-          canvas.remove();
         }
       }
 
-      const finalText = textResults.join('\n');
-      setExtractedText(finalText || "No text could be extracted from the provided content.");
-      
+      setExtractedText(textResults.join('\n'));
     } catch (err) {
-      console.error("OCR Error:", err);
-      alert("Failed to extract text: " + (err.message || "Unknown error occurred"));
-      setExtractedText("Error occurred during text extraction. Please try again with clearer images or documents.");
-    } finally {
-      setLoading(false);
-      setOcrProgress(0);
+      alert("Failed to extract text: " + err.message);
     }
+    setLoading(false);
+    setOcrProgress(0);
   };
 
   // PDF to Word conversion
@@ -665,63 +540,73 @@ export default function FileConverter() {
     </button>
   );
 
+
   return (
     <div className="container-fluid px-2 py-3" style={{
       minHeight: '100vh',
       backgroundColor: '#f8f9fa'
     }}>
+
+
       {/* Conversion Type Selector */}
       <div className="conversion-grid">
         <ConversionTypeButton type="jpg-to-pdf" label="Images to PDF" icon="🖼️" color="#4dabf7" />
         <ConversionTypeButton type="pdf-to-jpg" label="PDF to Images" icon="📄" color="#f06595" />
-        <ConversionTypeButton type="pdf-to-word" label="PDF to Word" icon="📝" color="#63e6be" />
+        <ConversionTypeButton type="pdf-to-word" label="PDF to Word" icon={<i className="bi bi-file-earmark-word-fill text-primary"></i>} color="#63e6be" />
         <ConversionTypeButton type="text-scanner" label="Text Scanner" icon="🔍" color="#fcc419" />
         <style>{`
-          .conversion-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-            gap: 12px;
-            margin-bottom: 20px;
-            text-align: center;
-          }
-          .conversion-btn {
-            border: none;
-            background: white;
-            border-radius: 12px;
-            padding: 15px 10px;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-            transition: all 0.3s ease;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-          }
-          .conversion-btn:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
-          }
-          .conversion-btn.active {
-            outline: 2px solid #007bff;
-            background: #e7f1ff;
-          }
-          .conversion-icon {
-            width: 55px;
-            height: 55px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 26px;
-            margin-bottom: 8px;
-            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
-          }
-          .conversion-btn .label {
-            font-size: 13px;
-            font-weight: 600;
-            color: #333;
-          }
+        .conversion-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+.conversion-btn {
+  border: none;
+  background: white;
+  border-radius: 12px;
+  padding: 15px 10px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.conversion-btn:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+}
+
+.conversion-btn.active {
+  outline: 2px solid #007bff;
+  background: #e7f1ff;
+}
+
+.conversion-icon {
+  width: 55px;
+  height: 55px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 26px;
+  margin-bottom: 8px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
+}
+
+.conversion-btn .label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+}
+
         `}</style>
       </div>
+
+
 
       {/* Input Methods Tabs */}
       {(conversionType === "jpg-to-pdf" || conversionType === "text-scanner") && (
@@ -768,31 +653,18 @@ export default function FileConverter() {
                       <button
                         className="btn btn-success w-100 btn-lg mb-3"
                         onClick={startCamera}
-                        disabled={loading}
                       >
-                        {loading ? (
-                          <>
-                            <div className="spinner-border spinner-border-sm me-2" role="status"></div>
-                            Starting Camera...
-                          </>
-                        ) : (
-                          '📷 Start Camera'
-                        )}
+                        📷 Start Camera
                       </button>
                       {cameraError && (
                         <div className="alert alert-warning text-center small">
                           {cameraError}
                         </div>
                       )}
-                      <div className="text-center">
-                        <small className="text-muted">
-                          💡 Make sure to allow camera permissions when prompted
-                        </small>
-                      </div>
                     </div>
                   ) : (
                     <div>
-                      <div className="text-center mb-3 position-relative">
+                      <div className="text-center mb-3">
                         <video
                           ref={videoRef}
                           autoPlay
@@ -802,22 +674,10 @@ export default function FileConverter() {
                           style={{
                             maxHeight: isMobile ? '300px' : '400px',
                             width: '100%',
-                            backgroundColor: '#000',
-                            minHeight: '200px'
+                            backgroundColor: '#000'
                           }}
-                          onError={() => setCameraError("Failed to load video stream")}
                         />
-                        <canvas 
-                          ref={canvasRef} 
-                          style={{ display: 'none' }} 
-                        />
-                        {!videoRef.current?.srcObject && (
-                          <div className="position-absolute top-50 start-50 translate-middle">
-                            <div className="spinner-border text-light" role="status">
-                              <span className="visually-hidden">Loading camera...</span>
-                            </div>
-                          </div>
-                        )}
+                        <canvas ref={canvasRef} style={{ display: 'none' }} />
                       </div>
 
                       {cameraError && (
@@ -839,7 +699,6 @@ export default function FileConverter() {
                           <button
                             className="btn btn-warning w-100"
                             onClick={captureImage}
-                            disabled={!cameraActive}
                           >
                             Capture
                           </button>
@@ -853,13 +712,6 @@ export default function FileConverter() {
                             Use ({capturedImages.length})
                           </button>
                         </div>
-                      </div>
-                      
-                      {/* Camera tips */}
-                      <div className="mt-3 text-center">
-                        <small className="text-muted">
-                          💡 Tips: Ensure good lighting and hold steady for better text recognition
-                        </small>
                       </div>
                     </div>
                   )}
