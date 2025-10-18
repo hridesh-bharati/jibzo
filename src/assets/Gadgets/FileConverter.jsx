@@ -35,7 +35,7 @@ export default function FileConverter() {
     };
   }, []);
 
-  // Improved Camera functions
+  // Fixed Camera functions - Better error handling
   const startCamera = async () => {
     try {
       setCameraError("");
@@ -51,6 +51,14 @@ export default function FileConverter() {
       // Stop existing stream if any
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+
+      // Ensure videoRef is available
+      if (!videoRef.current) {
+        setCameraError("Camera element not available");
+        setLoading(false);
+        return;
       }
 
       const constraints = {
@@ -65,57 +73,78 @@ export default function FileConverter() {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
 
-      // Wait for video element to be ready with better error handling
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+      // Direct assignment without complex promise
+      videoRef.current.srcObject = stream;
+      
+      // Wait for video to be ready
+      await new Promise((resolve, reject) => {
+        const video = videoRef.current;
         
-        // Wait for video to load properly
-        await new Promise((resolve, reject) => {
-          const video = videoRef.current;
-          if (!video) {
-            reject(new Error("Video element not found"));
-            return;
-          }
+        if (!video) {
+          reject(new Error("Video element not found"));
+          return;
+        }
 
-          const onLoaded = () => {
-            video.removeEventListener('loadedmetadata', onLoaded);
-            video.removeEventListener('error', onError);
+        const onLoaded = () => {
+          video.removeEventListener('loadedmetadata', onLoaded);
+          video.removeEventListener('error', onError);
+          resolve();
+        };
+
+        const onError = (error) => {
+          video.removeEventListener('loadedmetadata', onLoaded);
+          video.removeEventListener('error', onError);
+          reject(new Error(`Video stream error: ${error.message}`));
+        };
+
+        video.addEventListener('loadedmetadata', onLoaded);
+        video.addEventListener('error', onError);
+
+        // If video is already ready, resolve immediately
+        if (video.readyState >= 2) { // HAVE_CURRENT_DATA or better
+          video.removeEventListener('loadedmetadata', onLoaded);
+          video.removeEventListener('error', onError);
+          resolve();
+        }
+
+        // Fallback timeout
+        setTimeout(() => {
+          video.removeEventListener('loadedmetadata', onLoaded);
+          video.removeEventListener('error', onError);
+          if (video.videoWidth > 0 && video.videoHeight > 0) {
             resolve();
-          };
+          } else {
+            reject(new Error("Camera stream timeout - check camera permissions"));
+          }
+        }, 3000);
+      });
 
-          const onError = () => {
-            video.removeEventListener('loadedmetadata', onLoaded);
-            video.removeEventListener('error', onError);
-            reject(new Error("Failed to load video stream"));
-          };
-
-          video.addEventListener('loadedmetadata', onLoaded);
-          video.addEventListener('error', onError);
-
-          // Fallback timeout
-          setTimeout(() => {
-            video.removeEventListener('loadedmetadata', onLoaded);
-            video.removeEventListener('error', onError);
-            if (video.videoWidth > 0 && video.videoHeight > 0) {
-              resolve();
-            } else {
-              reject(new Error("Camera stream timeout"));
-            }
-          }, 5000);
-        });
-
-        setCameraActive(true);
-      } else {
-        throw new Error("Camera element not ready");
-      }
+      setCameraActive(true);
+      setCameraError("");
 
     } catch (err) {
       console.error("Camera error:", err);
-      setCameraError("Camera access failed: " + err.message);
+      let errorMessage = "Camera access failed: ";
+      
+      if (err.name === 'NotAllowedError') {
+        errorMessage += "Camera permission denied. Please allow camera access.";
+      } else if (err.name === 'NotFoundError') {
+        errorMessage += "No camera found on this device.";
+      } else if (err.name === 'NotSupportedError') {
+        errorMessage += "Camera not supported in this browser.";
+      } else {
+        errorMessage += err.message;
+      }
+      
+      setCameraError(errorMessage);
+      
       // Clean up on error
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
         streamRef.current = null;
+      }
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
       }
     } finally {
       setLoading(false);
@@ -176,6 +205,9 @@ export default function FileConverter() {
         navigator.vibrate(50);
       }
 
+      // Show success message
+      setCameraError("");
+      
     } catch (error) {
       console.error("Capture error:", error);
       setCameraError("Failed to capture image");
@@ -183,6 +215,8 @@ export default function FileConverter() {
   };
 
   const useCapturedImage = () => {
+    if (capturedImages.length === 0) return;
+    
     const newImageFiles = capturedImages.map(img =>
       dataURLtoFile(img.data, img.name)
     );
@@ -218,7 +252,7 @@ export default function FileConverter() {
           // Reinitialize camera if already active
           videoRef.current.srcObject = streamRef.current;
         }
-      }, 100);
+      }, 300);
     } else {
       // Stop camera when switching away from camera tab
       if (cameraActive) {
@@ -750,6 +784,11 @@ export default function FileConverter() {
                           {cameraError}
                         </div>
                       )}
+                      <div className="text-center">
+                        <small className="text-muted">
+                          💡 Make sure to allow camera permissions when prompted
+                        </small>
+                      </div>
                     </div>
                   ) : (
                     <div>
