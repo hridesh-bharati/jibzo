@@ -42,7 +42,6 @@ import AgeCalculator from "./assets/Gadgets/AgeCal/AgeCalculator";
 // Context
 import { UserRelationsProvider } from "./context/UserRelationsContext";
 import Reels from "./assets/uploads/Reels";
-import VideoDownloader from "./assets/Gadgets/Downloader/VideoDownloader";
 
 // Routes that don't need footer
 const NO_FOOTER_ROUTES = ["/", "/login", "/register"];
@@ -91,7 +90,6 @@ const gadgetsRoutes = [
   { path: "image-resizer", component: ImageResizer },
   { path: "face-sticker", component: FaceSticker },
   { path: "age-calculator", component: AgeCalculator },
-  { path: "video-downlaoder", component: VideoDownloader }
 
 ];
 
