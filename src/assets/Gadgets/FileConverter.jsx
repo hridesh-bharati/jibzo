@@ -17,7 +17,6 @@ export default function FileConverter() {
   const [capturedImages, setCapturedImages] = useState([]);
   const [activeTab, setActiveTab] = useState("upload");
   const [cameraError, setCameraError] = useState("");
-  const [scanQuality, setScanQuality] = useState("high"); // high, medium, low
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -35,7 +34,7 @@ export default function FileConverter() {
     };
   }, []);
 
-  // Improved Camera functions
+  // Camera functions
   const startCamera = async () => {
     try {
       setCameraError("");
@@ -48,8 +47,8 @@ export default function FileConverter() {
 
       const constraints = {
         video: {
-          width: { ideal: isMobile ? 1920 : 2560 },
-          height: { ideal: isMobile ? 1080 : 1440 },
+          width: { ideal: isMobile ? 1280 : 1920 },
+          height: { ideal: isMobile ? 720 : 1080 },
           facingMode: 'environment',
           aspectRatio: isMobile ? 4 / 3 : 16 / 9
         }
@@ -58,25 +57,20 @@ export default function FileConverter() {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.onloadedmetadata = () => {
+      // Wait a bit for video element to be ready
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
           setCameraActive(true);
-        };
-      } else {
-        stream.getTracks().forEach(track => track.stop());
-        setCameraError("Camera element not ready");
-      }
+        } else {
+          stream.getTracks().forEach(track => track.stop());
+          setCameraError("Camera element not ready");
+        }
+      }, 100);
 
     } catch (err) {
       console.error("Camera error:", err);
-      if (err.name === 'NotAllowedError') {
-        setCameraError("Camera access denied. Please allow camera permissions.");
-      } else if (err.name === 'NotFoundError') {
-        setCameraError("No camera found on this device.");
-      } else {
-        setCameraError("Camera access failed: " + err.message);
-      }
+      setCameraError("Camera access failed: " + err.message);
     }
   };
 
@@ -94,7 +88,6 @@ export default function FileConverter() {
     setCameraError("");
   };
 
-  // Improved capture with better quality for text
   const captureImage = () => {
     if (!videoRef.current || !canvasRef.current) {
       setCameraError("Camera not ready");
@@ -109,50 +102,22 @@ export default function FileConverter() {
       return;
     }
 
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    
-    // Use maximum resolution
+    const context = canvas.getContext('2d');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    
-    // Draw image
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
-    // Apply image enhancement for better text recognition
-    if (conversionType === "text-scanner") {
-      enhanceImageForOCR(context, canvas.width, canvas.height);
-    }
 
-    const imageData = canvas.toDataURL('image/png', 1.0); // Use PNG for better quality
+    const imageData = canvas.toDataURL('image/jpeg', 0.9);
     setCapturedImages(prev => [...prev, {
       id: Date.now(),
       data: imageData,
-      name: `captured-${Date.now()}.png`
+      name: `captured-${Date.now()}.jpg`
     }]);
 
     // Haptic feedback for mobile
     if (isMobile && navigator.vibrate) {
       navigator.vibrate(50);
     }
-  };
-
-  // Image enhancement for better OCR
-  const enhanceImageForOCR = (ctx, width, height) => {
-    const imageData = ctx.getImageData(0, 0, width, height);
-    const data = imageData.data;
-    
-    // Convert to grayscale and enhance contrast
-    for (let i = 0; i < data.length; i += 4) {
-      const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-      
-      // Enhance contrast
-      const contrast = 1.5;
-      const adjusted = ((gray - 128) * contrast) + 128;
-      
-      data[i] = data[i + 1] = data[i + 2] = Math.max(0, Math.min(255, adjusted));
-    }
-    
-    ctx.putImageData(imageData, 0, 0);
   };
 
   const useCapturedImage = () => {
@@ -262,7 +227,7 @@ export default function FileConverter() {
     });
   };
 
-  // Improved OCR Text Scanner Function
+  // OCR Text Scanner Function
   const handleTextScan = async () => {
     if (!imageFiles.length && !pdfFile && capturedImages.length === 0) {
       alert("Please select images, use camera, or upload PDF first!");
@@ -277,34 +242,19 @@ export default function FileConverter() {
       let textResults = [];
       const allImages = [...imageFiles, ...capturedImages.map(img => dataURLtoFile(img.data, img.name))];
 
-      // Improved Tesseract configuration
-      const tesseractConfig = {
-        logger: m => {
-          console.log('Tesseract Progress:', m);
-          if (m.status === 'recognizing text') {
-            setOcrProgress(Math.round(m.progress * 100));
-          }
-        },
-        tessedit_pageseg_mode: '6', // Uniform block of text
-        tessedit_ocr_engine_mode: '1', // Neural nets LSTM engine
-        preserve_interword_spaces: '1',
-        textord_min_linesize: '2.5',
-      };
-
       if (allImages.length > 0) {
         for (let i = 0; i < allImages.length; i++) {
-          console.log(`Processing image ${i + 1}/${allImages.length}`);
-          
-          // Pre-process image for better OCR
-          const processedImage = await preprocessImageForOCR(allImages[i]);
-          
           const result = await Tesseract.recognize(
-            processedImage,
-            'eng', // Start with English for better accuracy
-            tesseractConfig
+            allImages[i],
+            'eng+hin',
+            {
+              logger: m => {
+                if (m.status === 'recognizing text') {
+                  setOcrProgress(Math.round(m.progress * 100));
+                }
+              }
+            }
           );
-          
-          console.log(`Image ${i + 1} result:`, result.data);
           textResults.push(`--- Image ${i + 1} ---\n${result.data.text}\n`);
         }
       } else if (pdfFile) {
@@ -312,97 +262,40 @@ export default function FileConverter() {
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
         for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-          console.log(`Processing PDF page ${pageNum}/${pdf.numPages}`);
           const page = await pdf.getPage(pageNum);
-          
-          // Higher resolution for PDFs based on quality setting
-          const scale = scanQuality === 'high' ? (isMobile ? 3.0 : 4.0) : 
-                       scanQuality === 'medium' ? (isMobile ? 2.0 : 3.0) : 
-                       (isMobile ? 1.5 : 2.0);
-
-          const viewport = page.getViewport({ scale });
+          const viewport = page.getViewport({ scale: isMobile ? 2.0 : 3.0 });
 
           const canvas = document.createElement("canvas");
           const ctx = canvas.getContext("2d");
           canvas.width = viewport.width;
           canvas.height = viewport.height;
-          canvas.style.imageRendering = 'crisp-edges';
 
-          await page.render({ 
-            canvasContext: ctx, 
-            viewport 
-          }).promise;
+          await page.render({ canvasContext: ctx, viewport }).promise;
 
-          const imageData = canvas.toDataURL("image/png", 1.0);
+          const imageData = canvas.toDataURL("image/jpeg", 0.9);
 
           const result = await Tesseract.recognize(
             imageData,
-            'eng',
-            tesseractConfig
+            'eng+hin',
+            {
+              logger: m => {
+                if (m.status === 'recognizing text') {
+                  setOcrProgress(Math.round(m.progress * 100));
+                }
+              }
+            }
           );
 
           textResults.push(`--- Page ${pageNum} ---\n${result.data.text}\n`);
         }
       }
 
-      const finalText = textResults.join('\n');
-      setExtractedText(finalText);
-      
-      // Show success message
-      if (finalText.trim().length > 0) {
-        alert(`✅ Text extraction completed! Found ${finalText.length} characters.`);
-      } else {
-        alert("⚠️ No text could be detected in the provided files. Try using higher quality images.");
-      }
-      
+      setExtractedText(textResults.join('\n'));
     } catch (err) {
-      console.error("OCR Error:", err);
-      alert("❌ Failed to extract text: " + err.message);
+      alert("Failed to extract text: " + err.message);
     }
     setLoading(false);
     setOcrProgress(0);
-  };
-
-  // Image preprocessing for better OCR
-  const preprocessImageForOCR = async (file) => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      
-      img.onload = () => {
-        // Set canvas size to original image size for maximum quality
-        canvas.width = img.width;
-        canvas.height = img.height;
-        
-        // Draw original image
-        ctx.drawImage(img, 0, 0);
-        
-        // Get image data for processing
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const data = imageData.data;
-        
-        // Convert to grayscale and enhance contrast
-        for (let i = 0; i < data.length; i += 4) {
-          const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-          
-          // Enhance contrast
-          const contrast = 1.3;
-          const adjusted = ((gray - 128) * contrast) + 128;
-          
-          data[i] = data[i + 1] = data[i + 2] = Math.max(0, Math.min(255, adjusted));
-        }
-        
-        ctx.putImageData(imageData, 0, 0);
-        
-        // Convert back to file
-        canvas.toBlob((blob) => {
-          resolve(new File([blob], file.name, { type: 'image/png' }));
-        }, 'image/png', 1.0);
-      };
-      
-      img.src = URL.createObjectURL(file);
-    });
   };
 
   // PDF to Word conversion
@@ -647,41 +540,73 @@ export default function FileConverter() {
     </button>
   );
 
+
   return (
     <div className="container-fluid px-2 py-3" style={{
       minHeight: '100vh',
       backgroundColor: '#f8f9fa'
     }}>
+
+
       {/* Conversion Type Selector */}
       <div className="conversion-grid">
         <ConversionTypeButton type="jpg-to-pdf" label="Images to PDF" icon="🖼️" color="#4dabf7" />
         <ConversionTypeButton type="pdf-to-jpg" label="PDF to Images" icon="📄" color="#f06595" />
-        <ConversionTypeButton type="pdf-to-word" label="PDF to Word" icon="📝" color="#63e6be" />
+        <ConversionTypeButton type="pdf-to-word" label="PDF to Word" icon={<i className="bi bi-file-earmark-word-fill text-primary"></i>} color="#63e6be" />
         <ConversionTypeButton type="text-scanner" label="Text Scanner" icon="🔍" color="#fcc419" />
+        <style>{`
+        .conversion-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+.conversion-btn {
+  border: none;
+  background: white;
+  border-radius: 12px;
+  padding: 15px 10px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.conversion-btn:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+}
+
+.conversion-btn.active {
+  outline: 2px solid #007bff;
+  background: #e7f1ff;
+}
+
+.conversion-icon {
+  width: 55px;
+  height: 55px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 26px;
+  margin-bottom: 8px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
+}
+
+.conversion-btn .label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+}
+
+        `}</style>
       </div>
 
-      {/* Scan Quality Selector for Text Scanner */}
-      {conversionType === "text-scanner" && (
-        <div className="card mb-3">
-          <div className="card-body">
-            <label className="form-label">Scan Quality:</label>
-            <select 
-              className="form-select"
-              value={scanQuality}
-              onChange={(e) => setScanQuality(e.target.value)}
-            >
-              <option value="high">High (Slowest, Best Accuracy)</option>
-              <option value="medium">Medium (Balanced)</option>
-              <option value="low">Low (Fastest, Basic)</option>
-            </select>
-            <small className="text-muted">
-              {scanQuality === 'high' ? 'Best for documents with small text' :
-               scanQuality === 'medium' ? 'Good for most documents' :
-               'Suitable for clear, large text'}
-            </small>
-          </div>
-        </div>
-      )}
+
 
       {/* Input Methods Tabs */}
       {(conversionType === "jpg-to-pdf" || conversionType === "text-scanner") && (
@@ -718,7 +643,6 @@ export default function FileConverter() {
                       }
                     }}
                   />
-                 
                 </div>
               )}
 
@@ -735,15 +659,6 @@ export default function FileConverter() {
                       {cameraError && (
                         <div className="alert alert-warning text-center small">
                           {cameraError}
-                        </div>
-                      )}
-                      {conversionType === "text-scanner" && (
-                        <div className="alert alert-info small">
-                          <strong>Camera Tips:</strong><br/>
-                          • Hold steady and ensure good lighting<br/>
-                          • Keep the document flat<br/>
-                          • Capture from directly above<br/>
-                          • Avoid shadows on the text
                         </div>
                       )}
                     </div>
@@ -821,6 +736,20 @@ export default function FileConverter() {
         </div>
       )}
 
+      {/* Word to PDF input */}
+      {conversionType === "word-to-pdf" && (
+        <div className="card mb-3">
+          <div className="card-body">
+            <input
+              type="file"
+              accept=".doc,.docx"
+              className="form-control form-control-lg"
+              onChange={handleWordToPdf}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Action Button */}
       <div className="card mb-3">
         <div className="card-body">
@@ -828,7 +757,7 @@ export default function FileConverter() {
             className={`btn w-100 btn-lg ${conversionType === "jpg-to-pdf" ? "btn-primary" :
               conversionType === "pdf-to-jpg" ? "btn-success" :
                 conversionType === "pdf-to-word" ? "btn-info" :
-                  "btn-warning"
+                  "btn-dark"
               }`}
             disabled={
               loading ||
@@ -855,7 +784,7 @@ export default function FileConverter() {
               conversionType === "jpg-to-pdf" ? `Convert to PDF (${imageFiles.length + capturedImages.length})` :
                 conversionType === "pdf-to-jpg" ? "Extract Images" :
                   conversionType === "pdf-to-word" ? "Convert to Word" :
-                    `Scan Text (${scanQuality})`
+                    "Scan Text"
             )}
           </button>
         </div>
@@ -905,7 +834,7 @@ export default function FileConverter() {
         <div className="card mb-3">
           <div className="card-body">
             <div className="d-flex justify-content-between align-items-center mb-2">
-              <h6 className="mb-0">📝 Extracted Text ({extractedText.length} chars)</h6>
+              <h6 className="mb-0">📝 Extracted Text</h6>
               <div>
                 <button className="btn btn-outline-secondary btn-sm me-1" onClick={copyToClipboard}>
                   Copy
@@ -917,7 +846,7 @@ export default function FileConverter() {
             </div>
             <textarea
               className="form-control"
-              rows="8"
+              rows="6"
               value={extractedText}
               onChange={(e) => setExtractedText(e.target.value)}
               style={{
@@ -978,52 +907,6 @@ export default function FileConverter() {
 
       {/* Mobile Footer Space */}
       {isMobile && <div style={{ height: '80px' }}></div>}
-
-      <style>{`
-        .conversion-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-          gap: 12px;
-          margin-bottom: 20px;
-          text-align: center;
-        }
-        .conversion-btn {
-          border: none;
-          background: white;
-          border-radius: 12px;
-          padding: 15px 10px;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-          transition: all 0.3s ease;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-        }
-        .conversion-btn:hover {
-          transform: translateY(-3px);
-          box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
-        }
-        .conversion-btn.active {
-          outline: 2px solid #007bff;
-          background: #e7f1ff;
-        }
-        .conversion-icon {
-          width: 55px;
-          height: 55px;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: white;
-          font-size: 26px;
-          margin-bottom: 8px;
-          box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
-        }
-        .conversion-btn .label {
-          font-size: 13px;
-          font-weight: 600;
-          color: #333;
-        }
-      `}</style>
     </div>
   );
 }
